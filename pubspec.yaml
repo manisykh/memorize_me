@@ -61,6 +61,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -82,11 +83,21 @@ flutter:
   assets:
     - assets/
     - assets/fonts/ # 폰트 폴더 등록
+    - assets/icons/
 
   fonts:
     - family: NotoSansKR
       fonts:
         - asset: assets/fonts/NotoSansKR-Regular.ttf
+
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icons/icon_1.png"
+  adaptive_icon_background: "#00000000" # 투명한 색상 코드
+  adaptive_icon_foreground: "assets/icons/icon_1.png"
+      
 
   # To add assets to your application, add an assets section, like this:
   # assets:
