@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import '../models/word_model.dart';
+import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/word_list_provider.dart';
+import '../services/sheets_service.dart';
 import '../services/test_sheet_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/enhanced_neumorphic_container.dart';
@@ -17,6 +20,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isExporting = false;
+  bool _isSyncing = false;
 
   void _showExportOptions() {
     final allWords = context.read<WordListNotifier>().words;
@@ -111,6 +115,118 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         setState(() => _isExporting = false);
       }
+    }
+  }
+
+  // 구글 시트 동기화를 처리하는 새로운 메서드
+  Future<void> _syncFromGoogleSheets() async {
+    setState(() => _isSyncing = true);
+
+    const String spreadsheetId = '1xfnau2dnSwC8tc8QTsMU41YSUaXMij8IKTzMnZ7shQo';
+    const String sheetName = 'Sheet1'; // 데이터를 가져올 시트 이름
+
+    try {
+      final sheetsService = context.read<SheetsService>();
+      final wordListNotifier = context.read<WordListNotifier>();
+
+      final List<Word>? newWords = await sheetsService.getWordsFromSheet(spreadsheetId, sheetName);
+
+      if (newWords != null && mounted) {
+        // 가져온 단어들로 교체 (혹은 추가, 옵션 제공 가능)
+        await wordListNotifier.deleteAllWords();
+        for (final word in newWords) {
+          await wordListNotifier.addWord(word);
+        }
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${newWords.length}개의 단어를 성공적으로 가져왔습니다.')));
+      } else if (mounted) {
+        throw Exception('시트에서 단어를 가져오지 못했습니다.');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('동기화 오류: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSyncing = false);
+      }
+    }
+  }
+
+  // 로그인/로그아웃 상태를 표시하는 위젯
+  Widget _buildAuthSection(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
+    final theme = Theme.of(context);
+
+    if (authProvider.isLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 20.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    final user = authProvider.currentUser;
+
+    if (user != null) {
+      // 로그인된 상태 UI
+      return Column(
+        children: [
+          EnhancedNeumorphicContainer(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: GoogleUserCircleAvatar(identity: user),
+              title: Text(user.displayName ?? 'No Name', style: theme.textTheme.bodyLarge),
+              subtitle: Text(
+                user.email,
+                style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.subTextLight),
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.logout, color: AppTheme.accentRed),
+                onPressed: () => context.read<AuthProvider>().signOut(),
+                tooltip: '로그아웃',
+              ),
+            ),
+          ),
+          const SizedBox(height: 15),
+          // 동기화 버튼 추가
+          if (_isSyncing)
+            const Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator())
+          else
+            EnhancedNeumorphicContainer(
+              onTap: _syncFromGoogleSheets,
+              padding: const EdgeInsets.all(4),
+              child: SizedBox(
+                height: 50,
+                child: Center(
+                  child: Text('Google Sheets에서 단어 가져오기', style: theme.textTheme.titleMedium),
+                ),
+              ),
+            ),
+        ],
+      );
+    } else {
+      // 로그아웃된 상태 UI
+      return EnhancedNeumorphicContainer(
+        onTap: () => context.read<AuthProvider>().signIn(),
+        padding: const EdgeInsets.all(4),
+        child: SizedBox(
+          height: 50,
+          child: Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset('assets/icons/google_logo.png', height: 24, width: 24),
+                const SizedBox(width: 12),
+                Text('Google 계정으로 로그인', style: theme.textTheme.titleMedium),
+              ],
+            ),
+          ),
+        ),
+      );
     }
   }
 
@@ -255,6 +371,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Center(child: Text('시험지 내보내기', style: theme.textTheme.titleMedium)),
                 ),
               ),
+          const SizedBox(height: 30),
+          Text('계정 연동', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 20),
+          _buildAuthSection(context),
           const SizedBox(height: 30),
           Text('앱 설정', style: theme.textTheme.titleLarge),
           const SizedBox(height: 20),

@@ -1,0 +1,38 @@
+{
+  "project_info": {
+    "project_number": "808697138874",
+    "project_id": "oceanic-sky-462706-t1",
+    "storage_bucket": "oceanic-sky-462706-t1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:808697138874:android:bb283a980a4ff0d1f13c83",
+        "android_client_info": {
+          "package_name": "com.example.memorize_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "808697138874-94m39osib8h3v6d2rr95i4lrggualh5e.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.memorize_app",
+            "certificate_hash": "4f787f203173e494bcb7b5239ee5d98ebab352a0"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDVtnsLLzyotuSt26gj8ON5tG-JDIcgxGc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

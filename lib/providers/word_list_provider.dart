@@ -32,6 +32,11 @@ class WordListNotifier extends ChangeNotifier {
     await loadWords();
   }
 
+  Future<void> deleteAllWords() async {
+    await _dbService.deleteAllWords();
+    await loadWords(); // 모든 단어를 지운 후, 빈 목록을 UI에 반영
+  }
+
   Future<void> importFromCsv(BuildContext context, CsvService csvService) async {
     bool success = await csvService.importCsv(context);
     if (success) {

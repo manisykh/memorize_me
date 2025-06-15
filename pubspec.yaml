@@ -56,6 +56,10 @@ dependencies:
   excel: ^4.0.2      # Excel 파일 생성용 패키지
   open_filex: ^4.3.4  # 이 줄을 추가
   intl: ^0.19.0 # 날짜 자동 생성 라이브러리리  
+  google_sign_in: ^6.2.1
+  googleapis: ^13.1.0
+  http: ^1.2.1
+  googleapis_auth: ^1.6.0
 
 
 dev_dependencies:
