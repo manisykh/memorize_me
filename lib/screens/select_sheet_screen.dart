@@ -82,6 +82,7 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
   void _onSheetSelected(BuildContext context, sheets.Sheet sheet) {
     final sheetTitle = sheet.properties?.title;
     if (sheetTitle == null) return;
+    final theme = Theme.of(context); // 현재 테마 가져오기
 
     // 단어장 이름을 입력받는 다이얼로그를 띄웁니다.
     showCupertinoDialog(
@@ -96,6 +97,7 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
               controller: _nameController,
               placeholder: '단어장 이름을 입력하세요',
               autofocus: true,
+              style: TextStyle(color: theme.textTheme.bodyLarge?.color),
             ),
           ),
           actions: [

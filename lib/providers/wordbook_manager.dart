@@ -1,6 +1,11 @@
-// providers/wordbook_manager.dart
-
+import 'dart:io';
+import 'package:csv/csv.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
+
+import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 import '../services/database_service.dart';
 import '../services/sheets_service.dart';
@@ -9,7 +14,7 @@ import 'word_list_provider.dart';
 class WordbookManager extends ChangeNotifier {
   final DatabaseService _dbService;
   final SheetsService _sheetsService;
-  final WordListNotifier _wordListNotifier; // WordListNotifier를 직접 제어
+  final WordListNotifier _wordListNotifier;
 
   List<Wordbook> _wordbooks = [];
   List<Wordbook> get wordbooks => _wordbooks;
@@ -20,32 +25,23 @@ class WordbookManager extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
-  WordbookManager(this._dbService, this._sheetsService, this._wordListNotifier) {
-    // 앱 시작 시 단어장 목록을 불러옵니다.
-    loadWordbooks();
-  }
+  WordbookManager(this._dbService, this._sheetsService, this._wordListNotifier);
 
-  // DB에서 모든 단어장 목록을 불러와 상태를 업데이트합니다.
   Future<void> loadWordbooks() async {
     _setLoading(true);
     _wordbooks = await _dbService.getWordbooks();
-    // 이전에 활성화된 단어장이 있었다면, 그 단어장을 다시 활성화합니다.
-    // (나중에는 SharedPreferences에 마지막으로 사용한 단어장 ID를 저장하여 불러올 수 있습니다.)
     if (_wordbooks.isNotEmpty && _activeWordbook == null) {
       await setActiveWordbook(_wordbooks.first);
     }
     _setLoading(false);
   }
 
-  // 특정 단어장을 활성화합니다.
   Future<void> setActiveWordbook(Wordbook? wordbook) async {
     _activeWordbook = wordbook;
-    // WordListNotifier에게 활성화된 단어장을 전달하여 단어 목록을 변경하도록 합니다.
     await _wordListNotifier.switchWordbook(wordbook);
     notifyListeners();
   }
 
-  // 새로운 단어장을 생성합니다.
   Future<void> createNewWordbook({
     required String name,
     required String spreadsheetId,
@@ -53,54 +49,139 @@ class WordbookManager extends ChangeNotifier {
   }) async {
     _setLoading(true);
     try {
-      // 1. 단어장 메타데이터 생성
       final dbFileName = 'wordbook_${DateTime.now().millisecondsSinceEpoch}.db';
       final newWordbook = Wordbook(
         name: name,
         spreadsheetId: spreadsheetId,
         sheetName: sheetName,
         dbFileName: dbFileName,
+        source: WordbookSource.googleSheet,
       );
       final savedWordbook = await _dbService.addWordbook(newWordbook);
 
-      // 2. 구글 시트에서 단어 가져오기
       final words = await _sheetsService.getWordsFromSheet(spreadsheetId, sheetName);
 
-      // 3. 가져온 단어를 새로운 로컬 DB에 저장하기
       if (words != null) {
-        for (final word in words) {
-          await _dbService.addWord(savedWordbook.dbFileName, word);
-        }
+        await _dbService.addWordsInBatch(savedWordbook.dbFileName, words);
       }
 
-      // 4. 전체 단어장 목록 새로고침 및 새로 만든 단어장 활성화
       await loadWordbooks();
       await setActiveWordbook(savedWordbook);
     } catch (e) {
       debugPrint("Error creating new wordbook: $e");
-      // 사용자에게 오류 메시지를 보여주는 로직 추가 가능
     } finally {
       _setLoading(false);
     }
   }
 
-  // 단어장을 삭제합니다.
+  Future<void> createNewWordbookFromCsv(BuildContext context) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+    );
+
+    if (result == null) return;
+
+    _setLoading(true);
+
+    try {
+      final file = result.files.single;
+      final path = file.path!;
+
+      final csvString = await File(path).readAsString();
+      final List<List<dynamic>> csvTable = const CsvToListConverter().convert(csvString);
+      final List<Word> words =
+          csvTable
+              .skip(1)
+              .map((row) {
+                if (row.length >= 2) {
+                  return Word(word: row[0].toString().trim(), meaning: row[1].toString().trim());
+                }
+                return null;
+              })
+              .where((word) => word != null && word.word.isNotEmpty && word.meaning.isNotEmpty)
+              .cast<Word>()
+              .toList();
+
+      if (words.isEmpty && context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('CSV 파일에서 유효한 단어를 찾을 수 없습니다.')));
+        _setLoading(false);
+        return;
+      }
+
+      final theme = Theme.of(context);
+      final nameController = TextEditingController(text: p.basenameWithoutExtension(path));
+      final String? newName = await showCupertinoDialog<String>(
+        context: context,
+        builder:
+            (dialogContext) => CupertinoAlertDialog(
+              title: const Text('단어장 이름 지정'),
+              content: Padding(
+                padding: const EdgeInsets.only(top: 16.0),
+                child: CupertinoTextField(
+                  controller: nameController,
+                  placeholder: '단어장 이름을 입력하세요',
+                  style: TextStyle(color: theme.textTheme.bodyLarge?.color),
+                ),
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  child: const Text('취소'),
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                ),
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  child: const Text('생성'),
+                  onPressed: () => Navigator.of(dialogContext).pop(nameController.text.trim()),
+                ),
+              ],
+            ),
+      );
+
+      if (newName == null || newName.isEmpty) {
+        _setLoading(false);
+        return;
+      }
+
+      final dbFileName = 'wordbook_${DateTime.now().millisecondsSinceEpoch}.db';
+      final newWordbook = Wordbook(
+        name: newName,
+        dbFileName: dbFileName,
+        source: WordbookSource.localCsv,
+      );
+      final savedWordbook = await _dbService.addWordbook(newWordbook);
+
+      await _dbService.addWordsInBatch(savedWordbook.dbFileName, words);
+
+      await loadWordbooks();
+      await setActiveWordbook(savedWordbook);
+    } catch (e) {
+      debugPrint("Error creating wordbook from CSV: $e");
+      if (context.mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('파일 처리 중 오류 발생: $e')));
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   Future<void> deleteWordbook(Wordbook wordbook) async {
     _setLoading(true);
-    // 삭제하려는 단어장이 현재 활성화된 단어장이라면, 활성 단어장을 null로 변경
     if (_activeWordbook?.id == wordbook.id) {
       await setActiveWordbook(null);
     }
-
     await _dbService.deleteWordbook(wordbook.id!, wordbook.dbFileName);
-    await loadWordbooks(); // 목록 새로고침
+    await loadWordbooks();
     _setLoading(false);
   }
 
   void _setLoading(bool loading) {
     if (_isLoading != loading) {
       _isLoading = loading;
-      notifyListeners();
+      Future.microtask(() {
+        notifyListeners();
+      });
     }
   }
 }

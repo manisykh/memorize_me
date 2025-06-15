@@ -1,14 +1,15 @@
 import 'dart:math';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/word_model.dart';
 import '../providers/settings_provider.dart';
 import '../providers/word_list_provider.dart';
+import '../services/tts_service.dart'; // TTS 서비스 import
 import '../themes/app_theme.dart';
 import '../widgets/enhanced_glass_card.dart';
 import '../widgets/enhanced_neumorphic_container.dart';
 import 'quiz_helpers.dart';
-import 'package:flutter/cupertino.dart';
 
 class FlashcardScreen extends StatefulWidget {
   const FlashcardScreen({super.key});
@@ -21,6 +22,20 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   int _currentIndex = 0;
   bool _isFlipped = false;
   bool _sessionActive = false;
+
+  late final TtsService _ttsService;
+
+  @override
+  void initState() {
+    super.initState();
+    _ttsService = TtsService();
+  }
+
+  @override
+  void dispose() {
+    _ttsService.stop();
+    super.dispose();
+  }
 
   void _startSession() {
     final allWords = context.read<WordListNotifier>().words;
@@ -41,7 +56,8 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         sessionWords.map((word) {
           TestType type = settings.testType;
           if (type == TestType.random) {
-            type = TestType.values[random.nextInt(3)];
+            // 플래시카드에서는 '단어 -> 뜻' 또는 '뜻 -> 단어'만 사용
+            type = [TestType.wordToMeaning, TestType.meaningToWord][random.nextInt(2)];
           }
           return QuizItem(word: word, questionType: type);
         }).toList();
@@ -54,6 +70,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   }
 
   void _flipCard() => setState(() => _isFlipped = !_isFlipped);
+
   void _nextCard() {
     if (_sessionItems.isNotEmpty) {
       setState(() {
@@ -86,6 +103,13 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     }
 
     final quizItem = _sessionItems[_currentIndex];
+
+    // 현재 카드에 영단어가 표시되는지 여부를 결정하는 로직
+    final bool isShowingWord =
+        (quizItem.questionType == TestType.wordToMeaning && !_isFlipped) ||
+        (quizItem.questionType == TestType.meaningToWord && _isFlipped);
+
+    final String currentWord = quizItem.word.word;
     final String frontText = getQuestionText(quizItem.word, quizItem.questionType);
     final String backText = getAnswerText(quizItem.word, quizItem.questionType);
 
@@ -94,6 +118,17 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          Text(
+            '${_currentIndex + 1} / ${_sessionItems.length}',
+            style: TextStyle(
+              color:
+                  theme.brightness == Brightness.light
+                      ? AppTheme.subTextLight
+                      : AppTheme.subTextDark,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 20),
           EnhancedGlassCard(
             onTap: _flipCard,
             child: AnimatedSwitcher(
@@ -116,26 +151,29 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                   },
                 );
               },
-              child: Text(
-                _isFlipped ? backText : frontText,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 key: ValueKey(_isFlipped),
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleLarge?.copyWith(fontSize: 28),
+                children: [
+                  Text(
+                    _isFlipped ? backText : frontText,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleLarge?.copyWith(fontSize: 28),
+                  ),
+                  if (isShowingWord) ...[
+                    const SizedBox(height: 15),
+                    IconButton(
+                      icon: const Icon(CupertinoIcons.speaker_2_fill),
+                      iconSize: 30,
+                      color: theme.colorScheme.secondary,
+                      onPressed: () => _ttsService.speak(currentWord),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          Text(
-            '${_currentIndex + 1} / ${_sessionItems.length}',
-            style: TextStyle(
-              color:
-                  theme.brightness == Brightness.light
-                      ? AppTheme.subTextLight
-                      : AppTheme.subTextDark,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 40),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [

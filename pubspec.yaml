@@ -60,6 +60,8 @@ dependencies:
   googleapis: ^13.1.0
   http: ^1.2.1
   googleapis_auth: ^1.6.0
+  flutter_svg: ^2.0.10+1
+  flutter_tts: ^4.0.2
 
 
 dev_dependencies:

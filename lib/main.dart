@@ -15,7 +15,6 @@ import 'services/database_service.dart';
 import 'services/test_sheet_service.dart';
 import 'themes/app_theme.dart';
 import 'services/sheets_service.dart';
-import 'screens/wordbook_list_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -77,11 +76,22 @@ class MyApp extends StatelessWidget {
       themeMode: themeNotifier.themeMode,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      // ▼▼▼ 수정된 부분 ▼▼▼
-      // 앱의 첫 화면을 WordbookListScreen으로 변경합니다.
-      home: const WordbookListScreen(),
-      // ▲▲▲ 수정된 부분 ▲▲▲
       debugShowCheckedModeBanner: false,
+      // ▼▼▼ 수정된 부분 ▼▼▼
+      // FutureBuilder를 사용하여 앱 초기화 과정을 처리합니다.
+      home: FutureBuilder(
+        // WordbookManager의 loadWordbooks를 실행하고 완료될 때까지 기다립니다.
+        future: context.read<WordbookManager>().loadWordbooks(),
+        builder: (context, snapshot) {
+          // 로딩이 완료되면 HomeScreen을 보여줍니다.
+          if (snapshot.connectionState == ConnectionState.done) {
+            return const HomeScreen();
+          }
+          // 로딩 중에는 로딩 화면(Splash Screen)을 보여줍니다.
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        },
+      ),
+      // ▲▲▲ 수정된 부분 ▲▲▲
     );
   }
 }
