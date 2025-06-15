@@ -1,3 +1,5 @@
+// services/csv_service.dart
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -13,15 +15,18 @@ class CsvService {
   final DatabaseService _dbService;
   CsvService(this._dbService);
 
-  Future<bool> importCsv(BuildContext context) async {
+  // importCsv 메서드가 dbFileName을 인자로 받도록 수정
+  Future<bool> importCsv(BuildContext context, String dbFileName) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['csv'],
     );
+
     if (result != null) {
       final path = result.files.single.path!;
       final csvString = await File(path).readAsString();
       final List<List<dynamic>> csvTable = const CsvToListConverter().convert(csvString);
+
       if (context.mounted) {
         final option = await showDialog<ImportOption>(
           context: context,
@@ -41,9 +46,11 @@ class CsvService {
                 ],
               ),
         );
+
         if (option != null) {
           if (option == ImportOption.replace) {
-            await _dbService.deleteAllWords();
+            // deleteAllWords 호출 시 dbFileName 전달
+            await _dbService.deleteAllWords(dbFileName);
           }
           final words =
               csvTable
@@ -59,7 +66,8 @@ class CsvService {
                   .toList();
 
           for (final word in words) {
-            await _dbService.addWord(word);
+            // addWord 호출 시 dbFileName 전달
+            await _dbService.addWord(dbFileName, word);
           }
           return true;
         }
@@ -68,8 +76,10 @@ class CsvService {
     return false;
   }
 
-  Future<void> exportCsv() async {
-    final words = await _dbService.getAllWords();
+  // exportCsv 메서드가 dbFileName을 인자로 받도록 수정
+  Future<void> exportCsv(String dbFileName) async {
+    // getAllWords 호출 시 dbFileName 전달
+    final words = await _dbService.getAllWords(dbFileName);
     if (words.isEmpty) {
       return;
     }

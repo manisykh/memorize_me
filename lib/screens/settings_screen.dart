@@ -122,6 +122,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _syncFromGoogleSheets() async {
     setState(() => _isSyncing = true);
 
+    // 내 시트 아이디:1xfnau2dnSwC8tc8QTsMU41YSUaXMij8IKTzMnZ7shQo
+    // 주호 시트 아이디:1DzZb0pyVBAwfIY2XQMaXmJ1wzmyxk83b_mM7SVOrnps
     const String spreadsheetId = '1DzZb0pyVBAwfIY2XQMaXmJ1wzmyxk83b_mM7SVOrnps';
     const String sheetName = 'Sheet1'; // 데이터를 가져올 시트 이름
 

@@ -225,6 +225,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
+import 'package:googleapis/drive/v3.dart' as drive; // Drive API 추가
 import 'package:googleapis_auth/googleapis_auth.dart' as auth;
 import '../models/word_model.dart';
 import '../providers/auth_provider.dart';
@@ -232,6 +233,49 @@ import '../providers/auth_provider.dart';
 class SheetsService {
   final AuthProvider _authProvider;
   SheetsService(this._authProvider);
+
+  // --- 신규 추가: 구글 드라이브에서 스프레드시트 파일 목록 가져오기 ---
+  Future<List<drive.File>> listSpreadsheets() async {
+    auth.AuthClient? client;
+    try {
+      client = await _authProvider.getAuthenticatedClient();
+      if (client == null) throw Exception('Authentication failed.');
+
+      final driveApi = drive.DriveApi(client);
+      final result = await driveApi.files.list(
+        q: "mimeType='application/vnd.google-apps.spreadsheet'", // 스프레드시트만 필터링
+        $fields: "files(id, name, modifiedTime, iconLink)", // 필요한 필드만 요청
+      );
+
+      return result.files ?? [];
+    } catch (e) {
+      debugPrint('Error listing spreadsheets: $e');
+      rethrow;
+    } finally {
+      client?.close();
+    }
+  }
+
+  // --- 신규 추가: 특정 스프레드시트의 시트(탭) 목록 가져오기 ---
+  Future<List<sheets.Sheet>> getSheetInfo(String spreadsheetId) async {
+    auth.AuthClient? client;
+    try {
+      client = await _authProvider.getAuthenticatedClient();
+      if (client == null) throw Exception('Authentication failed.');
+
+      final sheetsApi = sheets.SheetsApi(client);
+      final spreadsheet = await sheetsApi.spreadsheets.get(
+        spreadsheetId,
+        $fields: 'sheets.properties',
+      );
+      return spreadsheet.sheets ?? [];
+    } catch (e) {
+      debugPrint('Error getting sheet info: $e');
+      rethrow;
+    } finally {
+      client?.close();
+    }
+  }
 
   // 디버깅을 위한 상세 로그가 포함된 메서드
   Future<List<Word>?> getWordsFromSheet(String spreadsheetId, String sheetName) async {
