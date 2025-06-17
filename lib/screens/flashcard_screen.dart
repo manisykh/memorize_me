@@ -1,3 +1,5 @@
+// screens/flashcard_screen.dart (수정 후)
+
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -49,8 +51,9 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
       _sessionItems =
           words.take(wordCount).map((word) {
             TestType type = settings.testType;
-            if (type == TestType.random)
+            if (type == TestType.random) {
               type = [TestType.wordToMeaning, TestType.meaningToWord][Random().nextInt(2)];
+            }
             return QuizItem(word: word, questionType: type);
           }).toList();
       _currentIndex = 0;
@@ -103,7 +106,6 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         (quizItem.questionType == TestType.wordToMeaning && !_isFlipped) ||
         (quizItem.questionType != TestType.wordToMeaning && _isFlipped);
 
-    // 이 변수들은 이제 화면에 표시될 텍스트를 결정하는 데만 사용됩니다.
     final String frontText = getQuestionText(quizItem.word, quizItem.questionType);
     final String backText = getAnswerText(quizItem.word, quizItem.questionType);
 
@@ -131,7 +133,6 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                     child: Center(
                       key: ValueKey(_isFlipped),
                       child: Column(
-                        // ▼▼▼ 1. 텍스트 위치 고정 (mainAxisSize: MainAxisSize.min 제거) ▼▼▼
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Padding(
@@ -145,9 +146,9 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                           if (isShowingWord) ...[
                             const SizedBox(height: 15),
                             IconButton(
-                              icon: const Icon(CupertinoIcons.speaker_2_fill, color: Colors.white),
+                              // ▼▼▼ color: Colors.white 제거 ▼▼▼
+                              icon: const Icon(CupertinoIcons.speaker_2_fill),
                               iconSize: 30,
-                              // ▼▼▼ 2. 항상 영어 단어를 발음하도록 수정 ▼▼▼
                               onPressed: () => _ttsService.speak(quizItem.word.word),
                             ),
                           ],
@@ -164,15 +165,18 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
               children: [
                 GlassmorphicCard(
                   onTap: _prevCard,
-                  child: const Icon(Icons.arrow_back, color: Colors.white),
+                  // ▼▼▼ color: Colors.white 제거 ▼▼▼
+                  child: const Icon(Icons.arrow_back),
                 ),
                 GlassmorphicCard(
                   onTap: _startSession,
-                  child: const Icon(Icons.refresh, color: Colors.white),
+                  // ▼▼▼ color: Colors.white 제거 ▼▼▼
+                  child: const Icon(Icons.refresh),
                 ),
                 GlassmorphicCard(
                   onTap: _nextCard,
-                  child: const Icon(Icons.arrow_forward, color: Colors.white),
+                  // ▼▼▼ color: Colors.white 제거 ▼▼▼
+                  child: const Icon(Icons.arrow_forward),
                 ),
               ],
             ),

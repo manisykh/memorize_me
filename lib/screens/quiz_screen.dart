@@ -1,3 +1,5 @@
+// screens/quiz_screen.dart (최종 수정)
+
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -10,13 +12,10 @@ import '../widgets/glassmorphic_card.dart';
 import 'quiz_helpers.dart';
 import 'quiz_result_screen.dart';
 
-// 현재 어떤 퀴즈 모드인지 나타내는 상태
 enum QuizMode { none, legacy, spelling }
 
-// 스펠링 퀴즈 답변 상태
 enum SpellingAnswerState { none, correct, incorrect, showAnswer }
 
-// 스펠링 퀴즈 결과 클래스
 class SpellingQuizResult {
   final Word word;
   final bool isCorrectOnFirstTry;
@@ -31,7 +30,6 @@ class SpellingQuizResult {
   });
 }
 
-// 퀴즈 탭의 메인 화면. 어떤 퀴즈를 보여줄지 상태를 관리합니다.
 class QuizScreen extends StatefulWidget {
   const QuizScreen({super.key});
   @override
@@ -73,8 +71,10 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   void _switchPage(int page) {
-    // 현재 모드가 spelling이고 PageView가 활성화된 상태에서만 실행
-    if (_currentMode == QuizMode.spelling && _pageController.hasClients) {
+    FocusScope.of(context).unfocus();
+
+    // PageView의 스크롤을 막았으므로, 이 로직은 항상 PageView가 활성화된 상태에서만 호출됩니다.
+    if (_pageController.hasClients) {
       _pageController.animateToPage(
         page,
         duration: const Duration(milliseconds: 400),
@@ -114,18 +114,21 @@ class _QuizScreenState extends State<QuizScreen> {
           ),
         ),
         QuizMode.legacy => _LegacyQuizView(
-          onSwitchMode: () => _switchPage(1),
+          onSwitchMode: () => _changeMode(QuizMode.spelling), // 스펠링 퀴즈로 전환
           onFinish: () => _changeMode(QuizMode.none),
         ),
         QuizMode.spelling => PageView(
+          // ▼▼▼ 이 한 줄을 추가하여 스와이프 기능을 비활성화합니다. ▼▼▼
+          physics: const NeverScrollableScrollPhysics(),
+          // ▲▲▲
           controller: _pageController,
           children: [
             _SpellingQuizView(
-              onSwitchMode: () => _switchPage(1),
+              onSwitchMode: () => _switchPage(1), // 기존 퀴즈 페이지로 이동
               onFinish: () => _changeMode(QuizMode.none),
             ),
             _LegacyQuizView(
-              onSwitchMode: () => _switchPage(0),
+              onSwitchMode: () => _switchPage(0), // 스펠링 퀴즈 페이지로 이동
               onFinish: () => _changeMode(QuizMode.none),
             ),
           ],
@@ -135,7 +138,6 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 }
 
-// --- 기존 퀴즈 UI ---
 class _LegacyQuizView extends StatefulWidget {
   final VoidCallback onSwitchMode;
   final VoidCallback onFinish;
@@ -168,18 +170,20 @@ class _LegacyQuizViewState extends State<_LegacyQuizView> {
       _sessionItems =
           words.take(wordCount).map((word) {
             TestType type = settings.testType;
-            if (type == TestType.random)
+            if (type == TestType.random) {
               type = [TestType.wordToMeaning, TestType.meaningToWord][Random().nextInt(2)];
+            }
             return QuizItem(word: word, questionType: type);
           }).toList();
     });
   }
 
   void _handleAction() {
-    if (_answerShown)
+    if (_answerShown) {
       _nextQuestion();
-    else
+    } else {
       setState(() => _answerShown = true);
+    }
   }
 
   void _nextQuestion() {
@@ -239,18 +243,14 @@ class _LegacyQuizViewState extends State<_LegacyQuizView> {
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall,
                   ),
-                  const Divider(color: Colors.white30),
+                  Divider(color: theme.textTheme.bodyLarge!.color!.withOpacity(0.2)),
                   AnimatedOpacity(
                     opacity: _answerShown ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 300),
                     child: Text(
                       _answerShown ? answerText : "",
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        shadows: [const Shadow(blurRadius: 2, color: Colors.black54)],
-                      ),
+                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
@@ -278,11 +278,10 @@ class _LegacyQuizViewState extends State<_LegacyQuizView> {
   }
 }
 
-// --- 스펠링 퀴즈 UI ---
 class _SpellingQuizView extends StatefulWidget {
   final VoidCallback onSwitchMode;
   final VoidCallback onFinish;
-  const _SpellingQuizView({super.key, required this.onSwitchMode, required this.onFinish});
+  const _SpellingQuizView({required this.onSwitchMode, required this.onFinish});
   @override
   State<_SpellingQuizView> createState() => _SpellingQuizPageState();
 }
@@ -304,14 +303,13 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
     super.initState();
     _textController.addListener(() {
       setState(() {});
-      _autoScrollToCurrentPosition(); // 추가
+      _autoScrollToCurrentPosition();
     });
 
     _blinkController = AnimationController(vsync: this, duration: const Duration(milliseconds: 500))
       ..repeat(reverse: true);
     _initializeSession();
 
-    // 키보드를 항상 올려놓기 위한 추가 설정
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureKeyboardVisible();
     });
@@ -320,7 +318,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
   void _ensureKeyboardVisible() {
     if (mounted) {
       _focusNode.requestFocus();
-      // 약간의 지연 후 다시 포커스 요청 (키보드가 확실히 올라오도록)
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
           _focusNode.requestFocus();
@@ -337,7 +334,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
 
     if (userInput.length >= currentWord.length) return;
 
-    // 현재 입력 위치가 어느 줄에 있는지 찾기
     final screenWidth = MediaQuery.of(context).size.width - 80;
     final boxWidth = 34.0;
     final maxBoxesPerLine = (screenWidth / boxWidth).floor();
@@ -369,11 +365,9 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
       }
     }
 
-    // 해당 줄의 ScrollController로 스크롤
     if (targetLineIndex < _scrollControllers.length) {
       final scrollController = _scrollControllers[targetLineIndex];
       if (scrollController.hasClients) {
-        // 현재 입력 위치의 대략적인 x 좌표 계산
         final targetOffset = (userInput.length - currentInputIndex) * boxWidth;
         final maxScroll = scrollController.position.maxScrollExtent;
         final scrollOffset = (targetOffset - screenWidth / 2).clamp(0.0, maxScroll);
@@ -408,6 +402,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
 
   @override
   void dispose() {
+    _focusNode.unfocus();
     _textController.dispose();
     _focusNode.dispose();
     _blinkController.dispose();
@@ -511,8 +506,8 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
     final theme = Theme.of(context);
     final currentWord = _sessionWords[_currentIndex].word;
     final userInput = _textController.text;
-    final screenWidth = MediaQuery.of(context).size.width - 80; // 좌우 패딩 40씩
-    final boxWidth = 34.0; // 박스 너비 (30 + 마진 4)
+    final screenWidth = MediaQuery.of(context).size.width - 80;
+    final boxWidth = 34.0;
     final maxBoxesPerLine = (screenWidth / boxWidth).floor();
 
     List<String> wordParts = currentWord.split(' ');
@@ -524,31 +519,21 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
 
     for (int partIndex = 0; partIndex < wordParts.length; partIndex++) {
       String part = wordParts[partIndex];
-
-      // 현재 줄에 이 단어를 추가할 수 있는지 확인
-      int newLineLength =
-          currentLineLength + part.length + (currentLineWords.isNotEmpty ? 1 : 0); // 공백 포함
-
+      int newLineLength = currentLineLength + part.length + (currentLineWords.isNotEmpty ? 1 : 0);
       if (newLineLength <= maxBoxesPerLine || currentLineWords.isEmpty) {
-        // 현재 줄에 추가 가능
         currentLineWords.add(part);
         currentLineLength = newLineLength;
       } else {
-        // 새 줄 시작 - 현재 줄 먼저 처리
         if (currentLineWords.isNotEmpty) {
           rows.add(
             _buildLineBoxes(currentLineWords, currentInputIndex, userInput, theme, rows.length),
           );
           currentInputIndex += currentLineWords.join(' ').length;
-          if (partIndex > 0) currentInputIndex++; // 이전 공백
+          if (partIndex > 0) currentInputIndex++;
         }
-
-        // 새 줄 시작
         currentLineWords = [part];
         currentLineLength = part.length;
       }
-
-      // 마지막 단어인 경우
       if (partIndex == wordParts.length - 1) {
         rows.add(
           _buildLineBoxes(currentLineWords, currentInputIndex, userInput, theme, rows.length),
@@ -580,11 +565,9 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
 
     for (int wordIndex = 0; wordIndex < words.length; wordIndex++) {
       String word = words[wordIndex];
-
-      // 단어의 각 글자에 대한 박스 생성
       for (int i = 0; i < word.length; i++) {
         String char = '';
-        Color textColor = Colors.white;
+        Color textColor = theme.textTheme.bodyLarge!.color!;
         bool shouldBlink = false;
 
         if (currentInputIndex < userInput.length) {
@@ -609,7 +592,10 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
-                  color: shouldBlink ? Colors.transparent : Colors.white54,
+                  color:
+                      shouldBlink
+                          ? Colors.transparent
+                          : theme.textTheme.bodyLarge!.color!.withOpacity(0.4),
                   width: 2,
                 ),
               ),
@@ -638,8 +624,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
         );
         currentInputIndex++;
       }
-
-      // 마지막 단어가 아니면 공백 추가
       if (wordIndex < words.length - 1) {
         boxes.add(
           Container(
@@ -649,7 +633,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
             child: const Center(child: Text(' ', style: TextStyle(fontSize: 18))),
           ),
         );
-        currentInputIndex++; // 공백을 위한 인덱스 증가
+        currentInputIndex++;
       }
     }
 
@@ -665,8 +649,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
   }
 
   Widget _buildActionButtons() {
-    final theme = Theme.of(context);
-
     if (_answerState == SpellingAnswerState.none) {
       return SizedBox(
         width: double.infinity,
@@ -722,7 +704,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
         ],
       );
     } else {
-      // showAnswer 상태
       return SizedBox(
         width: double.infinity,
         height: 50,
@@ -765,7 +746,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 30),
-            // 숨겨진 실제 입력 필드
             SizedBox(
               height: 0,
               width: 0,
@@ -783,7 +763,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
                 },
               ),
             ),
-            // 보여지는 답변 상자들
             _buildAnswerBoxes(),
             const SizedBox(height: 40),
             _buildActionButtons(),
@@ -800,7 +779,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
   }
 }
 
-// 스펠링 퀴즈 결과 화면
 class _SpellingQuizResultScreen extends StatelessWidget {
   final List<SpellingQuizResult> results;
   final VoidCallback onRestart;
@@ -819,7 +797,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
     final firstTryCorrect = results.where((r) => r.isCorrectOnFirstTry).length;
     final retryCorrect = results.where((r) => r.isCorrectOnRetry).length;
     final skipped = results.where((r) => r.isSkipped).length;
-    final incorrect = totalQuestions - firstTryCorrect - retryCorrect;
+    final incorrect = totalQuestions - firstTryCorrect - retryCorrect - skipped;
     final accuracyRate =
         totalQuestions > 0 ? ((firstTryCorrect + retryCorrect) / totalQuestions * 100).round() : 0;
 
@@ -831,7 +809,6 @@ class _SpellingQuizResultScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 통계 섹션
             GlassmorphicCard(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -843,19 +820,18 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                       style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 15),
-                    _buildStatRow('전체 문제', '$totalQuestions개'),
-                    _buildStatRow('한번에 맞춘 문제', '$firstTryCorrect개'),
-                    _buildStatRow('재도전하여 맞춘 문제', '$retryCorrect개'),
-                    _buildStatRow('틀린 문제 (스킵)', '$skipped개'),
-                    _buildStatRow('틀린 문제 (스킵)', '$incorrect개'),
-                    const Divider(color: Colors.white30),
-                    _buildStatRow('정답율', '$accuracyRate%', isHighlight: true),
+                    _buildStatRow('전체 문제', '$totalQuestions개', theme),
+                    _buildStatRow('한번에 맞춘 문제', '$firstTryCorrect개', theme),
+                    _buildStatRow('재도전하여 맞춘 문제', '$retryCorrect개', theme),
+                    _buildStatRow('틀린 문제', '$incorrect개', theme),
+                    _buildStatRow('스킵', '$skipped개', theme),
+                    Divider(color: theme.textTheme.bodyLarge?.color?.withOpacity(0.2)),
+                    _buildStatRow('정답율', '$accuracyRate%', theme, isHighlight: true),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 20),
-            // 결과 섹션
             GlassmorphicCard(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -873,7 +849,6 @@ class _SpellingQuizResultScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 30),
-            // 액션 버튼들
             Row(
               children: [
                 Expanded(
@@ -907,23 +882,17 @@ class _SpellingQuizResultScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatRow(String label, String value, {bool isHighlight = false}) {
+  Widget _buildStatRow(String label, String value, ThemeData theme, {bool isHighlight = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white70,
-              fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
+          Text(label, style: theme.textTheme.bodyMedium),
           Text(
             value,
-            style: TextStyle(
-              color: isHighlight ? Colors.blue : Colors.white,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: isHighlight ? theme.primaryColor : theme.textTheme.bodyLarge?.color,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -955,7 +924,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: theme.textTheme.bodyLarge!.color!.withOpacity(0.05),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: statusColor.withOpacity(0.3)),
       ),
@@ -969,12 +938,9 @@ class _SpellingQuizResultScreen extends StatelessWidget {
               children: [
                 Text(
                   result.word.word,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
-                Text(
-                  result.word.meaning,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
+                Text(result.word.meaning, style: theme.textTheme.bodyMedium),
               ],
             ),
           ),
