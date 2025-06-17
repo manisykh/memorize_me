@@ -44,12 +44,7 @@ class QuizSessionProvider extends ChangeNotifier {
 
     _sessionItems =
         sessionWords.map((word) {
-          // 주관식 퀴즈이므로 뜻 -> 단어 맞추기 유형만 사용
-          TestType type =
-              _settings.testType == TestType.wordToMeaning || _settings.testType == TestType.random
-                  ? TestType.meaningToWord
-                  : _settings.testType;
-          return QuizItem(word: word, questionType: type);
+          return QuizItem(word: word, questionType: TestType.meaningToWord);
         }).toList();
     notifyListeners();
   }
@@ -58,7 +53,11 @@ class QuizSessionProvider extends ChangeNotifier {
     if (_answerSubmitted) return;
 
     final currentItem = _sessionItems[_currentIndex];
-    final correctAnswer = getAnswerText(currentItem.word, currentItem.questionType);
+    // ▼▼▼ 수정된 부분 ▼▼▼
+    // 정답은 word 필드에서 중괄호를 제거하여 생성합니다.
+    final correctAnswer = currentItem.word.word.replaceAll('{', '').replaceAll('}', '');
+    // ▲▲▲ 수정된 부분 ▲▲▲
+
     final bool isCorrect = userAnswer.trim().toLowerCase() == correctAnswer.trim().toLowerCase();
 
     _results.add(QuizResult(item: currentItem, userAnswer: userAnswer, isCorrect: isCorrect));
@@ -71,7 +70,6 @@ class QuizSessionProvider extends ChangeNotifier {
       _currentIndex++;
       _answerSubmitted = false;
     } else {
-      // 퀴즈 종료
       _currentIndex++;
     }
     notifyListeners();

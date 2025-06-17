@@ -5,10 +5,8 @@ import 'package:provider/provider.dart';
 import '../models/word_model.dart';
 import '../providers/settings_provider.dart';
 import '../providers/word_list_provider.dart';
-import '../services/tts_service.dart'; // TTS 서비스 import
-import '../themes/app_theme.dart';
-import '../widgets/enhanced_glass_card.dart';
-import '../widgets/enhanced_neumorphic_container.dart';
+import '../services/tts_service.dart';
+import '../widgets/glassmorphic_card.dart';
 import 'quiz_helpers.dart';
 
 class FlashcardScreen extends StatefulWidget {
@@ -22,7 +20,6 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   int _currentIndex = 0;
   bool _isFlipped = false;
   bool _sessionActive = false;
-
   late final TtsService _ttsService;
 
   @override
@@ -46,23 +43,16 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
       }
       return;
     }
-
     final words = List<Word>.from(allWords)..shuffle();
     final wordCount = settings.wordCount.clamp(1, allWords.length);
-    final sessionWords = words.take(wordCount).toList();
-
-    final random = Random();
-    _sessionItems =
-        sessionWords.map((word) {
-          TestType type = settings.testType;
-          if (type == TestType.random) {
-            // 플래시카드에서는 '단어 -> 뜻' 또는 '뜻 -> 단어'만 사용
-            type = [TestType.wordToMeaning, TestType.meaningToWord][random.nextInt(2)];
-          }
-          return QuizItem(word: word, questionType: type);
-        }).toList();
-
     setState(() {
+      _sessionItems =
+          words.take(wordCount).map((word) {
+            TestType type = settings.testType;
+            if (type == TestType.random)
+              type = [TestType.wordToMeaning, TestType.meaningToWord][Random().nextInt(2)];
+            return QuizItem(word: word, questionType: type);
+          }).toList();
       _currentIndex = 0;
       _isFlipped = false;
       _sessionActive = true;
@@ -93,111 +83,101 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (!_sessionActive || _sessionItems.isEmpty) {
-      return Center(
-        child: EnhancedNeumorphicContainer(
-          onTap: _startSession,
-          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-          child: Text('플래시카드 시작', style: theme.textTheme.titleMedium),
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Center(
+          child: GlassmorphicCard(
+            onTap: _startSession,
+            child: SizedBox(
+              width: 200,
+              height: 50,
+              child: Center(child: Text('플래시카드 시작', style: theme.textTheme.bodyLarge)),
+            ),
+          ),
         ),
       );
     }
 
     final quizItem = _sessionItems[_currentIndex];
-
-    // 현재 카드에 영단어가 표시되는지 여부를 결정하는 로직
     final bool isShowingWord =
         (quizItem.questionType == TestType.wordToMeaning && !_isFlipped) ||
-        (quizItem.questionType == TestType.meaningToWord && _isFlipped);
+        (quizItem.questionType != TestType.wordToMeaning && _isFlipped);
 
-    final String currentWord = quizItem.word.word;
+    // 이 변수들은 이제 화면에 표시될 텍스트를 결정하는 데만 사용됩니다.
     final String frontText = getQuestionText(quizItem.word, quizItem.questionType);
     final String backText = getAnswerText(quizItem.word, quizItem.questionType);
 
-    return Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            '${_currentIndex + 1} / ${_sessionItems.length}',
-            style: TextStyle(
-              color:
-                  theme.brightness == Brightness.light
-                      ? AppTheme.subTextLight
-                      : AppTheme.subTextDark,
-              fontSize: 16,
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '${_currentIndex + 1} / ${_sessionItems.length}',
+              style: theme.textTheme.bodyMedium,
             ),
-          ),
-          const SizedBox(height: 20),
-          EnhancedGlassCard(
-            onTap: _flipCard,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 500),
-              transitionBuilder: (child, animation) {
-                final rotateAnim = Tween(begin: pi, end: 0.0).animate(animation);
-                return AnimatedBuilder(
-                  animation: rotateAnim,
-                  child: child,
-                  builder: (context, child) {
-                    final isUnder = (ValueKey(_isFlipped) != child?.key);
-                    var tilt = ((animation.value - 0.5).abs() - 0.5) * 0.003;
-                    tilt *= isUnder ? -1.0 : 1.0;
-                    final value = min(rotateAnim.value, pi / 2);
-                    return Transform(
-                      transform: Matrix4.rotationY(value)..setEntry(3, 0, tilt),
-                      alignment: Alignment.center,
-                      child: child,
-                    );
-                  },
-                );
-              },
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                key: ValueKey(_isFlipped),
-                children: [
-                  Text(
-                    _isFlipped ? backText : frontText,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleLarge?.copyWith(fontSize: 28),
-                  ),
-                  if (isShowingWord) ...[
-                    const SizedBox(height: 15),
-                    IconButton(
-                      icon: const Icon(CupertinoIcons.speaker_2_fill),
-                      iconSize: 30,
-                      color: theme.colorScheme.secondary,
-                      onPressed: () => _ttsService.speak(currentWord),
+            const SizedBox(height: 20),
+            Expanded(
+              child: GestureDetector(
+                onTap: _flipCard,
+                child: GlassmorphicCard(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                    child: Center(
+                      key: ValueKey(_isFlipped),
+                      child: Column(
+                        // ▼▼▼ 1. 텍스트 위치 고정 (mainAxisSize: MainAxisSize.min 제거) ▼▼▼
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                            child: Text(
+                              _isFlipped ? backText : frontText,
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.headlineSmall,
+                            ),
+                          ),
+                          if (isShowingWord) ...[
+                            const SizedBox(height: 15),
+                            IconButton(
+                              icon: const Icon(CupertinoIcons.speaker_2_fill, color: Colors.white),
+                              iconSize: 30,
+                              // ▼▼▼ 2. 항상 영어 단어를 발음하도록 수정 ▼▼▼
+                              onPressed: () => _ttsService.speak(quizItem.word.word),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ],
-                ],
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 40),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              EnhancedNeumorphicContainer(
-                onTap: _prevCard,
-                shape: BoxShape.circle,
-                padding: const EdgeInsets.all(16),
-                child: const Icon(CupertinoIcons.arrow_left),
-              ),
-              EnhancedNeumorphicContainer(
-                onTap: _startSession,
-                shape: BoxShape.circle,
-                padding: const EdgeInsets.all(16),
-                child: const Icon(CupertinoIcons.arrow_2_circlepath),
-              ),
-              EnhancedNeumorphicContainer(
-                onTap: _nextCard,
-                shape: BoxShape.circle,
-                padding: const EdgeInsets.all(16),
-                child: const Icon(CupertinoIcons.arrow_right),
-              ),
-            ],
-          ),
-        ],
+            const SizedBox(height: 40),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                GlassmorphicCard(
+                  onTap: _prevCard,
+                  child: const Icon(Icons.arrow_back, color: Colors.white),
+                ),
+                GlassmorphicCard(
+                  onTap: _startSession,
+                  child: const Icon(Icons.refresh, color: Colors.white),
+                ),
+                GlassmorphicCard(
+                  onTap: _nextCard,
+                  child: const Icon(Icons.arrow_forward, color: Colors.white),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
