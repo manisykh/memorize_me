@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../models/word_model.dart';
 import '../providers/settings_provider.dart';
 import '../providers/word_list_provider.dart';
+import '../providers/wordbook_manager.dart';
 import '../services/tts_service.dart';
 import '../widgets/glassmorphic_card.dart';
 import 'quiz_helpers.dart';
@@ -23,6 +24,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   bool _isFlipped = false;
   bool _sessionActive = false;
   late final TtsService _ttsService;
+  String _sessionTitle = '플래시카드'; // 세션 제목 (일반/오답노트)
 
   @override
   void initState() {
@@ -36,20 +38,53 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     super.dispose();
   }
 
+  // 일반 단어장으로 세션 시작
   void _startSession() {
     final allWords = context.read<WordListNotifier>().words;
-    final settings = context.read<SettingsNotifier>().settings;
     if (allWords.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('단어를 먼저 추가해주세요.')));
       }
       return;
     }
+    final settings = context.read<SettingsNotifier>().settings;
     final words = List<Word>.from(allWords)..shuffle();
     final wordCount = settings.wordCount.clamp(1, allWords.length);
+    _initializeSession(
+      words: words.take(wordCount).toList(),
+      settings: settings,
+      title: context.read<WordbookManager>().activeWordbook?.name ?? '플래시카드',
+    );
+  }
+
+  // 오답노트로 세션 시작
+  Future<void> _startIncorrectWordSession(String name) async {
+    final manager = context.read<WordbookManager>();
+    final incorrectWords = await manager.getIncorrectWords(name);
+
+    if (incorrectWords.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('이 오답노트에는 단어가 없습니다.')));
+      }
+      return;
+    }
+
+    final settings = context.read<SettingsNotifier>().settings;
+    _initializeSession(words: incorrectWords..shuffle(), settings: settings, title: '$name (오답노트)');
+  }
+
+  // 세션 초기화 공통 로직
+  void _initializeSession({
+    required List<Word> words,
+    required AppSettings settings,
+    required String title,
+  }) {
     setState(() {
+      _sessionTitle = title;
       _sessionItems =
-          words.take(wordCount).map((word) {
+          words.map((word) {
             TestType type = settings.testType;
             if (type == TestType.random) {
               type = [TestType.wordToMeaning, TestType.meaningToWord][Random().nextInt(2)];
@@ -82,23 +117,93 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     }
   }
 
+  // 오답노트 목록을 보여주는 모달 메뉴
+  void _showIncorrectWordbookList() {
+    final manager = context.read<WordbookManager>();
+    final names = manager.incorrectWordbookNames;
+
+    if (names.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('생성된 오답노트가 없습니다.')));
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: GlassmorphicCard(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text('오답노트 선택', style: Theme.of(ctx).textTheme.titleLarge),
+                ),
+                ...names.map((name) {
+                  return ListTile(
+                    title: Text(name, style: Theme.of(ctx).textTheme.bodyLarge),
+                    trailing: IconButton(
+                      icon: const Icon(CupertinoIcons.trash),
+                      onPressed: () async {
+                        await manager.deleteIncorrectWordbook(name);
+                        if (mounted) Navigator.pop(ctx);
+                      },
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _startIncorrectWordSession(name);
+                    },
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (!_sessionActive || _sessionItems.isEmpty) {
+    // 학습 세션이 활성화되지 않았을 때 (초기 화면)
+    if (!_sessionActive) {
       return Scaffold(
         backgroundColor: Colors.transparent,
         body: Center(
-          child: GlassmorphicCard(
-            onTap: _startSession,
-            child: SizedBox(
-              width: 200,
-              height: 50,
-              child: Center(child: Text('플래시카드 시작', style: theme.textTheme.bodyLarge)),
-            ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              GlassmorphicCard(
+                onTap: _startSession,
+                child: const SizedBox(
+                  width: 220,
+                  height: 50,
+                  child: Center(child: Text('플래시카드 학습 시작')),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // 오답노트 버튼 추가
+              GlassmorphicCard(
+                onTap: _showIncorrectWordbookList,
+                child: const SizedBox(
+                  width: 220,
+                  height: 50,
+                  child: Center(child: Text('오답노트로 학습하기')),
+                ),
+              ),
+            ],
           ),
         ),
       );
+    }
+
+    // 학습 세션이 활성화되었을 때 (카드 학습 화면)
+    if (_sessionItems.isEmpty) {
+      return const Center(child: Text("학습할 단어가 없습니다."));
     }
 
     final quizItem = _sessionItems[_currentIndex];
@@ -111,6 +216,14 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(_sessionTitle),
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => setState(() => _sessionActive = false),
+        ),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
@@ -146,7 +259,6 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                           if (isShowingWord) ...[
                             const SizedBox(height: 15),
                             IconButton(
-                              // ▼▼▼ color: Colors.white 제거 ▼▼▼
                               icon: const Icon(CupertinoIcons.speaker_2_fill),
                               iconSize: 30,
                               onPressed: () => _ttsService.speak(quizItem.word.word),
@@ -163,21 +275,12 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
+                GlassmorphicCard(onTap: _prevCard, child: const Icon(Icons.arrow_back)),
                 GlassmorphicCard(
-                  onTap: _prevCard,
-                  // ▼▼▼ color: Colors.white 제거 ▼▼▼
-                  child: const Icon(Icons.arrow_back),
+                  onTap: () => setState(() => _sessionActive = false),
+                  child: const Icon(Icons.stop),
                 ),
-                GlassmorphicCard(
-                  onTap: _startSession,
-                  // ▼▼▼ color: Colors.white 제거 ▼▼▼
-                  child: const Icon(Icons.refresh),
-                ),
-                GlassmorphicCard(
-                  onTap: _nextCard,
-                  // ▼▼▼ color: Colors.white 제거 ▼▼▼
-                  child: const Icon(Icons.arrow_forward),
-                ),
+                GlassmorphicCard(onTap: _nextCard, child: const Icon(Icons.arrow_forward)),
               ],
             ),
           ],

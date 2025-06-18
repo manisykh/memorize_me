@@ -1,18 +1,18 @@
-// screens/quiz_screen.dart (최종 수정)
+// screens/quiz_screen.dart (수정 후)
 
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/word_model.dart';
-import '../providers/quiz_session_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/word_list_provider.dart';
+import '../providers/wordbook_manager.dart';
 import '../widgets/glassmorphic_card.dart';
 import 'quiz_helpers.dart';
 import 'quiz_result_screen.dart';
 
-enum QuizMode { none, legacy, spelling }
+enum QuizMode { none, legacy, spelling, incorrectSpelling }
 
 enum SpellingAnswerState { none, correct, incorrect, showAnswer }
 
@@ -39,6 +39,8 @@ class QuizScreen extends StatefulWidget {
 class _QuizScreenState extends State<QuizScreen> {
   QuizMode _currentMode = QuizMode.none;
   late PageController _pageController;
+  List<Word> _incorrectWordsForSession = [];
+  String _incorrectWordbookName = '';
 
   @override
   void initState() {
@@ -57,23 +59,75 @@ class _QuizScreenState extends State<QuizScreen> {
       setState(() => _currentMode = newMode);
       return;
     }
-
     final allWords = context.read<WordListNotifier>().words;
-    if (allWords.isEmpty) {
+    if (allWords.isEmpty && newMode != QuizMode.incorrectSpelling) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('퀴즈를 시작하려면 단어를 먼저 추가해주세요.')));
       return;
     }
-    setState(() {
-      _currentMode = newMode;
-    });
+    setState(() => _currentMode = newMode);
+  }
+
+  void _showIncorrectWordbookListForQuiz() {
+    final manager = context.read<WordbookManager>();
+    final names = manager.incorrectWordbookNames;
+    if (names.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('생성된 오답노트가 없습니다.')));
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder:
+          (ctx) => Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: GlassmorphicCard(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text('오답노트 선택', style: Theme.of(ctx).textTheme.titleLarge),
+                  ),
+                  ...names.map((name) {
+                    return ListTile(
+                      title: Text(name, style: Theme.of(ctx).textTheme.bodyLarge),
+                      trailing: IconButton(
+                        icon: const Icon(CupertinoIcons.trash),
+                        onPressed: () async {
+                          await manager.deleteIncorrectWordbook(name);
+                          if (mounted) Navigator.pop(ctx);
+                        },
+                      ),
+                      onTap: () async {
+                        final words = await manager.getIncorrectWords(name);
+                        if (mounted) Navigator.pop(ctx);
+                        if (words.isEmpty) {
+                          if (mounted)
+                            ScaffoldMessenger.of(
+                              context,
+                            ).showSnackBar(const SnackBar(content: Text('이 오답노트에는 단어가 없습니다.')));
+                          return;
+                        }
+                        setState(() {
+                          _incorrectWordsForSession = words;
+                          _incorrectWordbookName = name;
+                          _currentMode = QuizMode.incorrectSpelling;
+                        });
+                      },
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+    );
   }
 
   void _switchPage(int page) {
     FocusScope.of(context).unfocus();
-
-    // PageView의 스크롤을 막았으므로, 이 로직은 항상 PageView가 활성화된 상태에서만 호출됩니다.
     if (_pageController.hasClients) {
       _pageController.animateToPage(
         page,
@@ -96,42 +150,38 @@ class _QuizScreenState extends State<QuizScreen> {
               GlassmorphicCard(
                 onTap: () => _changeMode(QuizMode.legacy),
                 child: SizedBox(
-                  width: 200,
+                  width: 220,
                   height: 50,
                   child: Center(child: Text('기존 퀴즈 (단어/뜻)', style: theme.textTheme.bodyLarge)),
                 ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
               GlassmorphicCard(
                 onTap: () => _changeMode(QuizMode.spelling),
                 child: SizedBox(
-                  width: 200,
+                  width: 220,
                   height: 50,
                   child: Center(child: Text('스펠링 퀴즈', style: theme.textTheme.bodyLarge)),
+                ),
+              ),
+              const SizedBox(height: 20),
+              GlassmorphicCard(
+                onTap: _showIncorrectWordbookListForQuiz,
+                child: SizedBox(
+                  width: 220,
+                  height: 50,
+                  child: Center(child: Text('오답 스펠링 퀴즈', style: theme.textTheme.bodyLarge)),
                 ),
               ),
             ],
           ),
         ),
-        QuizMode.legacy => _LegacyQuizView(
-          onSwitchMode: () => _changeMode(QuizMode.spelling), // 스펠링 퀴즈로 전환
+        QuizMode.legacy => _LegacyQuizView(onFinish: () => _changeMode(QuizMode.none)),
+        QuizMode.spelling => _SpellingQuizView(onFinish: () => _changeMode(QuizMode.none)),
+        QuizMode.incorrectSpelling => _SpellingQuizView(
           onFinish: () => _changeMode(QuizMode.none),
-        ),
-        QuizMode.spelling => PageView(
-          // ▼▼▼ 이 한 줄을 추가하여 스와이프 기능을 비활성화합니다. ▼▼▼
-          physics: const NeverScrollableScrollPhysics(),
-          // ▲▲▲
-          controller: _pageController,
-          children: [
-            _SpellingQuizView(
-              onSwitchMode: () => _switchPage(1), // 기존 퀴즈 페이지로 이동
-              onFinish: () => _changeMode(QuizMode.none),
-            ),
-            _LegacyQuizView(
-              onSwitchMode: () => _switchPage(0), // 스펠링 퀴즈 페이지로 이동
-              onFinish: () => _changeMode(QuizMode.none),
-            ),
-          ],
+          words: _incorrectWordsForSession,
+          wordbookName: _incorrectWordbookName,
         ),
       },
     );
@@ -139,9 +189,8 @@ class _QuizScreenState extends State<QuizScreen> {
 }
 
 class _LegacyQuizView extends StatefulWidget {
-  final VoidCallback onSwitchMode;
   final VoidCallback onFinish;
-  const _LegacyQuizView({required this.onSwitchMode, required this.onFinish});
+  const _LegacyQuizView({required this.onFinish});
   @override
   State<_LegacyQuizView> createState() => _LegacyQuizViewState();
 }
@@ -193,25 +242,29 @@ class _LegacyQuizViewState extends State<_LegacyQuizView> {
         _answerShown = false;
       });
     } else {
-      showCupertinoDialog(
-        context: context,
-        builder:
-            (dialogContext) => CupertinoAlertDialog(
-              title: const Text('퀴즈 종료!'),
-              content: const Text('모든 문제를 다 풀었습니다.'),
-              actions: [
-                CupertinoDialogAction(
-                  isDefaultAction: true,
-                  child: const Text('확인'),
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                    widget.onFinish();
-                  },
-                ),
-              ],
-            ),
-      );
+      _showQuizEndDialog();
     }
+  }
+
+  void _showQuizEndDialog() {
+    showCupertinoDialog(
+      context: context,
+      builder:
+          (dialogContext) => CupertinoAlertDialog(
+            title: const Text('퀴즈 종료!'),
+            content: const Text('모든 문제를 다 풀었습니다.'),
+            actions: [
+              CupertinoDialogAction(
+                isDefaultAction: true,
+                child: const Text('확인'),
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  widget.onFinish();
+                },
+              ),
+            ],
+          ),
+    );
   }
 
   @override
@@ -223,65 +276,67 @@ class _LegacyQuizViewState extends State<_LegacyQuizView> {
     final String questionText = getQuestionText(quizItem.word, quizItem.questionType);
     final String answerText = getAnswerText(quizItem.word, quizItem.questionType);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            '퀴즈 (${_currentIndex + 1}/${_sessionItems.length})',
-            style: theme.textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: GlassmorphicCard(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Text(
-                    questionText,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineSmall,
-                  ),
-                  Divider(color: theme.textTheme.bodyLarge!.color!.withOpacity(0.2)),
-                  AnimatedOpacity(
-                    opacity: _answerShown ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 300),
-                    child: Text(
-                      _answerShown ? answerText : "",
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('퀴즈'),
+        leading: IconButton(icon: const Icon(Icons.close), onPressed: widget.onFinish),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '퀴즈 (${_currentIndex + 1}/${_sessionItems.length})',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: GlassmorphicCard(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Text(
+                      questionText,
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                      style: theme.textTheme.headlineSmall,
                     ),
-                  ),
-                ],
+                    Divider(color: theme.textTheme.bodyLarge!.color!.withOpacity(0.2)),
+                    AnimatedOpacity(
+                      opacity: _answerShown ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: Text(
+                        _answerShown ? answerText : "",
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: _handleAction,
-              child: Text(_answerShown ? '다음 문제' : '정답 확인'),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: _handleAction,
+                child: Text(_answerShown ? '다음 문제' : '정답 확인'),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          TextButton.icon(
-            onPressed: widget.onSwitchMode,
-            icon: const Icon(Icons.change_circle_outlined, size: 16),
-            label: const Text("스펠링 퀴즈로 전환"),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 class _SpellingQuizView extends StatefulWidget {
-  final VoidCallback onSwitchMode;
   final VoidCallback onFinish;
-  const _SpellingQuizView({required this.onSwitchMode, required this.onFinish});
+  final List<Word>? words;
+  final String? wordbookName;
+  const _SpellingQuizView({required this.onFinish, this.words, this.wordbookName});
   @override
   State<_SpellingQuizView> createState() => _SpellingQuizPageState();
 }
@@ -305,11 +360,9 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
       setState(() {});
       _autoScrollToCurrentPosition();
     });
-
     _blinkController = AnimationController(vsync: this, duration: const Duration(milliseconds: 500))
       ..repeat(reverse: true);
     _initializeSession();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureKeyboardVisible();
     });
@@ -319,44 +372,34 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
     if (mounted) {
       _focusNode.requestFocus();
       Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          _focusNode.requestFocus();
-        }
+        if (mounted) _focusNode.requestFocus();
       });
     }
   }
 
   void _autoScrollToCurrentPosition() {
     if (_scrollControllers.isEmpty) return;
-
     final currentWord = _sessionWords[_currentIndex].word;
     final userInput = _textController.text;
-
     if (userInput.length >= currentWord.length) return;
-
     final screenWidth = MediaQuery.of(context).size.width - 80;
     final boxWidth = 34.0;
     final maxBoxesPerLine = (screenWidth / boxWidth).floor();
-
     List<String> wordParts = currentWord.split(' ');
     int currentInputIndex = 0;
     int targetLineIndex = 0;
     List<String> currentLineWords = [];
     int currentLineLength = 0;
-
     for (int partIndex = 0; partIndex < wordParts.length; partIndex++) {
       String part = wordParts[partIndex];
       int newLineLength = currentLineLength + part.length + (currentLineWords.isNotEmpty ? 1 : 0);
-
       if (newLineLength <= maxBoxesPerLine || currentLineWords.isEmpty) {
         currentLineWords.add(part);
         currentLineLength = newLineLength;
       } else {
         if (currentLineWords.isNotEmpty) {
           int lineEndIndex = currentInputIndex + currentLineWords.join(' ').length;
-          if (userInput.length <= lineEndIndex) {
-            break;
-          }
+          if (userInput.length <= lineEndIndex) break;
           currentInputIndex = lineEndIndex + 1;
           targetLineIndex++;
         }
@@ -364,14 +407,12 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
         currentLineLength = part.length;
       }
     }
-
     if (targetLineIndex < _scrollControllers.length) {
       final scrollController = _scrollControllers[targetLineIndex];
       if (scrollController.hasClients) {
         final targetOffset = (userInput.length - currentInputIndex) * boxWidth;
         final maxScroll = scrollController.position.maxScrollExtent;
         final scrollOffset = (targetOffset - screenWidth / 2).clamp(0.0, maxScroll);
-
         scrollController.animateTo(
           scrollOffset,
           duration: const Duration(milliseconds: 200),
@@ -382,19 +423,22 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
   }
 
   void _initializeSession() {
-    final allWords = context.read<WordListNotifier>().words;
-    final settings = context.read<SettingsNotifier>().settings;
-
-    if (allWords.isEmpty) {
-      widget.onFinish();
-      return;
+    List<Word> sourceWords;
+    if (widget.words != null) {
+      sourceWords = List<Word>.from(widget.words!)..shuffle();
+      _sessionWords = sourceWords;
+    } else {
+      final allWords = context.read<WordListNotifier>().words;
+      final settings = context.read<SettingsNotifier>().settings;
+      if (allWords.isEmpty) {
+        widget.onFinish();
+        return;
+      }
+      sourceWords = List<Word>.from(allWords)..shuffle();
+      final wordCount = settings.wordCount.clamp(1, allWords.length);
+      _sessionWords = sourceWords.take(wordCount).toList();
     }
-
-    final words = List<Word>.from(allWords)..shuffle();
-    final wordCount = settings.wordCount.clamp(1, allWords.length);
-    _sessionWords = words.take(wordCount).toList();
     _results = _sessionWords.map((word) => SpellingQuizResult(word: word)).toList();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureKeyboardVisible();
     });
@@ -415,7 +459,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
   void _checkAnswer() {
     final userInput = _textController.text.trim().toLowerCase();
     final correctAnswer = _sessionWords[_currentIndex].word.toLowerCase();
-
     setState(() {
       if (userInput == correctAnswer) {
         _answerState = SpellingAnswerState.correct;
@@ -478,11 +521,14 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
   }
 
   void _showResults() {
+    final originalWordbookName =
+        widget.wordbookName ?? context.read<WordbookManager>().activeWordbook?.name;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder:
             (_) => _SpellingQuizResultScreen(
               results: _results,
+              originalWordbookName: originalWordbookName,
               onRestart: () {
                 Navigator.of(context).pop();
                 setState(() {
@@ -509,14 +555,11 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
     final screenWidth = MediaQuery.of(context).size.width - 80;
     final boxWidth = 34.0;
     final maxBoxesPerLine = (screenWidth / boxWidth).floor();
-
     List<String> wordParts = currentWord.split(' ');
     List<Widget> rows = [];
-
     int currentInputIndex = 0;
     List<String> currentLineWords = [];
     int currentLineLength = 0;
-
     for (int partIndex = 0; partIndex < wordParts.length; partIndex++) {
       String part = wordParts[partIndex];
       int newLineLength = currentLineLength + part.length + (currentLineWords.isNotEmpty ? 1 : 0);
@@ -540,7 +583,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
         );
       }
     }
-
     return Column(
       children:
           rows
@@ -559,17 +601,14 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
     while (_scrollControllers.length <= lineIndex) {
       _scrollControllers.add(ScrollController());
     }
-
     List<Widget> boxes = [];
     int currentInputIndex = startInputIndex;
-
     for (int wordIndex = 0; wordIndex < words.length; wordIndex++) {
       String word = words[wordIndex];
       for (int i = 0; i < word.length; i++) {
         String char = '';
         Color textColor = theme.textTheme.bodyLarge!.color!;
         bool shouldBlink = false;
-
         if (currentInputIndex < userInput.length) {
           char = userInput[currentInputIndex];
           if (_answerState == SpellingAnswerState.correct) {
@@ -583,7 +622,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
             _answerState == SpellingAnswerState.none) {
           shouldBlink = true;
         }
-
         boxes.add(
           Container(
             width: 30,
@@ -636,7 +674,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
         currentInputIndex++;
       }
     }
-
     return Scrollbar(
       controller: _scrollControllers[lineIndex],
       thumbVisibility: true,
@@ -722,85 +759,109 @@ class _SpellingQuizPageState extends State<_SpellingQuizView> with SingleTickerP
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     if (_sessionWords.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-
     final currentWord = _sessionWords[_currentIndex];
-
-    return GestureDetector(
-      onTap: () => _ensureKeyboardVisible(),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            Text(
-              '퀴즈 (${_currentIndex + 1}/${_sessionWords.length})',
-              style: theme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 20),
-            Text(
-              currentWord.meaning,
-              style: theme.textTheme.headlineSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 30),
-            SizedBox(
-              height: 0,
-              width: 0,
-              child: TextField(
-                controller: _textController,
-                focusNode: _focusNode,
-                autofocus: true,
-                enableSuggestions: false,
-                autocorrect: false,
-                enabled: _answerState == SpellingAnswerState.none,
-                onSubmitted: (_) {
-                  if (_textController.text.isNotEmpty) {
-                    _checkAnswer();
-                  }
-                },
+    final title = widget.wordbookName != null ? '${widget.wordbookName} (오답)' : '스펠링 퀴즈';
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(title),
+        leading: IconButton(icon: const Icon(Icons.close), onPressed: widget.onFinish),
+      ),
+      body: GestureDetector(
+        onTap: () => _ensureKeyboardVisible(),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            children: [
+              Text(
+                '퀴즈 (${_currentIndex + 1}/${_sessionWords.length})',
+                style: theme.textTheme.bodyMedium,
               ),
-            ),
-            _buildAnswerBoxes(),
-            const SizedBox(height: 40),
-            _buildActionButtons(),
-            const SizedBox(height: 10),
-            TextButton.icon(
-              onPressed: widget.onSwitchMode,
-              icon: const Icon(Icons.change_circle_outlined, size: 16),
-              label: const Text("기존 퀴즈로 전환"),
-            ),
-          ],
+              const SizedBox(height: 20),
+              Text(
+                currentWord.meaning,
+                style: theme.textTheme.headlineSmall,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 30),
+              SizedBox(
+                height: 0,
+                width: 0,
+                child: TextField(
+                  controller: _textController,
+                  focusNode: _focusNode,
+                  autofocus: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  enabled: _answerState == SpellingAnswerState.none,
+                  onSubmitted: (_) {
+                    if (_textController.text.isNotEmpty) _checkAnswer();
+                  },
+                ),
+              ),
+              _buildAnswerBoxes(),
+              const SizedBox(height: 40),
+              _buildActionButtons(),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _SpellingQuizResultScreen extends StatelessWidget {
+class _SpellingQuizResultScreen extends StatefulWidget {
   final List<SpellingQuizResult> results;
+  final String? originalWordbookName;
   final VoidCallback onRestart;
   final VoidCallback onFinish;
 
   const _SpellingQuizResultScreen({
     required this.results,
+    this.originalWordbookName,
     required this.onRestart,
     required this.onFinish,
   });
 
   @override
+  State<_SpellingQuizResultScreen> createState() => __SpellingQuizResultScreenState();
+}
+
+class __SpellingQuizResultScreenState extends State<_SpellingQuizResultScreen> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.originalWordbookName != null) {
+      _saveIncorrectWords();
+    }
+  }
+
+  Future<void> _saveIncorrectWords() async {
+    final incorrectWords =
+        widget.results
+            .where((r) => !r.isCorrectOnFirstTry && !r.isCorrectOnRetry)
+            .map((r) => r.word)
+            .toList();
+    if (incorrectWords.isEmpty) return;
+    await context.read<WordbookManager>().addIncorrectWords(
+      widget.originalWordbookName!,
+      incorrectWords,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final totalQuestions = results.length;
-    final firstTryCorrect = results.where((r) => r.isCorrectOnFirstTry).length;
-    final retryCorrect = results.where((r) => r.isCorrectOnRetry).length;
-    final skipped = results.where((r) => r.isSkipped).length;
+    final totalQuestions = widget.results.length;
+    final firstTryCorrect = widget.results.where((r) => r.isCorrectOnFirstTry).length;
+    final retryCorrect = widget.results.where((r) => r.isCorrectOnRetry).length;
+    final skipped = widget.results.where((r) => r.isSkipped).length;
     final incorrect = totalQuestions - firstTryCorrect - retryCorrect - skipped;
     final accuracyRate =
         totalQuestions > 0 ? ((firstTryCorrect + retryCorrect) / totalQuestions * 100).round() : 0;
-
     return Scaffold(
       appBar: AppBar(title: const Text('퀴즈 결과'), backgroundColor: Colors.transparent, elevation: 0),
       backgroundColor: Colors.transparent,
@@ -825,6 +886,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                     _buildStatRow('재도전하여 맞춘 문제', '$retryCorrect개', theme),
                     _buildStatRow('틀린 문제', '$incorrect개', theme),
                     _buildStatRow('스킵', '$skipped개', theme),
+                    // ▼▼▼ Divider 색상 테마 적용 ▼▼▼
                     Divider(color: theme.textTheme.bodyLarge?.color?.withOpacity(0.2)),
                     _buildStatRow('정답율', '$accuracyRate%', theme, isHighlight: true),
                   ],
@@ -843,7 +905,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                       style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 15),
-                    ...results.map((result) => _buildResultItem(result, theme)),
+                    ...widget.results.map((result) => _buildResultItem(result, theme)),
                   ],
                 ),
               ),
@@ -853,7 +915,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: onRestart,
+                    onPressed: widget.onRestart,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -865,7 +927,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: onFinish,
+                    onPressed: widget.onFinish,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.grey,
                       foregroundColor: Colors.white,
@@ -905,7 +967,6 @@ class _SpellingQuizResultScreen extends StatelessWidget {
     Color statusColor;
     String statusText;
     IconData statusIcon;
-
     if (result.isCorrectOnFirstTry) {
       statusColor = Colors.green;
       statusText = '한번에 정답';
@@ -919,12 +980,12 @@ class _SpellingQuizResultScreen extends StatelessWidget {
       statusText = '틀림/스킵';
       statusIcon = Icons.cancel;
     }
-
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.textTheme.bodyLarge!.color!.withOpacity(0.05),
+        // ▼▼▼ 배경색 계산 로직 변경 ▼▼▼
+        color: Colors.black.withOpacity(0.04),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: statusColor.withOpacity(0.3)),
       ),

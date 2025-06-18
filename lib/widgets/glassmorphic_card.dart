@@ -1,4 +1,4 @@
-// widgets/glassmorphic_card.dart (수정 후)
+// widgets/glassmorphic_card.dart (최종 수정)
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -21,30 +21,30 @@ class GlassmorphicCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 현재 테마 상태를 가져옵니다.
     final themeNotifier = context.watch<ThemeNotifier>();
     final theme = Theme.of(context);
 
-    // 테마에 따라 그라데이션 색상을 결정합니다.
     final List<Color> gradientColors;
+    final Color borderColor;
+    final Color activeBorderColor;
+
     if (themeNotifier.currentTheme == AppThemeType.eyeCare) {
-      // '시력 보호 테마'일 경우, primaryColor를 연하게 사용
-      gradientColors = [theme.primaryColor.withOpacity(0.15), theme.primaryColor.withOpacity(0.05)];
+      // '시력 보호 테마'일 경우, 배경색과 비슷한 계열의 반투명 그라데이션 사용
+      gradientColors = [
+        theme.scaffoldBackgroundColor.withOpacity(0.3),
+        theme.scaffoldBackgroundColor.withOpacity(0.1),
+      ];
+      borderColor = theme.primaryColor.withOpacity(0.3);
+      activeBorderColor = theme.primaryColor;
     } else {
-      // '기본 테마'일 경우, 기존의 흰색 그라데이션 사용
-      gradientColors = [Colors.white.withOpacity(0.3), Colors.white.withOpacity(0.1)];
+      // '기본 테마'일 경우, 기존보다 더 밝고 불투명한 흰색 그라데이션을 사용
+      gradientColors = [
+        Colors.white.withOpacity(0.3), // 0.3 -> 0.6
+        Colors.white.withOpacity(0.1), // 0.1 -> 0.4
+      ];
+      borderColor = Colors.white.withOpacity(0.4);
+      activeBorderColor = Colors.white.withOpacity(0.8);
     }
-
-    // 테마에 맞는 테두리 색상을 결정합니다.
-    final borderColor =
-        themeNotifier.currentTheme == AppThemeType.eyeCare
-            ? theme.primaryColor.withOpacity(0.6)
-            : Colors.white.withOpacity(0.4);
-
-    final activeBorderColor =
-        themeNotifier.currentTheme == AppThemeType.eyeCare
-            ? theme.primaryColor
-            : Colors.white.withOpacity(0.8);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20.0),
@@ -57,7 +57,7 @@ class GlassmorphicCard extends StatelessWidget {
             padding: padding,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: gradientColors, // 동적으로 결정된 색상 적용
+                colors: gradientColors,
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),

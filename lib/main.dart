@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// 분리된 파일들을 import
 import 'providers/auth_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/theme_provider.dart';
@@ -25,6 +24,7 @@ void main() async {
         Provider<TestSheetService>(create: (_) => TestSheetService()),
         ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
         ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
+
         ProxyProvider<DatabaseService, CsvService>(
           update: (_, databaseService, __) => CsvService(databaseService),
         ),
@@ -34,6 +34,7 @@ void main() async {
         ChangeNotifierProvider<WordListNotifier>(
           create: (context) => WordListNotifier(context.read<DatabaseService>()),
         ),
+
         ChangeNotifierProxyProvider<WordListNotifier, SettingsNotifier>(
           create: (context) => SettingsNotifier(),
           update: (context, wordList, settings) {
@@ -42,6 +43,7 @@ void main() async {
             return settings;
           },
         ),
+
         ChangeNotifierProxyProvider3<
           DatabaseService,
           SheetsService,
@@ -68,10 +70,7 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
   Widget build(BuildContext context) {
-    // ThemeNotifier를 watch하여 테마 변경을 감지합니다.
     final themeNotifier = context.watch<ThemeNotifier>();
-
-    // 현재 선택된 테마 타입에 따라 적절한 ThemeData를 선택합니다.
     final ThemeData currentThemeData;
     switch (themeNotifier.currentTheme) {
       case AppThemeType.eyeCare:
@@ -85,7 +84,6 @@ class MyApp extends StatelessWidget {
 
     return MaterialApp(
       title: '단어 학습 앱',
-      // themeMode, darkTheme 대신 theme에 직접 적용합니다.
       theme: currentThemeData,
       debugShowCheckedModeBanner: false,
       home: const AppInitializer(),
@@ -93,7 +91,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// 앱의 초기화 로직을 안정적으로 처리하기 위한 StatefulWidget
 class AppInitializer extends StatefulWidget {
   const AppInitializer({super.key});
 
@@ -107,7 +104,8 @@ class _AppInitializerState extends State<AppInitializer> {
   @override
   void initState() {
     super.initState();
-    _initializationFuture = context.read<WordbookManager>().loadWordbooks();
+    // 앱 시작 시 WordbookManager를 통해 모든 초기 데이터를 로드합니다.
+    _initializationFuture = context.read<WordbookManager>().loadInitialData();
   }
 
   @override
