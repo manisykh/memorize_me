@@ -1,5 +1,3 @@
-// services/database_service.dart (수정 후)
-
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -10,7 +8,6 @@ import '../models/wordbook_model.dart';
 class DatabaseService {
   Database? _metaDb;
 
-  // --- 메타 데이터베이스 (단어장 목록 및 오답노트 관리) ---
   Future<Database> get _metaDatabase async {
     if (_metaDb != null) return _metaDb!;
     _metaDb = await _initMetaDB();
@@ -23,63 +20,78 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2, // 버전은 2로 유지합니다.
-      // onCreate는 DB 파일이 없을 때만 호출됩니다.
+      version: 3, // 현재 최종 버전
       onCreate: _createMetaDB,
-
-      // onUpgrade는 기존 사용자의 DB 버전이 낮을 때만 호출됩니다.
-      onUpgrade: (db, oldVersion, newVersion) async {
-        // 버전 1 -> 2로 업데이트하는 사용자는 incorrect_words 테이블이 없으므로 생성해줍니다.
-        if (oldVersion < 2) {
-          await db.execute(
-            'CREATE TABLE incorrect_words(id INTEGER PRIMARY KEY AUTOINCREMENT, wordbookName TEXT, word TEXT, meaning TEXT, UNIQUE(wordbookName, word))',
-          );
-        }
-      },
+      onUpgrade: _onUpgrade, // ▼▼▼ [수정] onUpgrade 로직을 별도 함수로 분리 ▼▼▼
     );
   }
 
+  // ▼▼▼ [추가] 신규 설치 시 실행되는 함수 ▼▼▼
   Future<void> _createMetaDB(Database db, int version) async {
-    // 앱을 처음 설치할 때 생성될 테이블들을 정의합니다.
     // wordbooks 테이블 생성
     await db.execute(
       'CREATE TABLE wordbooks(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, spreadsheetId TEXT, sheetName TEXT, dbFileName TEXT, source TEXT)',
     );
-    // incorrect_words 테이블 생성
+    // incorrect_words 테이블 생성 (최신 구조)
     await db.execute(
-      'CREATE TABLE incorrect_words(id INTEGER PRIMARY KEY AUTOINCREMENT, wordbookName TEXT, word TEXT, meaning TEXT, UNIQUE(wordbookName, word))',
+      'CREATE TABLE incorrect_words(id INTEGER PRIMARY KEY AUTOINCREMENT, wordbookName TEXT, word TEXT, meaning TEXT)',
     );
   }
 
-  // --- 오답노트 관련 메소드들 ---
+  // ▼▼▼ [수정] 안정성이 강화된 단계별 업그레이드 함수 ▼▼▼
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    // oldVersion부터 newVersion까지 순차적으로 모든 업그레이드를 실행
+    for (var version = oldVersion + 1; version <= newVersion; version++) {
+      await _runUpgrade(db, version);
+    }
+  }
 
-  // 오답 단어 추가 (중복 방지)
+  // ▼▼▼ [추가] 각 버전별 업그레이드 내용을 관리하는 함수 ▼▼▼
+  Future<void> _runUpgrade(Database db, int version) async {
+    switch (version) {
+      case 2:
+        // 버전 1 -> 2 업그레이드: incorrect_words 테이블 생성
+        await db.execute(
+          'CREATE TABLE incorrect_words(id INTEGER PRIMARY KEY, word TEXT, meaning TEXT, UNIQUE(word, meaning))',
+        );
+        break;
+      case 3:
+        // 버전 2 -> 3 업그레이드: incorrect_words 테이블에 wordbookName 컬럼 추가
+        await db.execute('ALTER TABLE incorrect_words ADD COLUMN wordbookName TEXT DEFAULT "오답노트"');
+        break;
+      // case 4:
+      //   // 향후 버전 3 -> 4 업그레이드가 필요할 경우 여기에 추가
+      //   break;
+    }
+  }
+
   Future<void> addIncorrectWords(String wordbookName, List<Word> words) async {
     if (words.isEmpty) return;
     final db = await _metaDatabase;
     await db.transaction((txn) async {
       final batch = txn.batch();
       for (final word in words) {
-        batch.insert(
-          'incorrect_words',
-          {'wordbookName': wordbookName, 'word': word.word, 'meaning': word.meaning},
-          conflictAlgorithm: ConflictAlgorithm.ignore, // 중복된 단어는 무시
-        );
+        batch.insert('incorrect_words', {
+          'wordbookName': wordbookName,
+          'word': word.word,
+          'meaning': word.meaning,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
       await batch.commit(noResult: true);
     });
   }
 
-  // 오답노트 목록 가져오기 (예: ["Day1", "Day2"])
   Future<List<String>> getIncorrectWordbookNames() async {
     final db = await _metaDatabase;
     final List<Map<String, dynamic>> maps = await db.rawQuery(
       'SELECT DISTINCT wordbookName FROM incorrect_words ORDER BY wordbookName',
     );
+    if (maps.isEmpty) {
+      return [];
+    }
     return List.generate(maps.length, (i) => maps[i]['wordbookName'] as String);
   }
 
-  // 특정 오답노트의 단어들 가져오기
   Future<List<Word>> getIncorrectWords(String wordbookName) async {
     final db = await _metaDatabase;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -90,13 +102,11 @@ class DatabaseService {
     return List.generate(maps.length, (i) => Word.fromMap(maps[i]));
   }
 
-  // 특정 오답노트 삭제
   Future<void> deleteIncorrectWordbook(String wordbookName) async {
     final db = await _metaDatabase;
     await db.delete('incorrect_words', where: 'wordbookName = ?', whereArgs: [wordbookName]);
   }
 
-  // --- 기존 단어장 관련 메소드들 (수정 없음) ---
   Database? _activeWordDb;
 
   Future<List<Wordbook>> getWordbooks() async {
@@ -112,14 +122,7 @@ class DatabaseService {
       wordbook.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
-    return Wordbook(
-      id: id,
-      name: wordbook.name,
-      spreadsheetId: wordbook.spreadsheetId,
-      sheetName: wordbook.sheetName,
-      dbFileName: wordbook.dbFileName,
-      source: wordbook.source,
-    );
+    return wordbook.copyWith(id: id); // 이제 이 코드가 정상 작동합니다.
   }
 
   Future<void> deleteWordbook(int id, String dbFileName) async {

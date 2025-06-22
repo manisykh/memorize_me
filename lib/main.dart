@@ -1,4 +1,4 @@
-// main.dart (수정 후)
+// main.dart (전체 수정 코드)
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -15,26 +15,49 @@ import 'services/test_sheet_service.dart';
 import 'themes/app_theme.dart';
 import 'services/sheets_service.dart';
 
+// ▼▼▼ [추가] 새로운 서비스 import ▼▼▼
+import 'services/api_key_service.dart';
+import 'services/ai_service.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
     MultiProvider(
       providers: [
+        // --- 독립 서비스 및 Notifier ---
+        // 이들은 다른 Provider에 의존하지 않습니다.
         Provider<DatabaseService>(create: (_) => DatabaseService()),
         Provider<TestSheetService>(create: (_) => TestSheetService()),
+        Provider<ApiKeyService>(create: (_) => ApiKeyService()), // [추가] API 키 서비스
         ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
         ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
 
+        // --- 의존성을 가진 서비스 (ProxyProvider 사용) ---
+        // 다른 Provider의 상태가 변경될 때마다 새로 생성되거나 업데이트됩니다.
+
+        // AiService는 ApiKeyService에 의존합니다.
+        ProxyProvider<ApiKeyService, AiService>(
+          update: (_, apiKeyService, __) => AiService(apiKeyService),
+        ),
+
+        // CsvService는 DatabaseService에 의존합니다.
         ProxyProvider<DatabaseService, CsvService>(
           update: (_, databaseService, __) => CsvService(databaseService),
         ),
+
+        // SheetsService는 AuthProvider에 의존합니다.
         ProxyProvider<AuthProvider, SheetsService>(
           update: (_, authProvider, __) => SheetsService(authProvider),
         ),
+
+        // --- 의존성을 가진 Notifier ---
+
+        // WordListNotifier는 DatabaseService에 의존합니다.
         ChangeNotifierProvider<WordListNotifier>(
           create: (context) => WordListNotifier(context.read<DatabaseService>()),
         ),
 
+        // SettingsNotifier는 WordListNotifier의 상태 변경에 따라 업데이트됩니다.
         ChangeNotifierProxyProvider<WordListNotifier, SettingsNotifier>(
           create: (context) => SettingsNotifier(),
           update: (context, wordList, settings) {
@@ -44,6 +67,7 @@ void main() async {
           },
         ),
 
+        // WordbookManager는 3개의 다른 서비스/Notifier에 의존합니다.
         ChangeNotifierProxyProvider3<
           DatabaseService,
           SheetsService,

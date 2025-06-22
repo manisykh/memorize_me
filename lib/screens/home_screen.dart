@@ -1,4 +1,4 @@
-// screens/home_screen.dart (최종 수정)
+// screens/home_screen.dart (수정 코드)
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -7,11 +7,12 @@ import 'package:provider/provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../widgets/gradient_background.dart';
 import 'flashcard_screen.dart';
-import 'manage_words_screen.dart';
+// import 'manage_words_screen.dart'; // 이 import는 더 이상 필요 없을 수 있습니다.
 import 'quiz_screen.dart';
 import 'settings_screen.dart';
 import '../providers/theme_provider.dart';
 import '../themes/app_theme.dart';
+import 'ai_quiz_setup_screen.dart'; // ▼▼▼ [추가] 새로운 AI 퀴즈 설정 화면 import ▼▼▼
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,15 +27,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    // ▼▼▼ [수정] TabController의 길이를 3에서 4로 변경 ▼▼▼
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      // ▼▼▼ 탭 전환 리스너 로직 수정 ▼▼▼
-      // 탭 이동이 시작될 때마다 키보드 포커스를 해제 (스와이프/탭 클릭 모두 해당)
       FocusScope.of(context).unfocus();
-      // ▲▲▲
-
-      // FAB 버튼 표시 여부를 위해 현재 탭 인덱스를 계속 추적합니다.
-      // setState는 build를 다시 호출하므로, 불필요한 호출을 막기 위해 index가 실제로 변경되었을 때만 호출합니다.
       if (_currentTabIndex != _tabController.index) {
         setState(() {
           _currentTabIndex = _tabController.index;
@@ -56,7 +52,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final themeNotifier = context.watch<ThemeNotifier>();
 
     final scaffold = Scaffold(
-      // 단어 관리 버튼이 설정 화면의 일부가 되었으므로 FAB는 제거되었습니다.
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(activeWordbookName),
@@ -71,15 +66,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             Tab(icon: Icon(CupertinoIcons.settings), text: '설정'),
             Tab(icon: Icon(CupertinoIcons.square_stack_3d_down_right), text: '플래시카드'),
             Tab(icon: Icon(CupertinoIcons.question_diamond), text: '퀴즈'),
+            // ▼▼▼ [추가] AI 학습 탭 추가 ▼▼▼
+            Tab(icon: Icon(CupertinoIcons.sparkles), text: 'AI 학습'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: const [SettingsScreen(), FlashcardScreen(), QuizScreen()],
+        // ▼▼▼ [수정] TabBarView에 AiQuizSetupScreen 추가 ▼▼▼
+        children: const [
+          SettingsScreen(),
+          FlashcardScreen(),
+          QuizScreen(),
+          AiQuizSetupScreen(), // 새로 추가될 화면
+        ],
       ),
     );
 
+    // ... (이하 나머지 코드는 기존과 동일)
     if (themeNotifier.currentTheme == AppThemeType.basic) {
       return GradientBackground(child: scaffold);
     } else {

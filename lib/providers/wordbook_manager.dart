@@ -1,5 +1,3 @@
-// providers/wordbook_manager.dart (수정 후)
-
 import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
@@ -18,13 +16,11 @@ class WordbookManager extends ChangeNotifier {
   final SheetsService _sheetsService;
   final WordListNotifier _wordListNotifier;
 
-  // --- 기존 단어장 상태 ---
   List<Wordbook> _wordbooks = [];
   List<Wordbook> get wordbooks => _wordbooks;
   Wordbook? _activeWordbook;
   Wordbook? get activeWordbook => _activeWordbook;
 
-  // --- 오답노트 상태 추가 ---
   List<String> _incorrectWordbookNames = [];
   List<String> get incorrectWordbookNames => _incorrectWordbookNames;
 
@@ -33,7 +29,6 @@ class WordbookManager extends ChangeNotifier {
 
   WordbookManager(this._dbService, this._sheetsService, this._wordListNotifier);
 
-  // --- 데이터 로딩 ---
   Future<void> loadInitialData() async {
     _setLoading(true);
     await Future.wait([_loadWordbooks(), loadIncorrectWordbookNames()]);
@@ -47,7 +42,6 @@ class WordbookManager extends ChangeNotifier {
     }
   }
 
-  // --- 오답노트 관리 메소드 추가 ---
   Future<void> loadIncorrectWordbookNames() async {
     _incorrectWordbookNames = await _dbService.getIncorrectWordbookNames();
     notifyListeners();
@@ -57,11 +51,6 @@ class WordbookManager extends ChangeNotifier {
     return await _dbService.getIncorrectWords(name);
   }
 
-  Future<void> addIncorrectWords(String wordbookName, List<Word> words) async {
-    await _dbService.addIncorrectWords(wordbookName, words);
-    await loadIncorrectWordbookNames();
-  }
-
   Future<void> deleteIncorrectWordbook(String name) async {
     _setLoading(true);
     await _dbService.deleteIncorrectWordbook(name);
@@ -69,7 +58,12 @@ class WordbookManager extends ChangeNotifier {
     _setLoading(false);
   }
 
-  // --- 기존 단어장 관리 메소드 (수정 없음) ---
+  // ▼▼▼ [추가] AI 퀴즈에서 틀린 문제들을 오답노트에 저장하는 메서드 ▼▼▼
+  Future<void> addIncorrectWordsToNote(String wordbookName, List<Word> words) async {
+    await _dbService.addIncorrectWords(wordbookName, words);
+    await loadIncorrectWordbookNames(); // UI 갱신을 위해 오답노트 목록 다시 로드
+  }
+
   Future<void> setActiveWordbook(Wordbook? wordbook) async {
     _activeWordbook = wordbook;
     await _wordListNotifier.switchWordbook(wordbook);

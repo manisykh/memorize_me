@@ -63,6 +63,9 @@ dependencies:
   flutter_svg: ^2.0.10+1
   flutter_tts: ^4.0.2
   google_fonts: ^6.2.1
+  google_generative_ai: ^0.4.0
+  dart_openai: ^5.1.0            # ▼▼▼ [추가] ▼▼▼
+  flutter_secure_storage: ^9.1.1 # ▼▼▼ [추가] ▼▼▼
 
 
 dev_dependencies:
@@ -96,6 +99,8 @@ flutter:
     - family: NotoSansKR
       fonts:
         - asset: assets/fonts/NotoSansKR-Regular.ttf
+        - asset: assets/fonts/NotoSansKR-Bold.ttf
+          weight: 700
 
 
 flutter_launcher_icons:

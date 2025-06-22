@@ -1,9 +1,8 @@
-// screens/settings_screen.dart (수정 후)
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/wordbook_model.dart';
@@ -15,8 +14,8 @@ import '../providers/wordbook_manager.dart';
 import '../services/test_sheet_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/glassmorphic_card.dart';
-import 'select_spreadsheet_screen.dart';
 import 'manage_words_screen.dart';
+import 'select_spreadsheet_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -27,6 +26,21 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isExporting = false;
+  late final TextEditingController _pdfTitleController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pdfTitleController = TextEditingController(
+      text: '단어 시험지 - ${DateFormat('yyyy-MM-dd').format(DateTime.now())}',
+    );
+  }
+
+  @override
+  void dispose() {
+    _pdfTitleController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +64,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             GlassmorphicCard(child: _buildSettingsAndExportSection(context)),
             const SizedBox(height: 24),
-            // '앱 설정' -> '테마 설정'으로 헤더 텍스트 변경
             Text('테마 설정', style: theme.textTheme.titleLarge),
             const SizedBox(height: 16),
             _buildThemeSettingsSection(context),
@@ -60,7 +73,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // 단어 수를 직접 입력받는 다이얼로그 표시
+  Future<void> _showWordTestPdfExportDialog({required bool share}) async {
+    _pdfTitleController.text = '단어 시험지 - ${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('시험지 제목 설정'),
+          content: TextField(
+            controller: _pdfTitleController,
+            decoration: const InputDecoration(labelText: 'PDF 파일 제목'),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _handleExport(type: 'pdf', share: share, title: _pdfTitleController.text);
+              },
+              child: const Text('내보내기'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _handleExport({required String type, required bool share, String? title}) async {
+    if (!mounted) return;
+    setState(() => _isExporting = true);
+
+    final allWords = context.read<WordListNotifier>().words;
+    final settings = context.read<SettingsNotifier>().settings;
+    final service = context.read<TestSheetService>();
+
+    try {
+      if (type == 'pdf') {
+        final pdfTitle = title ?? '단어 시험지';
+        await service.exportPdf(
+          allWords: allWords,
+          settings: settings,
+          title: pdfTitle,
+          share: share,
+        );
+      } else {
+        await service.exportExcel(allWords, settings, share: share);
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('작업 중 오류 발생: $e')));
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
   void _showWordCountInputDialog(BuildContext context) {
     final settingsNotifier = context.read<SettingsNotifier>();
     final words = context.read<WordListNotifier>().words;
@@ -92,7 +160,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: () {
                   final int? newCount = int.tryParse(controller.text);
                   if (newCount != null) {
-                    // 입력값이 1과 최대값 사이인지 확인 후 적용
                     settingsNotifier.setWordCount(newCount.clamp(1, maxCount));
                   }
                   Navigator.pop(dialogContext);
@@ -103,7 +170,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // 테마 설정 섹션 UI (슬라이더 포함)
   Widget _buildThemeSettingsSection(BuildContext context) {
     final theme = Theme.of(context);
     final themeNotifier = context.watch<ThemeNotifier>();
@@ -126,7 +192,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
             leading: Icon(currentIcon, color: theme.primaryColor),
-            // '테마 변경' -> 현재 테마 이름으로 변경
             title: Text(currentThemeName, style: theme.textTheme.bodyLarge),
             onTap: () {
               final newTheme =
@@ -136,7 +201,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               themeNotifier.setTheme(newTheme);
             },
           ),
-          // '시력 보호 테마'일 때만 농도 조절 슬라이더 표시
           if (themeNotifier.currentTheme == AppThemeType.eyeCare)
             Padding(
               padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 12.0),
@@ -163,7 +227,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // 단어 수 설정 섹션 UI (숫자 탭 기능 추가)
   Widget _buildLearningSettingsSection(BuildContext context) {
     final theme = Theme.of(context);
     final settingsNotifier = context.watch<SettingsNotifier>();
@@ -190,11 +253,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text('단어 수', style: theme.textTheme.bodyLarge),
               Row(
                 children: [
-                  // 숫자를 탭하여 직접 입력할 수 있도록 InkWell로 감싸기
                   InkWell(
                     onTap: () => _showWordCountInputDialog(context),
                     child: Text(
-                      '${settings.wordCount.clamp(minValue, maxValue).toInt()}',
+                      '${settings.wordCount.clamp(minValue.toInt(), maxValue.toInt())}',
                       style: theme.textTheme.bodyLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: theme.primaryColor,
@@ -236,7 +298,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // --- 이하 다른 메소드들은 기존과 동일 ---
   Widget _buildAuthSection(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final user = authProvider.currentUser;
@@ -327,12 +388,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(width: 15),
             Expanded(
               child: GlassmorphicCard(
-                onTap: () {
-                  // '단어 관리' 버튼을 눌렀을 때의 동작
-                  Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => const ManageWordsScreen()));
-                },
+                onTap:
+                    () => Navigator.of(
+                      context,
+                    ).push(MaterialPageRoute(builder: (_) => const ManageWordsScreen())),
                 child: Column(
                   children: [
                     Icon(
@@ -404,6 +463,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _buildExportOptionSelector(context),
         const SizedBox(height: 20),
         _buildExportButton(context),
+        const SizedBox(height: 10),
       ],
     );
   }
@@ -515,6 +575,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   padding: const EdgeInsets.only(left: 16.0, top: 8.0, bottom: 8.0),
                   child: Text('시험지 파일 형식 선택', style: Theme.of(ctx).textTheme.titleLarge),
                 ),
+                // ▼▼▼ [오류 발생 지점] 이 함수를 호출하기 위해 아래에 정의가 필요합니다. ▼▼▼
                 _buildExportRow('PDF', exportType: 'pdf', ctx: ctx),
                 Divider(
                   height: 1,
@@ -529,6 +590,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // ▼▼▼ [추가] 누락되었던 _buildExportRow 함수 ▼▼▼
   Widget _buildExportRow(String format, {required String exportType, required BuildContext ctx}) {
     final theme = Theme.of(ctx);
     return ListTile(
@@ -539,7 +601,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           IconButton(
             onPressed: () {
               Navigator.pop(ctx);
-              _handleExport(type: exportType, share: false);
+              if (exportType == 'pdf') {
+                _showWordTestPdfExportDialog(share: false);
+              } else {
+                _handleExport(type: exportType, share: false);
+              }
             },
             icon: Icon(Icons.save_alt, color: theme.textTheme.bodyLarge?.color),
             tooltip: '저장',
@@ -547,7 +613,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           IconButton(
             onPressed: () {
               Navigator.pop(ctx);
-              _handleExport(type: exportType, share: true);
+              if (exportType == 'pdf') {
+                _showWordTestPdfExportDialog(share: true);
+              } else {
+                _handleExport(type: exportType, share: true);
+              }
             },
             icon: Icon(Icons.share, color: theme.textTheme.bodyLarge?.color),
             tooltip: '공유',
@@ -622,27 +692,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
     );
-  }
-
-  Future<void> _handleExport({required String type, required bool share}) async {
-    if (!mounted) return;
-    setState(() => _isExporting = true);
-
-    final allWords = context.read<WordListNotifier>().words;
-    final settings = context.read<SettingsNotifier>().settings;
-    final service = context.read<TestSheetService>();
-
-    try {
-      if (type == 'pdf') {
-        await service.exportPdf(allWords, settings, share: share);
-      } else {
-        await service.exportExcel(allWords, settings, share: share);
-      }
-    } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('작업 중 오류 발생: $e')));
-    } finally {
-      if (mounted) setState(() => _isExporting = false);
-    }
   }
 }
