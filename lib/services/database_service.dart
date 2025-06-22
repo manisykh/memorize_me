@@ -8,6 +8,7 @@ import '../models/wordbook_model.dart';
 class DatabaseService {
   Database? _metaDb;
 
+  // --- 메타 데이터베이스 (단어장 목록, 오답노트 등) ---
   Future<Database> get _metaDatabase async {
     if (_metaDb != null) return _metaDb!;
     _metaDb = await _initMetaDB();
@@ -18,53 +19,73 @@ class DatabaseService {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, "meta.db");
 
-    return await openDatabase(
-      path,
-      version: 3, // 현재 최종 버전
-      onCreate: _createMetaDB,
-      onUpgrade: _onUpgrade, // ▼▼▼ [수정] onUpgrade 로직을 별도 함수로 분리 ▼▼▼
-    );
+    return await openDatabase(path, version: 3, onCreate: _createMetaDB, onUpgrade: _onUpgrade);
   }
 
-  // ▼▼▼ [추가] 신규 설치 시 실행되는 함수 ▼▼▼
   Future<void> _createMetaDB(Database db, int version) async {
-    // wordbooks 테이블 생성
     await db.execute(
       'CREATE TABLE wordbooks(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, spreadsheetId TEXT, sheetName TEXT, dbFileName TEXT, source TEXT)',
     );
-    // incorrect_words 테이블 생성 (최신 구조)
     await db.execute(
       'CREATE TABLE incorrect_words(id INTEGER PRIMARY KEY AUTOINCREMENT, wordbookName TEXT, word TEXT, meaning TEXT)',
     );
   }
 
-  // ▼▼▼ [수정] 안정성이 강화된 단계별 업그레이드 함수 ▼▼▼
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // oldVersion부터 newVersion까지 순차적으로 모든 업그레이드를 실행
     for (var version = oldVersion + 1; version <= newVersion; version++) {
       await _runUpgrade(db, version);
     }
   }
 
-  // ▼▼▼ [추가] 각 버전별 업그레이드 내용을 관리하는 함수 ▼▼▼
   Future<void> _runUpgrade(Database db, int version) async {
     switch (version) {
       case 2:
-        // 버전 1 -> 2 업그레이드: incorrect_words 테이블 생성
         await db.execute(
           'CREATE TABLE incorrect_words(id INTEGER PRIMARY KEY, word TEXT, meaning TEXT, UNIQUE(word, meaning))',
         );
         break;
       case 3:
-        // 버전 2 -> 3 업그레이드: incorrect_words 테이블에 wordbookName 컬럼 추가
-        await db.execute('ALTER TABLE incorrect_words ADD COLUMN wordbookName TEXT DEFAULT "오답노트"');
+        try {
+          await db.execute(
+            'ALTER TABLE incorrect_words ADD COLUMN wordbookName TEXT DEFAULT "오답노트"',
+          );
+        } catch (e) {
+          print("Error adding column: $e");
+        }
         break;
-      // case 4:
-      //   // 향후 버전 3 -> 4 업그레이드가 필요할 경우 여기에 추가
-      //   break;
     }
   }
 
+  // --- 단어장 목록 관련 메서드 ---
+  Future<List<Wordbook>> getWordbooks() async {
+    final db = await _metaDatabase;
+    final List<Map<String, dynamic>> maps = await db.query('wordbooks', orderBy: 'id DESC');
+    return List.generate(maps.length, (i) => Wordbook.fromMap(maps[i]));
+  }
+
+  Future<Wordbook> addWordbook(Wordbook wordbook) async {
+    final db = await _metaDatabase;
+    final id = await db.insert(
+      'wordbooks',
+      wordbook.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return wordbook.copyWith(id: id);
+  }
+
+  Future<void> deleteWordbook(int id, String dbFileName) async {
+    final db = await _metaDatabase;
+    await db.delete('wordbooks', where: 'id = ?', whereArgs: [id]);
+
+    Directory documentsDirectory = await getApplicationDocumentsDirectory();
+    String path = p.join(documentsDirectory.path, dbFileName);
+    final file = File(path);
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+
+  // --- 오답노트 관련 메서드 ---
   Future<void> addIncorrectWords(String wordbookName, List<Word> words) async {
     if (words.isEmpty) return;
     final db = await _metaDatabase;
@@ -107,95 +128,64 @@ class DatabaseService {
     await db.delete('incorrect_words', where: 'wordbookName = ?', whereArgs: [wordbookName]);
   }
 
-  Database? _activeWordDb;
+  // --- 개별 단어장 DB 접근 메서드 (구조 개선) ---
 
-  Future<List<Wordbook>> getWordbooks() async {
-    final db = await _metaDatabase;
-    final List<Map<String, dynamic>> maps = await db.query('wordbooks', orderBy: 'id DESC');
-    return List.generate(maps.length, (i) => Wordbook.fromMap(maps[i]));
-  }
-
-  Future<Wordbook> addWordbook(Wordbook wordbook) async {
-    final db = await _metaDatabase;
-    final id = await db.insert(
-      'wordbooks',
-      wordbook.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    return wordbook.copyWith(id: id); // 이제 이 코드가 정상 작동합니다.
-  }
-
-  Future<void> deleteWordbook(int id, String dbFileName) async {
-    final db = await _metaDatabase;
-    await db.delete('wordbooks', where: 'id = ?', whereArgs: [id]);
-
+  Future<Database> _openWordDB(String dbFileName) async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, dbFileName);
-    final file = File(path);
-    if (await file.exists()) {
-      await file.delete();
-    }
-  }
-
-  Future<Database> _getWordDatabase(String dbFileName) async {
-    if (_activeWordDb != null &&
-        _activeWordDb!.isOpen &&
-        p.basename(_activeWordDb!.path) == dbFileName) {
-      return _activeWordDb!;
-    }
-    await _activeWordDb?.close();
-    _activeWordDb = await _initWordDB(dbFileName);
-    return _activeWordDb!;
-  }
-
-  Future<Database> _initWordDB(String dbFileName) async {
-    Directory documentsDirectory = await getApplicationDocumentsDirectory();
-    String path = p.join(documentsDirectory.path, dbFileName);
-    return await openDatabase(path, version: 1, onCreate: _createWordDB);
-  }
-
-  Future<void> _createWordDB(Database db, int version) async {
-    await db.execute(
-      'CREATE TABLE words(id INTEGER PRIMARY KEY AUTOINCREMENT, word TEXT NOT NULL, meaning TEXT NOT NULL)',
+    return await openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute(
+          'CREATE TABLE words(id INTEGER PRIMARY KEY AUTOINCREMENT, word TEXT NOT NULL, meaning TEXT NOT NULL)',
+        );
+      },
     );
   }
 
   Future<List<Word>> getAllWords(String dbFileName) async {
-    final db = await _getWordDatabase(dbFileName);
+    final db = await _openWordDB(dbFileName);
     final List<Map<String, dynamic>> maps = await db.query('words', orderBy: 'id DESC');
+    await db.close();
     return List.generate(maps.length, (i) => Word.fromMap(maps[i]));
   }
 
   Future<void> addWord(String dbFileName, Word word) async {
-    final db = await _getWordDatabase(dbFileName);
+    final db = await _openWordDB(dbFileName);
     await db.insert('words', word.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
-  }
-
-  Future<void> updateWord(String dbFileName, Word word) async {
-    final db = await _getWordDatabase(dbFileName);
-    await db.update('words', word.toMap(), where: 'id = ?', whereArgs: [word.id]);
-  }
-
-  Future<void> deleteWord(String dbFileName, int id) async {
-    final db = await _getWordDatabase(dbFileName);
-    await db.delete('words', where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<void> deleteAllWords(String dbFileName) async {
-    final db = await _getWordDatabase(dbFileName);
-    await db.delete('words');
+    await db.close();
   }
 
   Future<void> addWordsInBatch(String dbFileName, List<Word> words) async {
     if (words.isEmpty) return;
-
-    final db = await _getWordDatabase(dbFileName);
+    final db = await _openWordDB(dbFileName);
     await db.transaction((txn) async {
       final batch = txn.batch();
       for (final word in words) {
-        batch.insert('words', word.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+        // toMap() 대신 toMapForInsert()를 사용하여 id를 제외하고 insert
+        batch.insert('words', word.toMapForInsert(), conflictAlgorithm: ConflictAlgorithm.replace);
       }
       await batch.commit(noResult: true);
     });
+    await db.close();
+  }
+
+  Future<void> updateWord(String dbFileName, Word word) async {
+    final db = await _openWordDB(dbFileName);
+    await db.update('words', word.toMap(), where: 'id = ?', whereArgs: [word.id]);
+    await db.close();
+  }
+
+  Future<void> deleteWord(String dbFileName, int id) async {
+    final db = await _openWordDB(dbFileName);
+    await db.delete('words', where: 'id = ?', whereArgs: [id]);
+    await db.close();
+  }
+
+  Future<void> deleteAllWords(String dbFileName) async {
+    final db = await _openWordDB(dbFileName);
+    await db.delete('words');
+    await db.close();
   }
 }

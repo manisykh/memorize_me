@@ -12,10 +12,10 @@ import '../providers/theme_provider.dart';
 import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/test_sheet_service.dart';
-import '../themes/app_theme.dart';
 import '../widgets/glassmorphic_card.dart';
 import 'manage_words_screen.dart';
 import 'select_spreadsheet_screen.dart';
+import 'merge_wordbooks_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -349,58 +349,114 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
     return Column(
       children: [
+        // --- 첫 번째 줄 ---
         Row(
           children: [
             Expanded(
               child: GlassmorphicCard(
+                // GlassmorphicCard의 자체 padding을 직접 제어합니다.
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                 onTap:
                     user == null
                         ? null
                         : () => Navigator.of(
                           context,
                         ).push(MaterialPageRoute(builder: (_) => const SelectSpreadsheetScreen())),
-                child: Column(
+                child: Row(
                   children: [
-                    Image.asset('assets/icons/google_sheet_icon.png', height: 32, width: 32),
-                    const SizedBox(height: 8),
-                    Text('Google 시트', style: theme.textTheme.bodySmall),
+                    Image.asset('assets/icons/google_sheet_icon.png', height: 24, width: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '단어장 추가\n(Google 시트)',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(width: 15),
+            const SizedBox(width: 12),
             Expanded(
               child: GlassmorphicCard(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                 onTap: () => context.read<WordbookManager>().createNewWordbookFromCsv(context),
-                child: Column(
+                child: Row(
                   children: [
                     Icon(
                       CupertinoIcons.doc_text,
-                      size: 32,
-                      color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.9),
+                      size: 24,
+                      color: theme.textTheme.bodyLarge?.color?.withOpacity(0.9),
                     ),
-                    const SizedBox(height: 8),
-                    Text('로컬 파일', style: theme.textTheme.bodySmall),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '단어장 추가\n(로컬 파일)',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(width: 15),
+          ],
+        ),
+        const SizedBox(height: 12), // 줄 사이 간격
+        // --- 두 번째 줄 ---
+        Row(
+          children: [
             Expanded(
               child: GlassmorphicCard(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                onTap: () {
+                  Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => const MergeWordbooksScreen()));
+                },
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.merge_type,
+                      size: 24,
+                      color: theme.textTheme.bodyLarge?.color?.withOpacity(0.9),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '단어장 병합', // 한 줄로 변경하여 정렬 개선
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium, // 한 줄이므로 폰트 크기 살짝 키움
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: GlassmorphicCard(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                 onTap:
                     () => Navigator.of(
                       context,
                     ).push(MaterialPageRoute(builder: (_) => const ManageWordsScreen())),
-                child: Column(
+                child: Row(
                   children: [
                     Icon(
                       CupertinoIcons.book_fill,
-                      size: 32,
+                      size: 24,
                       color: theme.textTheme.bodyLarge?.color?.withOpacity(0.9),
                     ),
-                    const SizedBox(height: 8),
-                    Text('단어 관리', style: theme.textTheme.bodySmall),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '단어 목록 관리', // 한 줄로 변경하여 정렬 개선
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
                   ],
                 ),
               ),

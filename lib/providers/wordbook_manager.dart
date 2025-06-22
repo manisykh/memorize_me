@@ -40,6 +40,7 @@ class WordbookManager extends ChangeNotifier {
     if (_wordbooks.isNotEmpty && _activeWordbook == null) {
       await setActiveWordbook(_wordbooks.first);
     }
+    notifyListeners();
   }
 
   Future<void> loadIncorrectWordbookNames() async {
@@ -51,17 +52,16 @@ class WordbookManager extends ChangeNotifier {
     return await _dbService.getIncorrectWords(name);
   }
 
+  Future<void> addIncorrectWordsToNote(String wordbookName, List<Word> words) async {
+    await _dbService.addIncorrectWords(wordbookName, words);
+    await loadIncorrectWordbookNames();
+  }
+
   Future<void> deleteIncorrectWordbook(String name) async {
     _setLoading(true);
     await _dbService.deleteIncorrectWordbook(name);
     await loadIncorrectWordbookNames();
     _setLoading(false);
-  }
-
-  // ▼▼▼ [추가] AI 퀴즈에서 틀린 문제들을 오답노트에 저장하는 메서드 ▼▼▼
-  Future<void> addIncorrectWordsToNote(String wordbookName, List<Word> words) async {
-    await _dbService.addIncorrectWords(wordbookName, words);
-    await loadIncorrectWordbookNames(); // UI 갱신을 위해 오답노트 목록 다시 로드
   }
 
   Future<void> setActiveWordbook(Wordbook? wordbook) async {
@@ -115,9 +115,8 @@ class WordbookManager extends ChangeNotifier {
           csvTable
               .skip(1)
               .map((row) {
-                if (row.length >= 2) {
+                if (row.length >= 2)
                   return Word(word: row[0].toString().trim(), meaning: row[1].toString().trim());
-                }
                 return null;
               })
               .where((word) => word != null && word.word.isNotEmpty && word.meaning.isNotEmpty)
@@ -190,6 +189,91 @@ class WordbookManager extends ChangeNotifier {
     await _dbService.deleteWordbook(wordbook.id!, wordbook.dbFileName);
     await _loadWordbooks();
     _setLoading(false);
+  }
+
+  // ▼▼▼ [수정] 디버깅 로그를 추가한 병합 함수 ▼▼▼
+  Future<void> mergeWordbooks(Set<int> wordbookIds, String newName, BuildContext context) async {
+    _setLoading(true);
+    debugPrint("======== 단어장 병합 시작 ========");
+    try {
+      final List<Word> mergedWords = [];
+      final Set<String> uniqueWordTexts = {};
+
+      final List<Wordbook> booksToMerge =
+          _wordbooks.where((wb) => wordbookIds.contains(wb.id)).toList();
+      debugPrint("병합 대상 단어장: ${booksToMerge.map((e) => e.name).toList()}");
+
+      for (final book in booksToMerge) {
+        debugPrint("-> '${book.name}' 단어장 처리 시작...");
+        final wordsFromDb = await _dbService.getAllWords(book.dbFileName);
+        debugPrint("   '${book.name}'에서 ${wordsFromDb.length}개의 단어를 불러왔습니다.");
+
+        for (var word in wordsFromDb) {
+          if (uniqueWordTexts.add(word.word.trim().toLowerCase())) {
+            mergedWords.add(word);
+          }
+        }
+        debugPrint("   처리 후, 통합된 단어 수: ${mergedWords.length}");
+      }
+
+      debugPrint("--- 최종 통합된 단어 수: ${mergedWords.length} ---");
+
+      final dbFileName = 'wordbook_${DateTime.now().millisecondsSinceEpoch}.db';
+      final newWordbook = Wordbook(
+        name: newName,
+        dbFileName: dbFileName,
+        source: WordbookSource.localCsv,
+      );
+      final savedWordbook = await _dbService.addWordbook(newWordbook);
+
+      debugPrint("새로운 단어장 '$newName' 생성 완료. 이제 단어를 저장합니다...");
+      await _dbService.addWordsInBatch(savedWordbook.dbFileName, mergedWords);
+      debugPrint("'$newName'에 ${mergedWords.length}개의 단어 저장 완료.");
+
+      if (context.mounted) {
+        final deleteOriginals = await showCupertinoDialog<bool>(
+          context: context,
+          builder: (dialogContext) {
+            return CupertinoAlertDialog(
+              title: const Text('병합 완료'),
+              content: Text("새로운 단어장 '$newName'이(가) 생성되었습니다.\n병합에 사용된 기존 단어장들을 삭제하시겠습니까?"),
+              actions: [
+                CupertinoDialogAction(
+                  child: const Text('유지'),
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                ),
+                CupertinoDialogAction(
+                  isDestructiveAction: true,
+                  child: const Text('삭제'),
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (deleteOriginals == true) {
+          debugPrint("원본 단어장 삭제 시작...");
+          for (final bookToDelete in booksToMerge) {
+            await deleteWordbook(bookToDelete);
+          }
+          debugPrint("원본 단어장 삭제 완료.");
+        }
+
+        await _loadWordbooks();
+        await setActiveWordbook(savedWordbook);
+
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      debugPrint("Error merging wordbooks: $e");
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("병합 중 오류 발생: $e")));
+      }
+    } finally {
+      _setLoading(false);
+      debugPrint("======== 단어장 병합 종료 ========");
+    }
   }
 
   void _setLoading(bool loading) {

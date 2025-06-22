@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../services/sheets_service.dart';
-import 'select_sheet_screen.dart'; // TODO: 다음 단계에서 생성할 파일
+import 'select_sheet_screen.dart';
 
 class SelectSpreadsheetScreen extends StatefulWidget {
   const SelectSpreadsheetScreen({super.key});
