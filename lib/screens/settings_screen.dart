@@ -12,10 +12,12 @@ import '../providers/theme_provider.dart';
 import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/test_sheet_service.dart';
+import '../themes/app_theme.dart';
 import '../widgets/glassmorphic_card.dart';
 import 'manage_words_screen.dart';
-import 'select_spreadsheet_screen.dart';
 import 'merge_wordbooks_screen.dart';
+import 'select_spreadsheet_screen.dart';
+import 'tts_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -67,15 +69,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Text('테마 설정', style: theme.textTheme.titleLarge),
             const SizedBox(height: 16),
             _buildThemeSettingsSection(context),
+            const SizedBox(height: 24),
+            Text('듣기 평가 설정', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 16),
+            GlassmorphicCard(
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+                leading: const Icon(CupertinoIcons.speaker_2_fill),
+                title: const Text('TTS 목소리 설정'),
+                trailing: const Icon(CupertinoIcons.right_chevron),
+                onTap: () {
+                  Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => const TtsSettingsScreen()));
+                },
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
+  // --- 이하 모든 헬퍼 함수들 ---
+
   Future<void> _showWordTestPdfExportDialog({required bool share}) async {
     _pdfTitleController.text = '단어 시험지 - ${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
-
     await showDialog(
       context: context,
       builder: (context) {
@@ -104,11 +123,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _handleExport({required String type, required bool share, String? title}) async {
     if (!mounted) return;
     setState(() => _isExporting = true);
-
     final allWords = context.read<WordListNotifier>().words;
     final settings = context.read<SettingsNotifier>().settings;
     final service = context.read<TestSheetService>();
-
     try {
       if (type == 'pdf') {
         final pdfTitle = title ?? '단어 시험지';
@@ -134,7 +151,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final words = context.read<WordListNotifier>().words;
     final maxCount = words.isNotEmpty ? words.length : 1;
     final controller = TextEditingController(text: settingsNotifier.settings.wordCount.toString());
-
     showCupertinoDialog(
       context: context,
       builder:
@@ -170,10 +186,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showTestTypePicker(BuildContext context) {
+    final settingsNotifier = context.read<SettingsNotifier>();
+    const testTypeMap = {
+      TestType.random: '랜덤',
+      TestType.wordToMeaning: '단어 → 뜻',
+      TestType.meaningToWord: '뜻 → 단어',
+      TestType.meaningToWordWithHint: '뜻 → 단어 (첫 글자 힌트)',
+    };
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder:
+          (ctx) => Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: GlassmorphicCard(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children:
+                    testTypeMap.entries.map((entry) {
+                      return ListTile(
+                        title: Text(entry.value, style: Theme.of(ctx).textTheme.bodyLarge),
+                        onTap: () {
+                          settingsNotifier.setTestType(entry.key);
+                          Navigator.pop(ctx);
+                        },
+                      );
+                    }).toList(),
+              ),
+            ),
+          ),
+    );
+  }
+
+  void _showExportOptionPicker(BuildContext context) {
+    final settingsNotifier = context.read<SettingsNotifier>();
+    const exportOptionMap = {
+      ExportOption.both: '시험지와 답안지 모두',
+      ExportOption.testOnly: '시험지만',
+      ExportOption.answersOnly: '답안지만',
+    };
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder:
+          (ctx) => Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: GlassmorphicCard(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children:
+                    exportOptionMap.entries.map((entry) {
+                      return ListTile(
+                        title: Text(entry.value, style: Theme.of(ctx).textTheme.bodyLarge),
+                        onTap: () {
+                          settingsNotifier.setExportOption(entry.key);
+                          Navigator.pop(ctx);
+                        },
+                      );
+                    }).toList(),
+              ),
+            ),
+          ),
+    );
+  }
+
   Widget _buildThemeSettingsSection(BuildContext context) {
     final theme = Theme.of(context);
     final themeNotifier = context.watch<ThemeNotifier>();
-
     final String currentThemeName;
     final IconData currentIcon;
 
@@ -227,75 +307,115 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildLearningSettingsSection(BuildContext context) {
-    final theme = Theme.of(context);
-    final settingsNotifier = context.watch<SettingsNotifier>();
-    final allWords = context.watch<WordListNotifier>().words;
-    final settings = settingsNotifier.settings;
+  Widget _buildExportRow(String format, {required String exportType, required BuildContext ctx}) {
+    final theme = Theme.of(ctx);
+    return ListTile(
+      title: Text(format, style: theme.textTheme.bodyLarge),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              if (exportType == 'pdf') {
+                _showWordTestPdfExportDialog(share: false);
+              } else {
+                _handleExport(type: exportType, share: false);
+              }
+            },
+            icon: Icon(Icons.save_alt, color: theme.textTheme.bodyLarge?.color),
+            tooltip: '저장',
+          ),
+          IconButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              if (exportType == 'pdf') {
+                _showWordTestPdfExportDialog(share: true);
+              } else {
+                _handleExport(type: exportType, share: true);
+              }
+            },
+            icon: Icon(Icons.share, color: theme.textTheme.bodyLarge?.color),
+            tooltip: '공유',
+          ),
+        ],
+      ),
+    );
+  }
 
-    final double minValue = allWords.isEmpty ? 1.0 : 1.0;
-    final double maxValue = allWords.isEmpty ? 1.0 : allWords.length.toDouble();
+  void _showExportOptions() {
+    final allWords = context.read<WordListNotifier>().words;
+    if (allWords.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('활성화된 단어장에 단어가 없습니다.')));
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: GlassmorphicCard(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 16.0, top: 8.0, bottom: 8.0),
+                  child: Text('시험지 파일 형식 선택', style: Theme.of(ctx).textTheme.titleLarge),
+                ),
+                _buildExportRow('PDF', exportType: 'pdf', ctx: ctx),
+                Divider(
+                  height: 1,
+                  color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.2),
+                ),
+                _buildExportRow('Excel', exportType: 'excel', ctx: ctx),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-    const testTypeMap = {
-      TestType.random: '랜덤',
-      TestType.wordToMeaning: '단어 → 뜻',
-      TestType.meaningToWord: '뜻 → 단어',
-      TestType.meaningToWordWithHint: '뜻 → 단어 (첫 글자 힌트)',
-    };
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('단어 수', style: theme.textTheme.bodyLarge),
-              Row(
-                children: [
-                  InkWell(
-                    onTap: () => _showWordCountInputDialog(context),
-                    child: Text(
-                      '${settings.wordCount.clamp(minValue.toInt(), maxValue.toInt())}',
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: theme.primaryColor,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 150,
-                    child: Slider(
-                      value: settings.wordCount.toDouble().clamp(minValue, maxValue),
-                      min: minValue,
-                      max: maxValue,
-                      divisions:
-                          allWords.isEmpty
-                              ? 1
-                              : (maxValue > minValue ? (maxValue - minValue).toInt() : 1),
-                      onChanged: (value) => settingsNotifier.setWordCount(value.toInt()),
-                    ),
-                  ),
-                ],
+  void _confirmDelete(BuildContext context, WordbookManager manager, Wordbook wordbook) {
+    showCupertinoDialog(
+      context: context,
+      builder:
+          (_) => CupertinoAlertDialog(
+            title: const Text('단어장 삭제'),
+            content: Text("'${wordbook.name}' 단어장을 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다."),
+            actions: [
+              CupertinoDialogAction(
+                child: const Text('취소'),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              CupertinoDialogAction(
+                isDestructiveAction: true,
+                child: const Text('삭제'),
+                onPressed: () {
+                  manager.deleteWordbook(wordbook);
+                  Navigator.of(context).pop();
+                },
               ),
             ],
           ),
-        ),
-        Divider(color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.2)),
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
-          title: Text('시험 유형', style: theme.textTheme.bodyLarge),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(testTypeMap[settings.testType]!, style: theme.textTheme.bodyMedium),
-              Icon(Icons.arrow_drop_down, color: theme.textTheme.bodyLarge?.color),
-            ],
-          ),
-          onTap: () => _showTestTypePicker(context),
-        ),
-      ],
     );
+  }
+
+  Widget _getSourceIcon(WordbookSource source, ThemeData theme) {
+    switch (source) {
+      case WordbookSource.googleSheet:
+        return Image.asset('assets/icons/google_sheet_icon.png', width: 24, height: 24);
+      case WordbookSource.localCsv:
+        return Icon(
+          CupertinoIcons.doc_text_fill,
+          size: 24,
+          color: theme.textTheme.bodyLarge?.color?.withOpacity(0.9),
+        );
+    }
   }
 
   Widget _buildAuthSection(BuildContext context) {
@@ -349,12 +469,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
     return Column(
       children: [
-        // --- 첫 번째 줄 ---
         Row(
           children: [
             Expanded(
               child: GlassmorphicCard(
-                // GlassmorphicCard의 자체 padding을 직접 제어합니다.
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                 onTap:
                     user == null
@@ -403,18 +521,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 12), // 줄 사이 간격
-        // --- 두 번째 줄 ---
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
               child: GlassmorphicCard(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                onTap: () {
-                  Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => const MergeWordbooksScreen()));
-                },
+                onTap:
+                    () => Navigator.of(
+                      context,
+                    ).push(MaterialPageRoute(builder: (_) => const MergeWordbooksScreen())),
                 child: Row(
                   children: [
                     Icon(
@@ -425,9 +541,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '단어장 병합', // 한 줄로 변경하여 정렬 개선
+                        '단어장 병합',
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium, // 한 줄이므로 폰트 크기 살짝 키움
+                        style: theme.textTheme.bodyMedium,
                       ),
                     ),
                   ],
@@ -452,7 +568,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '단어 목록 관리', // 한 줄로 변경하여 정렬 개선
+                        '단어 목록 관리',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium,
                       ),
@@ -483,10 +599,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: GlassmorphicCard(
                     isActive: isActive,
                     onTap: () => manager.setActiveWordbook(wordbook),
-                    padding: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.only(left: 16, right: 8),
                     child: ListTile(
                       dense: true,
-                      leading: _getSourceIcon(wordbook.source),
+                      leading: _getSourceIcon(wordbook.source, theme),
                       title: Text(
                         wordbook.name,
                         style:
@@ -528,13 +644,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
     final settingsNotifier = context.watch<SettingsNotifier>();
     final settings = settingsNotifier.settings;
-
     const exportOptionMap = {
       ExportOption.both: '시험지와 답안지 모두',
       ExportOption.testOnly: '시험지만',
       ExportOption.answersOnly: '답안지만',
     };
-
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
       title: Text('내보내기 옵션', style: theme.textTheme.bodyLarge),
@@ -570,183 +684,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
   }
 
-  Widget _getSourceIcon(WordbookSource source) {
-    switch (source) {
-      case WordbookSource.googleSheet:
-        return Image.asset('assets/icons/google_sheet_icon.png', width: 24, height: 24);
-      case WordbookSource.localCsv:
-        return Icon(
-          CupertinoIcons.doc_text_fill,
-          size: 24,
-          color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.9),
-        );
-    }
-  }
-
-  void _confirmDelete(BuildContext context, WordbookManager manager, Wordbook wordbook) {
-    showCupertinoDialog(
-      context: context,
-      builder:
-          (_) => CupertinoAlertDialog(
-            title: const Text('단어장 삭제'),
-            content: Text("'${wordbook.name}' 단어장을 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다."),
-            actions: [
-              CupertinoDialogAction(
-                child: const Text('취소'),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              CupertinoDialogAction(
-                isDestructiveAction: true,
-                child: const Text('삭제'),
-                onPressed: () {
-                  manager.deleteWordbook(wordbook);
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          ),
-    );
-  }
-
-  void _showExportOptions() {
-    final allWords = context.read<WordListNotifier>().words;
-    if (allWords.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('활성화된 단어장에 단어가 없습니다.')));
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: GlassmorphicCard(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(left: 16.0, top: 8.0, bottom: 8.0),
-                  child: Text('시험지 파일 형식 선택', style: Theme.of(ctx).textTheme.titleLarge),
-                ),
-                // ▼▼▼ [오류 발생 지점] 이 함수를 호출하기 위해 아래에 정의가 필요합니다. ▼▼▼
-                _buildExportRow('PDF', exportType: 'pdf', ctx: ctx),
-                Divider(
-                  height: 1,
-                  color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.2),
-                ),
-                _buildExportRow('Excel', exportType: 'excel', ctx: ctx),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ▼▼▼ [추가] 누락되었던 _buildExportRow 함수 ▼▼▼
-  Widget _buildExportRow(String format, {required String exportType, required BuildContext ctx}) {
-    final theme = Theme.of(ctx);
-    return ListTile(
-      title: Text(format, style: theme.textTheme.bodyLarge),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              if (exportType == 'pdf') {
-                _showWordTestPdfExportDialog(share: false);
-              } else {
-                _handleExport(type: exportType, share: false);
-              }
-            },
-            icon: Icon(Icons.save_alt, color: theme.textTheme.bodyLarge?.color),
-            tooltip: '저장',
-          ),
-          IconButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              if (exportType == 'pdf') {
-                _showWordTestPdfExportDialog(share: true);
-              } else {
-                _handleExport(type: exportType, share: true);
-              }
-            },
-            icon: Icon(Icons.share, color: theme.textTheme.bodyLarge?.color),
-            tooltip: '공유',
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showTestTypePicker(BuildContext context) {
-    final settingsNotifier = context.read<SettingsNotifier>();
+  Widget _buildLearningSettingsSection(BuildContext context) {
+    final theme = Theme.of(context);
+    final settingsNotifier = context.watch<SettingsNotifier>();
+    final allWords = context.watch<WordListNotifier>().words;
+    final settings = settingsNotifier.settings;
+    final double minValue = allWords.isEmpty ? 1.0 : 1.0;
+    final double maxValue = allWords.isEmpty ? 1.0 : allWords.length.toDouble();
     const testTypeMap = {
       TestType.random: '랜덤',
       TestType.wordToMeaning: '단어 → 뜻',
       TestType.meaningToWord: '뜻 → 단어',
       TestType.meaningToWordWithHint: '뜻 → 단어 (첫 글자 힌트)',
     };
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder:
-          (ctx) => Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: GlassmorphicCard(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children:
-                    testTypeMap.entries.map((entry) {
-                      return ListTile(
-                        title: Text(entry.value, style: Theme.of(ctx).textTheme.bodyLarge),
-                        onTap: () {
-                          settingsNotifier.setTestType(entry.key);
-                          Navigator.pop(ctx);
-                        },
-                      );
-                    }).toList(),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('단어 수', style: theme.textTheme.bodyLarge),
+              Row(
+                children: [
+                  InkWell(
+                    onTap: () => _showWordCountInputDialog(context),
+                    child: Text(
+                      '${settings.wordCount.clamp(minValue.toInt(), maxValue.toInt())}',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.primaryColor,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 150,
+                    child: Slider(
+                      value: settings.wordCount.toDouble().clamp(minValue, maxValue),
+                      min: minValue,
+                      max: maxValue,
+                      divisions:
+                          allWords.isEmpty
+                              ? 1
+                              : (maxValue > minValue ? (maxValue - minValue).toInt() : 1),
+                      onChanged: (value) => settingsNotifier.setWordCount(value.toInt()),
+                    ),
+                  ),
+                ],
               ),
-            ),
+            ],
           ),
-    );
-  }
-
-  void _showExportOptionPicker(BuildContext context) {
-    final settingsNotifier = context.read<SettingsNotifier>();
-    const exportOptionMap = {
-      ExportOption.both: '시험지와 답안지 모두',
-      ExportOption.testOnly: '시험지만',
-      ExportOption.answersOnly: '답안지만',
-    };
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder:
-          (ctx) => Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: GlassmorphicCard(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children:
-                    exportOptionMap.entries.map((entry) {
-                      return ListTile(
-                        title: Text(entry.value, style: Theme.of(ctx).textTheme.bodyLarge),
-                        onTap: () {
-                          settingsNotifier.setExportOption(entry.key);
-                          Navigator.pop(ctx);
-                        },
-                      );
-                    }).toList(),
-              ),
-            ),
+        ),
+        Divider(color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.2)),
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+          title: Text('시험 유형', style: theme.textTheme.bodyLarge),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(testTypeMap[settings.testType]!, style: theme.textTheme.bodyMedium),
+              Icon(Icons.arrow_drop_down, color: theme.textTheme.bodyLarge?.color),
+            ],
           ),
+          onTap: () => _showTestTypePicker(context),
+        ),
+      ],
     );
   }
 }

@@ -14,6 +14,7 @@ import 'services/database_service.dart';
 import 'services/test_sheet_service.dart';
 import 'themes/app_theme.dart';
 import 'services/sheets_service.dart';
+import 'services/tts_service.dart';
 
 // ▼▼▼ [추가] 새로운 서비스 import ▼▼▼
 import 'services/api_key_service.dart';
@@ -29,6 +30,7 @@ void main() async {
         Provider<DatabaseService>(create: (_) => DatabaseService()),
         Provider<TestSheetService>(create: (_) => TestSheetService()),
         Provider<ApiKeyService>(create: (_) => ApiKeyService()), // [추가] API 키 서비스
+        Provider<TtsService>(create: (_) => TtsService()),
         ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
         ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
 

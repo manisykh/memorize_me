@@ -23,19 +23,35 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
   final ScrollController _scrollController = ScrollController();
   late final TtsService _ttsService;
   bool _isExporting = false;
-
-  // ▼▼▼ [추가] PDF 제목과 옵션을 관리할 변수 ▼▼▼
   late final TextEditingController _pdfTitleController;
   PdfExportType _selectedPdfType = PdfExportType.withAnswers;
+
+  final List<dynamic> _flatQuestionList = [];
+  int _totalQuestionCount = 0;
 
   @override
   void initState() {
     super.initState();
     _ttsService = TtsService();
-    // PDF 제목 컨트롤러 초기화 (오늘 날짜를 포함한 기본값)
     _pdfTitleController = TextEditingController(
       text: 'AI 생성 퀴즈 - ${DateFormat('yyyy-MM-dd').format(DateTime.now())}',
     );
+    _flattenQuestions();
+    debugPrint(
+      '[AiQuizPlayerScreen] initState: 퀴즈 화면 시작. 원본 문제 수: ${widget.quizResponse.questions.length}',
+    );
+    debugPrint('[AiQuizPlayerScreen] initState: 채점용 1차원 리스트 생성 완료. 총 문제 수: $_totalQuestionCount');
+  }
+
+  void _flattenQuestions() {
+    for (var question in widget.quizResponse.questions) {
+      if (question.type == 'reading_section' && question.questions != null) {
+        _flatQuestionList.addAll(question.questions!);
+      } else {
+        _flatQuestionList.add(question);
+      }
+    }
+    _totalQuestionCount = _flatQuestionList.length;
   }
 
   @override
@@ -46,34 +62,36 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     super.dispose();
   }
 
-  // --- [수정] 오답노트 저장 로직 ---
   void _handleSubmit() async {
     int currentScore = 0;
     final List<Word> incorrectWords = [];
-    final wordbookName = context.read<WordbookManager>().activeWordbook?.name ?? 'AI Quiz';
+    final wordbookName = context.read<WordbookManager>().activeWordbook?.name ?? 'AI Quiz 오답노트';
 
-    for (int i = 0; i < widget.quizResponse.questions.length; i++) {
-      final question = widget.quizResponse.questions[i];
-      if (_userAnswers[i] == question.answer) {
+    for (int i = 0; i < _flatQuestionList.length; i++) {
+      final questionItem = _flatQuestionList[i];
+      final correctAnswer = questionItem.answer;
+      final userAnswer = _userAnswers[i];
+
+      if (userAnswer == correctAnswer) {
         currentScore++;
       } else {
         incorrectWords.add(
           Word(
-            word: question.question,
-            meaning: '[정답: ${question.answer}] [내 오답: ${_userAnswers[i] ?? '미입력'}]',
+            word: questionItem.question,
+            meaning: '[정답: $correctAnswer] [내 오답: ${userAnswer ?? '미입력'}]',
           ),
         );
       }
     }
 
-    if (incorrectWords.isNotEmpty) {
-      await context.read<WordbookManager>().addIncorrectWordsToNote(wordbookName, incorrectWords);
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('틀린 문제 ${incorrectWords.length}개가 오답노트에 추가되었습니다.')));
-      }
-    }
+    // if (incorrectWords.isNotEmpty) {
+    //   await context.read<WordbookManager>().addIncorrectWordsToNote(wordbookName, incorrectWords);
+    //   if (mounted) {
+    //     ScaffoldMessenger.of(
+    //       context,
+    //     ).showSnackBar(SnackBar(content: Text('틀린 문제 ${incorrectWords.length}개가 오답노트에 추가되었습니다.')));
+    //   }
+    // }
 
     setState(() {
       _score = currentScore;
@@ -87,11 +105,8 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     );
   }
 
-  // ▼▼▼ [추가] PDF 내보내기 옵션 다이얼로그를 띄우는 함수 ▼▼▼
   Future<void> _showPdfExportDialog() async {
-    // 다이얼로그가 닫히기 전까지 _selectedPdfType의 현재 상태를 임시 저장
     PdfExportType tempSelectedType = _selectedPdfType;
-
     await showDialog(
       context: context,
       builder: (context) {
@@ -126,10 +141,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
                 FilledButton(
                   onPressed: () {
-                    // 사용자가 최종 선택한 옵션을 실제 상태에 반영
-                    setState(() {
-                      _selectedPdfType = tempSelectedType;
-                    });
+                    setState(() => _selectedPdfType = tempSelectedType);
                     Navigator.pop(context);
                     _handlePdfExport();
                   },
@@ -143,7 +155,6 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     );
   }
 
-  // ▼▼▼ [수정] PDF 내보내기 로직 (다이얼로그의 선택값을 사용) ▼▼▼
   Future<void> _handlePdfExport() async {
     setState(() => _isExporting = true);
     try {
@@ -163,11 +174,36 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('[AiQuizPlayerScreen] build: build 메서드 실행.');
     final theme = Theme.of(context);
-    final totalQuestions = widget.quizResponse.questions.length;
+    final groupedQuestions = _groupQuestions();
 
+    List<Widget> allWidgets = [];
+    int globalQuestionIndex = 0;
+
+    debugPrint('[AiQuizPlayerScreen] build: 그룹화된 카테고리 수: ${groupedQuestions.length}');
+
+    groupedQuestions.forEach((category, questions) {
+      debugPrint('[AiQuizPlayerScreen] build: 카테고리 [$category] 처리 시작. 항목 수: ${questions.length}');
+      allWidgets.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 24.0, bottom: 8.0),
+          child: Text(_getCategoryTitle(category), style: theme.textTheme.headlineSmall),
+        ),
+      );
+      for (var question in questions) {
+        if (question.type == 'reading_section') {
+          allWidgets.add(_buildReadingSectionBlock(question, globalQuestionIndex, theme));
+          globalQuestionIndex += question.questions?.length ?? 0;
+        } else {
+          allWidgets.add(_buildQuestionBlock(question, globalQuestionIndex, theme));
+          globalQuestionIndex++;
+        }
+      }
+    });
+
+    allWidgets.add(_buildSubmitAndResultSection(theme, _totalQuestionCount));
     return Scaffold(
-      // ▼▼▼ [수정] AppBar에 PDF 내보내기 버튼 추가 ▼▼▼
       appBar: AppBar(
         title: const Text('AI 생성 퀴즈'),
         actions: [
@@ -186,27 +222,124 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: ListView.builder(
+      body: ListView(
         controller: _scrollController,
-        padding: const EdgeInsets.all(16.0),
-        itemCount: totalQuestions + 1,
-        itemBuilder: (context, index) {
-          if (index == totalQuestions) {
-            return _buildSubmitAndResultSection(theme, totalQuestions);
-          }
-          final question = widget.quizResponse.questions[index];
-          return _buildQuestionBlock(question, index, theme);
-        },
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: allWidgets,
       ),
     );
   }
 
-  // --- UI 빌더 헬퍼 함수들 ---
+  Map<String, List<AiQuestion>> _groupQuestions() {
+    const categoryOrder = ['vocabulary', 'grammar', 'reading_section', 'listening'];
+    final tempMap = <String, List<AiQuestion>>{};
+    for (var question in widget.quizResponse.questions) {
+      final type = question.type;
+      if (tempMap[type] == null) tempMap[type] = [];
+      tempMap[type]!.add(question);
+    }
+    return {
+      for (var key in categoryOrder)
+        if (tempMap.containsKey(key)) key: tempMap[key]!,
+    };
+  }
 
-  // 각 질문 단위를 만드는 함수
-  Widget _buildQuestionBlock(AiQuestion question, int index, ThemeData theme) {
+  Widget _buildCategoryBlock(String category, List<AiQuestion> items, ThemeData theme) {
+    int questionNumberOffset = 0;
+    for (String catKey in _groupQuestions().keys) {
+      if (catKey == category) break;
+      final prevItems = _groupQuestions()[catKey]!;
+      for (var item in prevItems) {
+        questionNumberOffset += (item.type == 'reading_section' ? item.questions?.length ?? 0 : 1);
+      }
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 24.0, bottom: 8.0, left: 8.0),
+          child: Text(_getCategoryTitle(category), style: theme.textTheme.headlineSmall),
+        ),
+        ...items.map((item) {
+          if (item.type == 'reading_section') {
+            final block = _buildReadingSectionBlock(item, questionNumberOffset, theme);
+            questionNumberOffset += item.questions?.length ?? 0;
+            return block;
+          } else {
+            final block = _buildQuestionBlock(item, questionNumberOffset, theme);
+            questionNumberOffset++;
+            return block;
+          }
+        }),
+      ],
+    );
+  }
+
+  Widget _buildReadingSectionBlock(
+    AiQuestion readingSection,
+    int questionStartIndex,
+    ThemeData theme,
+  ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 24.0),
+      margin: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (readingSection.passage != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _buildPassage(readingSection.passage!, theme),
+            ),
+          ...readingSection.questions!.asMap().entries.map((entry) {
+            int localIndex = entry.key;
+            AiReadingSubQuestion subQuestion = entry.value;
+            int currentQuestionIndex = questionStartIndex + localIndex;
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                localIndex == readingSection.questions!.length - 1 ? 16 : 0,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (localIndex > 0) const Divider(height: 32, thickness: 0.5),
+                  Text(
+                    '${currentQuestionIndex + 1}. ${subQuestion.question}',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 16),
+                  ...subQuestion.options.map((option) {
+                    return _buildOptionTile(
+                      optionText: option,
+                      questionIndex: currentQuestionIndex,
+                      correctAnswer: subQuestion.answer,
+                    );
+                  }),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuestionBlock(AiQuestion question, int questionIndex, ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.only(top: 16.0, bottom: 8.0),
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         color: theme.cardColor,
@@ -222,23 +355,17 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 독해 지문 또는 듣기 스크립트
-          if (question.passage != null) _buildPassage(question.passage!, theme),
           if (question.script != null) _buildScript(question.script!, theme),
-
-          // 질문
           Text(
-            '${index + 1}. ${question.question}',
-            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+            '${questionIndex + 1}. ${question.question!}',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
-
-          // 선택지 목록
-          ...question.options.map((option) {
+          ...question.options!.map((option) {
             return _buildOptionTile(
               optionText: option,
-              questionIndex: index,
-              correctAnswer: question.answer,
+              questionIndex: questionIndex,
+              correctAnswer: question.answer!,
             );
           }),
         ],
@@ -246,65 +373,68 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     );
   }
 
-  // 독해 지문 위젯
   Widget _buildPassage(String passage, ThemeData theme) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
+        color: theme.scaffoldBackgroundColor.withOpacity(0.5),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: theme.dividerColor),
       ),
-      child: Text(passage, style: theme.textTheme.bodyMedium),
+      child: Text(passage, style: theme.textTheme.bodyMedium?.copyWith(height: 1.5)),
     );
   }
 
-  // 듣기 스크립트 위젯
   Widget _buildScript(String script, ThemeData theme) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.dividerColor),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.volume_up),
-            onPressed: () => _ttsService.speak(script),
+            icon: const Icon(Icons.volume_up_rounded),
+            onPressed: () => _ttsService.speakDialogue(script),
             color: theme.primaryColor,
           ),
-          Expanded(
-            child: Text(
-              script,
-              style: theme.textTheme.bodyMedium,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+          if (!_isSubmitted)
+            Expanded(
+              child: Text(
+                script.replaceAll(RegExp(r'[^\[\]A-Z]'), ' '),
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
-          ),
+          // 제출 후에만 전체 스크립트 표시
+          if (_isSubmitted)
+            Expanded(
+              child: Text(
+                script.replaceAll(RegExp(r'\[.*?\]'), ' '),
+                style: theme.textTheme.bodyMedium,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
         ],
       ),
     );
   }
 
-  // 각 선택지를 만드는 함수 (HTML 템플릿의 스타일링 로직 반영)
   Widget _buildOptionTile({
     required String optionText,
     required int questionIndex,
     required String correctAnswer,
+    String? explanation, // 해설을 받을 수 있도록 파라미터 추가
   }) {
     final theme = Theme.of(context);
     final userAnswer = _userAnswers[questionIndex];
 
     Color? backgroundColor;
-    Color borderColor = theme.dividerColor;
+    Color borderColor = theme.dividerColor.withOpacity(0.5);
     bool isSelected = (userAnswer == optionText);
 
+    // 1. 상태에 따른 스타일 변경 로직
     if (_isSubmitted) {
       if (optionText == correctAnswer) {
         // 정답 선택지
@@ -321,111 +451,124 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
       borderColor = theme.primaryColor;
     }
 
-    return GestureDetector(
-      onTap:
-          _isSubmitted
-              ? null
-              : () {
-                setState(() {
-                  _userAnswers[questionIndex] = optionText;
-                });
-              },
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4.0),
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(8.0),
-          border: Border.all(
-            color: borderColor,
-            width: isSelected || (optionText == correctAnswer && _isSubmitted) ? 1.5 : 1.0,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-              color: isSelected ? theme.primaryColor : Colors.grey,
-              size: 20,
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: Text(optionText, style: theme.textTheme.bodyLarge)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // 결과 확인 버튼 및 결과 요약 섹션
-  Widget _buildSubmitAndResultSection(ThemeData theme, int totalQuestions) {
+    // 2. UI 위젯 반환
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 16),
-        if (!_isSubmitted)
-          SizedBox(
+        GestureDetector(
+          onTap:
+              _isSubmitted
+                  ? null // 제출 후에는 탭 비활성화
+                  : () => setState(() => _userAnswers[questionIndex] = optionText), // 사용자 답변 저장
+          child: Container(
             width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _handleSubmit,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: theme.primaryColor,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('결과 확인하기', style: TextStyle(fontSize: 18)),
-            ),
-          ),
-        if (_isSubmitted)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
+            margin: const EdgeInsets.symmetric(vertical: 4.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
             decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: theme.primaryColor),
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(8.0),
+              border: Border.all(
+                color: borderColor,
+                width: isSelected || (optionText == correctAnswer && _isSubmitted) ? 1.5 : 1.0,
+              ),
             ),
-            child: Column(
+            child: Text(optionText, style: theme.textTheme.bodyLarge),
+          ),
+        ),
+        // 3. 해설 표시 로직
+        // 제출 후, 정답인 선택지 아래에 해설(explanation)이 있으면 표시
+        if (_isSubmitted &&
+            optionText == correctAnswer &&
+            explanation != null &&
+            explanation.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0, left: 12.0, right: 12.0, bottom: 4.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('퀴즈 결과', style: theme.textTheme.headlineSmall),
-                const SizedBox(height: 16),
-                Text(
-                  '$_score / $totalQuestions',
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    color: theme.primaryColor,
-                    fontWeight: FontWeight.bold,
+                Text('💡', style: TextStyle(fontSize: 16)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    explanation,
+                    style: TextStyle(color: Colors.blueGrey.shade700, fontSize: 14),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _score == totalQuestions ? "🎉 완벽해요!" : "👏 수고하셨습니다!",
-                  style: theme.textTheme.bodyLarge,
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // [PDF 저장 기능] PDF 저장/공유 버튼 추가
-                    OutlinedButton.icon(
-                      icon:
-                          _isExporting
-                              ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                              : const Icon(Icons.share),
-                      label: const Text('결과 공유'),
-                      onPressed: _isExporting ? null : _handlePdfExport,
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('돌아가기'),
-                    ),
-                  ],
                 ),
               ],
             ),
           ),
       ],
     );
+  }
+
+  Widget _buildSubmitAndResultSection(ThemeData theme, int totalQuestions) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 32.0),
+      child:
+          _isSubmitted
+              ? Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.primaryColor),
+                ),
+                child: Column(
+                  children: [
+                    Text('퀴즈 결과', style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: 16),
+                    Text(
+                      '$_score / $totalQuestions',
+                      style: theme.textTheme.displaySmall?.copyWith(
+                        color: theme.primaryColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _score == totalQuestions
+                          ? "🎉 완벽해요! 모든 문제를 맞혔습니다!"
+                          : _score >= totalQuestions * 0.7
+                          ? "👍 아주 잘했어요!"
+                          : "👏 다음번엔 더 잘할 수 있을 거예요!",
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('돌아가기'),
+                    ),
+                  ],
+                ),
+              )
+              : SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _handleSubmit,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: theme.primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('결과 확인하기', style: TextStyle(fontSize: 18)),
+                ),
+              ),
+    );
+  }
+
+  String _getCategoryTitle(String categoryKey) {
+    switch (categoryKey) {
+      case 'vocabulary':
+        return 'Vocabulary (어휘)';
+      case 'grammar':
+        return 'Grammar (문법)';
+      case 'reading_section':
+        return 'Reading Comprehension (독해)';
+      case 'listening':
+        return 'Listening Comprehension (리스닝)';
+      default:
+        return 'Questions';
+    }
   }
 }

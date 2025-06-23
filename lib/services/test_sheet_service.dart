@@ -36,14 +36,11 @@ class TestSheetService {
   }
 
   List<Map<String, String>> _prepareTestData(List<Word> allWords, AppSettings settings) {
-    if (allWords.isEmpty) {
-      return [];
-    }
+    if (allWords.isEmpty) return [];
     final words = List<Word>.from(allWords)..shuffle();
     final wordCount = settings.wordCount.clamp(1, allWords.length);
     final sessionWords = words.take(wordCount).toList();
     final random = Random();
-
     List<Map<String, String>> testData = [];
     for (final word in sessionWords) {
       TestType currentType = settings.testType;
@@ -65,9 +62,7 @@ class TestSheetService {
     required bool share,
   }) async {
     final testData = _prepareTestData(allWords, settings);
-    if (testData.isEmpty) {
-      throw Exception("시험지를 생성할 단어가 없습니다.");
-    }
+    if (testData.isEmpty) throw Exception("시험지를 생성할 단어가 없습니다.");
 
     final font = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Regular.ttf"));
     final boldFont = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Bold.ttf"));
@@ -89,7 +84,6 @@ class TestSheetService {
         boldFont,
         isAnswerSheet: true,
       );
-
       final questionFileName = '$baseFileName.pdf';
       final answerFileName = '${baseFileName}_answers.pdf';
 
@@ -195,13 +189,9 @@ class TestSheetService {
 
   List<int>? _generateExcelBytes(List<Word> allWords, AppSettings settings) {
     final testData = _prepareTestData(allWords, settings);
-    if (testData.isEmpty) {
-      throw Exception("시험지를 생성할 단어가 없습니다.");
-    }
-
+    if (testData.isEmpty) throw Exception("시험지를 생성할 단어가 없습니다.");
     var excel = Excel.createExcel();
     CellStyle headerStyle = CellStyle(bold: true, horizontalAlign: HorizontalAlign.Center);
-
     if (settings.exportOption != ExportOption.answersOnly) {
       Sheet testSheet = excel['시험지'];
       testSheet.appendRow([TextCellValue('번호'), TextCellValue('문제'), TextCellValue('답란')]);
@@ -216,7 +206,6 @@ class TestSheetService {
       testSheet.setColumnWidth(1, 40);
       testSheet.setColumnWidth(2, 40);
     }
-
     if (settings.exportOption != ExportOption.testOnly) {
       Sheet answerSheet = excel['답안지'];
       answerSheet.appendRow([TextCellValue('번호'), TextCellValue('정답')]);
@@ -230,11 +219,8 @@ class TestSheetService {
       answerSheet.setColumnWidth(0, 5);
       answerSheet.setColumnWidth(1, 40);
     }
-
     excel.delete('Sheet1');
-    if (excel.sheets.keys.isNotEmpty) {
-      excel.setDefaultSheet(excel.sheets.keys.first);
-    }
+    if (excel.sheets.keys.isNotEmpty) excel.setDefaultSheet(excel.sheets.keys.first);
     return excel.save();
   }
 
@@ -264,7 +250,6 @@ class TestSheetService {
         boldFont,
         isAnswerSheet: true,
       );
-
       final questionFileName = '${title.replaceAll(' ', '_')}.pdf';
       final answerFileName = '${title.replaceAll(' ', '_')}_answers.pdf';
 
@@ -317,58 +302,145 @@ class TestSheetService {
   }
 
   pw.Widget _buildAiQuizPage(List<AiQuestion> questions, {required bool isAnswerSheet}) {
+    int questionCounter = 0;
     return pw.ListView.separated(
       itemCount: questions.length,
-      separatorBuilder: (context, index) => pw.Divider(height: 20),
+      separatorBuilder: (context, index) => pw.Divider(height: 20, color: PdfColors.grey400),
       itemBuilder: (context, index) {
         final q = questions[index];
-        return pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            if (q.passage != null)
-              pw.Container(
-                padding: const pw.EdgeInsets.all(10),
-                decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300)),
-                child: pw.Text(q.passage!),
-              ),
-            if (q.script != null)
-              pw.Text('듣기 지문: ${q.script!}', style: const pw.TextStyle(color: PdfColors.grey600)),
-            pw.SizedBox(height: 8),
-            pw.Text(
-              '${index + 1}. ${q.question}',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-            ),
-            pw.SizedBox(height: 8),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children:
-                  q.options.asMap().entries.map((entry) {
-                    final isCorrect = entry.value == q.answer;
-                    return pw.Row(
-                      children: [
-                        pw.Text('${entry.key + 1}) ${entry.value}'),
-                        if (isAnswerSheet && isCorrect)
-                          pw.Padding(
-                            padding: const pw.EdgeInsets.only(left: 8),
-                            child: pw.Text(
-                              '(정답)',
-                              style: pw.TextStyle(
-                                color: PdfColors.red,
-                                fontWeight: pw.FontWeight.bold,
+
+        // 1. 독해(reading_section) 유형 처리
+        if (q.type == 'reading_section') {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // 지문 표시
+              if (q.passage != null)
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(12),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  ),
+                  child: pw.Text(q.passage!),
+                ),
+              pw.SizedBox(height: 12),
+              // 지문에 딸린 하위 문제들 표시
+              ...?q.questions?.map((subQ) {
+                questionCounter++;
+                return pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      '$questionCounter. ${subQ.question}',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.SizedBox(height: 8),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children:
+                          subQ.options.asMap().entries.map((optEntry) {
+                            final isCorrect = optEntry.value == subQ.answer;
+                            return pw.Row(
+                              children: [
+                                pw.Text('${optEntry.key + 1}) ${optEntry.value}'),
+                                if (isAnswerSheet && isCorrect)
+                                  pw.Padding(
+                                    padding: const pw.EdgeInsets.only(left: 8),
+                                    child: pw.Text(
+                                      '(정답)',
+                                      style: pw.TextStyle(
+                                        color: PdfColors.red,
+                                        fontWeight: pw.FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          }).toList(),
+                    ),
+                    // 답안지이고 해설이 있을 경우에만 표시
+                    if (isAnswerSheet && subQ.explanation != null && subQ.explanation!.isNotEmpty)
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.only(top: 4, left: 12),
+                        child: pw.Text(
+                          '└ 해설: ${subQ.explanation}',
+                          style: const pw.TextStyle(color: PdfColors.blueGrey, fontSize: 9),
+                        ),
+                      ),
+                    if (!isAnswerSheet)
+                      pw.Container(
+                        padding: const pw.EdgeInsets.only(top: 8),
+                        child: pw.Text('정답: ________________'),
+                      ),
+                    pw.SizedBox(height: 12),
+                  ],
+                );
+              }),
+            ],
+          );
+        } else {
+          // 2. 그 외(어휘, 문법, 듣기) 유형 처리
+          questionCounter++;
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              if (q.script != null)
+                pw.Text('듣기 지문: ${q.script!}', style: const pw.TextStyle(color: PdfColors.grey600)),
+
+              if (q.question != null) ...[
+                pw.SizedBox(height: 8),
+                pw.Text(
+                  '$questionCounter. ${q.question!}',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
+              ],
+
+              if (q.options != null) ...[
+                pw.SizedBox(height: 8),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children:
+                      q.options!.asMap().entries.map((entry) {
+                        final isCorrect = entry.value == q.answer;
+                        return pw.Row(
+                          children: [
+                            pw.Text('${entry.key + 1}) ${entry.value}'),
+                            if (isAnswerSheet && isCorrect)
+                              pw.Padding(
+                                padding: const pw.EdgeInsets.only(left: 8),
+                                child: pw.Text(
+                                  '(정답)',
+                                  style: pw.TextStyle(
+                                    color: PdfColors.red,
+                                    fontWeight: pw.FontWeight.bold,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                      ],
-                    );
-                  }).toList(),
-            ),
-            if (!isAnswerSheet)
-              pw.Container(
-                padding: const pw.EdgeInsets.only(top: 8),
-                child: pw.Text('정답: ________________'),
-              ),
-          ],
-        );
+                          ],
+                        );
+                      }).toList(),
+                ),
+              ],
+
+              // 답안지이고 해설이 있을 경우에만 표시
+              if (isAnswerSheet && q.explanation != null && q.explanation!.isNotEmpty)
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(top: 4, left: 12),
+                  child: pw.Text(
+                    '└ 해설: ${q.explanation}',
+                    style: const pw.TextStyle(color: PdfColors.blueGrey, fontSize: 9),
+                  ),
+                ),
+
+              if (!isAnswerSheet && q.question != null)
+                pw.Container(
+                  padding: const pw.EdgeInsets.only(top: 8),
+                  child: pw.Text('정답: ________________'),
+                ),
+            ],
+          );
+        }
       },
     );
   }

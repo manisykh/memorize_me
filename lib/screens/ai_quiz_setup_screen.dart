@@ -32,6 +32,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   double _questionCount = 10.0;
   bool _isLoading = false;
   String? _errorMessage;
+  bool _includeExplanation = false;
 
   @override
   void initState() {
@@ -118,6 +119,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         quizType: _selectedQuizType,
         difficulty: difficultyText,
         questionCount: _questionCount.round(),
+        includeExplanation: _includeExplanation,
       );
 
       if (mounted) {
@@ -129,6 +131,16 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           setState(() => _errorMessage = 'AI가 문제를 생성하지 못했습니다. 다시 시도해주세요.');
         }
       }
+    } on CustomApiException catch (e) {
+      // ▼▼▼ [추가] 사용자 정의 예외 처리 ▼▼▼
+      if (e.code == 'server_overloaded') {
+        _errorMessage = 'AI 서버가 현재 바쁩니다. 잠시 후 다시 시도해주세요.';
+      } else if (e.code == 'quota_exceeded') {
+        _errorMessage = 'API 사용량 한도를 초과했습니다. 내일 다시 시도하거나 다른 엔진을 선택해주세요.';
+      } else {
+        _errorMessage = e.message;
+      }
+      setState(() {});
     } on Exception catch (e) {
       if (e.toString().contains('API 키가 등록되지 않았습니다')) {
         if (mounted) await _showApiKeyDialog(_selectedProvider);
@@ -305,6 +317,16 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                     ),
                   ],
                 ),
+              ),
+            ),
+            GlassmorphicCard(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: CheckboxListTile(
+                title: const Text('해설 포함하여 문제 생성'),
+                subtitle: const Text('API 사용량이 증가할 수 있습니다.'),
+                value: _includeExplanation,
+                onChanged: (val) => setState(() => _includeExplanation = val!),
+                activeColor: theme.primaryColor,
               ),
             ),
             const SizedBox(height: 24),

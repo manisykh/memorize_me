@@ -1,5 +1,3 @@
-// screens/home_screen.dart (수정 코드)
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -7,12 +5,11 @@ import 'package:provider/provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../widgets/gradient_background.dart';
 import 'flashcard_screen.dart';
-// import 'manage_words_screen.dart'; // 이 import는 더 이상 필요 없을 수 있습니다.
 import 'quiz_screen.dart';
 import 'settings_screen.dart';
+import 'ai_quiz_setup_screen.dart';
 import '../providers/theme_provider.dart';
 import '../themes/app_theme.dart';
-import 'ai_quiz_setup_screen.dart'; // ▼▼▼ [추가] 새로운 AI 퀴즈 설정 화면 import ▼▼▼
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,7 +24,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    // ▼▼▼ [수정] TabController의 길이를 3에서 4로 변경 ▼▼▼
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       FocusScope.of(context).unfocus();
@@ -66,24 +62,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             Tab(icon: Icon(CupertinoIcons.settings), text: '설정'),
             Tab(icon: Icon(CupertinoIcons.square_stack_3d_down_right), text: '플래시카드'),
             Tab(icon: Icon(CupertinoIcons.question_diamond), text: '퀴즈'),
-            // ▼▼▼ [추가] AI 학습 탭 추가 ▼▼▼
             Tab(icon: Icon(CupertinoIcons.sparkles), text: 'AI 학습'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        // ▼▼▼ [수정] TabBarView에 AiQuizSetupScreen 추가 ▼▼▼
-        children: const [
-          SettingsScreen(),
-          FlashcardScreen(),
-          QuizScreen(),
-          AiQuizSetupScreen(), // 새로 추가될 화면
-        ],
+        // ▼▼▼ [수정] children 목록 앞에서 const 키워드 제거 ▼▼▼
+        children: const [SettingsScreen(), FlashcardScreen(), QuizScreen(), AiQuizSetupScreen()],
       ),
     );
 
-    // ... (이하 나머지 코드는 기존과 동일)
     if (themeNotifier.currentTheme == AppThemeType.basic) {
       return GradientBackground(child: scaffold);
     } else {

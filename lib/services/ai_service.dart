@@ -1,5 +1,5 @@
-// lib/services/ai_service.dart (modelName 파라미터가 추가된 최종 코드)
-
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart' as gemini;
 import 'package:dart_openai/dart_openai.dart' as openai;
 
@@ -7,97 +7,127 @@ import '../models/word_model.dart';
 import '../models/ai_quiz_model.dart';
 import 'api_key_service.dart';
 
+// 사용자에게 보여줄 명확한 오류를 위한 사용자 정의 예외 클래스
+class CustomApiException implements Exception {
+  final String code;
+  final String message;
+  CustomApiException(this.code, this.message);
+  @override
+  String toString() => message;
+}
+
 class AiService {
   final ApiKeyService _apiKeyService;
-
   AiService(this._apiKeyService);
 
-  // ▼▼▼ [수정] generateQuiz 함수에 modelName 파라미터를 추가합니다. ▼▼▼
   Future<AiQuizResponse?> generateQuiz({
     required AiProvider provider,
-    required String modelName, // 이 파라미터를 받도록 수정
+    required String modelName,
     required List<Word> selectedWords,
     required String quizType,
     required String difficulty,
     required int questionCount,
+    required bool includeExplanation,
   }) async {
     final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
-      throw Exception('${provider.name} API 키가 등록되지 않았습니다.');
+      throw CustomApiException('api_key_missing', '${provider.name} API 키가 등록되지 않았습니다.');
     }
-
-    final prompt = _buildPrompt(selectedWords, quizType, difficulty, questionCount);
-
-    try {
-      if (provider == AiProvider.gemini) {
-        return await _generateWithGemini(apiKey, prompt, modelName);
-      } else {
-        return await _generateWithOpenAI(apiKey, prompt, modelName);
-      }
-    } catch (e) {
-      print('$provider AI 서비스 오류 발생: $e');
-      return null;
-    }
-  }
-
-  Future<AiQuizResponse> _generateWithGemini(String apiKey, String prompt, String modelName) async {
-    final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey); // 전달받은 modelName 사용
-    final response = await model.generateContent([gemini.Content.text(prompt)]);
-    return AiQuestion.parse(response.text!);
-  }
-
-  Future<AiQuizResponse> _generateWithOpenAI(String apiKey, String prompt, String modelName) async {
-    openai.OpenAI.apiKey = apiKey;
-    final chatCompletion = await openai.OpenAI.instance.chat.create(
-      model: modelName, // 전달받은 modelName 사용
-      messages: [
-        openai.OpenAIChatCompletionChoiceMessageModel(
-          role: openai.OpenAIChatMessageRole.system,
-          content: [
-            openai.OpenAIChatCompletionChoiceMessageContentItemModel.text(
-              "당신은 전문적인 영어 교육 콘텐츠 제작자입니다. 사용자의 요청에 따라 문제를 생성하고, 반드시 지정된 JSON 형식으로만 응답해야 합니다.",
-            ),
-          ],
-        ),
-        openai.OpenAIChatCompletionChoiceMessageModel(
-          role: openai.OpenAIChatMessageRole.user,
-          content: [openai.OpenAIChatCompletionChoiceMessageContentItemModel.text(prompt)],
-        ),
-      ],
-      responseFormat: {"type": "json_object"},
+    final prompt = _buildImprovedPrompt(
+      selectedWords,
+      quizType,
+      difficulty,
+      questionCount,
+      includeExplanation,
     );
-    final responseText = chatCompletion.choices.first.message.content?.first.text;
-    return AiQuestion.parse(responseText!);
+    try {
+      String? responseText;
+      if (provider == AiProvider.gemini) {
+        final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey);
+        final response = await model.generateContent([gemini.Content.text(prompt)]);
+        responseText = response.text;
+      } else {
+        // OpenAI 호출 로직...
+      }
+      if (responseText != null) {
+        final cleanedText = responseText.replaceAll('**', '');
+        return AiQuizResponse.parse(cleanedText);
+      }
+      return null;
+    } on Exception catch (e) {
+      debugPrint('$provider AI 서비스 오류 발생: $e');
+      if (e.toString().contains('overloaded') || e.toString().contains('503')) {
+        throw CustomApiException('server_overloaded', 'AI 서버가 현재 바쁩니다. 잠시 후 다시 시도해주세요.');
+      } else if (e.toString().contains('quota') || e.toString().contains('429')) {
+        throw CustomApiException(
+          'quota_exceeded',
+          'API 사용량 한도를 초과했습니다. 내일 다시 시도하거나 다른 AI 엔진을 선택해주세요.',
+        );
+      } else {
+        throw CustomApiException(
+          'unknown_error',
+          '알 수 없는 오류가 발생했습니다. 네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요.',
+        );
+      }
+    }
   }
 
-  String _buildPrompt(List<Word> words, String type, String difficulty, int count) {
+  String _buildImprovedPrompt(
+    List<Word> words,
+    String quizType,
+    String difficulty,
+    int count,
+    bool includeExplanation,
+  ) {
     final wordListString = words.map((w) => '"${w.word}":"${w.meaning}"').join(', ');
+    final areaInstruction =
+        (quizType != '종합')
+            ? "You MUST generate questions ONLY for the following area: `${quizType.toLowerCase().replaceAll(' ', '_')}`."
+            : "Generate a mix of questions from `vocabulary`, `grammar`, `reading_section`, `listening`.";
+
     return """
-      # 지시사항:
-      1.  **문제 생성**: 아래 제공된 단어 목록을 반드시 활용하여 문제를 만드세요.
-      2.  **출제 영역**: '${type.replaceAll("종합", "어휘, 문법, 독해, 듣기")}' 영역의 문제를 골고루 출제하세요.
-      3.  **난이도**: '$difficulty' 수준에 맞춰 문제를 출제하세요.
-      4.  **문제 수**: 총 '$count'개의 문제를 생성하세요.
-      5.  **독해/듣기**: '독해' 또는 '듣기' 유형의 문제를 만들 때는, 지문('passage')이나 스크립트('script')를 반드시 포함해야 합니다. 지문과 스크립트 안에는 주어진 단어들을 자연스럽게 녹여내세요.
-      6.  **선택지**: 모든 문제는 4개의 선택지를 가져야 하며, 정답은 그 중 하나여야 합니다.
-      7.  **응답 형식**: 결과는 반드시 아래에 명시된 JSON 형식으로만 응답해야 합니다. 다른 설명이나 응답은 절대 추가하지 마세요.
+      You are an expert English Language Test (like TOEIC) creator for Korean students.
+      Follow all instructions VERY STRICTLY.
 
-      # 제공된 단어 목록:
-      { $wordListString }
+      # MANDATORY RULES:
+      1.  **TOTAL ANSWERABLE QUESTIONS:** The total number of individual, answerable questions you generate MUST be EXACTLY `$count`. For a 'reading_section', its sub-questions count towards this total. Example: For a `$count` of 10, provide 7 normal questions and one 'reading_section' with 3 sub-questions.
+      2.  **QUESTION AREAS:** $areaInstruction
+      3.  **STRICTLY ENGLISH QUESTIONS:** ALL response fields (`type`, `passage`, `script`, `question`, `options`, `answer`) MUST be in ENGLISH.
+      4.  **EXPLANATION IN KOREAN:** If `include_explanation` is true, you MUST provide a brief, clear explanation for the correct answer in the `explanation` field. The explanation MUST be in KOREAN. If false, this field must be null.
+      5.  **NO MARKDOWN:** Do not use markdown like `**` in the output strings.
+      6.  **JSON ONLY:** Your output MUST be a single, valid JSON object.
 
-      # 필수 JSON 응답 형식:
+      # VOCABULARY LIST & FORMATTING INFO
+      - **Vocabulary List:** { $wordListString }
+      - **Include Explanation:** `$includeExplanation`
+      - **Difficulty:** '$difficulty'
+
+      # REQUIRED JSON RESPONSE FORMAT
       {
         "questions": [
           {
-            "type": "문제유형(vocabulary, grammar, reading, listening)",
-            "passage": "독해 문제일 경우에만 여기에 지문을 포함",
-            "script": "듣기 문제일 경우에 '듣기 평가용 스크립트'를 여기에 포함",
-            "question": "문제 내용",
-            "options": ["선택지 1", "선택지 2", "선택지 3", "선택지 4"],
-            "answer": "정답 내용(선택지 중 하나와 일치해야 함)"
+            "type": "vocabulary",
+            "question": "...",
+            "options": ["...", "...", "...", "..."],
+            "answer": "...",
+            "explanation": "이것이 정답인 이유에 대한 한글 설명입니다. (or null)"
+          },
+          {
+            "type": "reading_section",
+            "passage": "A SINGLE passage...",
+            "questions": [
+              {
+                "question": "Question 1...",
+                "options": ["...", "...", "...", "..."],
+                "answer": "...",
+                "explanation": "1번 문제에 대한 한글 해설입니다. (or null)"
+              }
+            ]
           }
         ]
       }
-      """;
+
+      **FINAL CHECK: Ensure total answerable questions are EXACTLY `$count` and follow all rules.**
+    """;
   }
 }
