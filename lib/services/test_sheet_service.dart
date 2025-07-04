@@ -158,17 +158,32 @@ class TestSheetService {
               ),
             ];
           } else {
+            // ▼▼▼ [수정] pw.Text를 pw.Row로 변경하여 정렬 문제 해결 ▼▼▼
             return [
               pw.ListView.separated(
                 itemCount: testData.length,
                 separatorBuilder: (context, index) => pw.SizedBox(height: 8),
                 itemBuilder: (context, index) {
-                  return pw.Text(
-                    '${index + 1}. ${testData[index]['question']}  →  _________________________',
+                  return pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      // 1. 문제 번호를 위한 고정 너비의 컨테이너
+                      pw.Container(
+                        width: 35, // 두 자릿수 번호도 충분히 들어갈 너비
+                        child: pw.Text('${index + 1}.'),
+                      ),
+                      // 2. 나머지 공간을 모두 차지하는 단어 부분
+                      pw.Expanded(
+                        child: pw.Text(
+                          '${testData[index]['question']}  →  _________________________',
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
             ];
+            // ▲▲▲ 수정 완료 ▲▲▲
           }
         },
       ),

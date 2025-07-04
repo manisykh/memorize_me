@@ -2,93 +2,96 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/theme_provider.dart';
+import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
+import '../themes/app_theme.dart';
 import '../widgets/gradient_background.dart';
+import '../widgets/learning_mode_card.dart';
+import 'ai_quiz_setup_screen.dart';
+import 'app_settings_screen.dart';
 import 'flashcard_screen.dart';
 import 'quiz_screen.dart';
-import 'settings_screen.dart';
-import 'ai_quiz_setup_screen.dart';
-import '../providers/theme_provider.dart';
-import '../themes/app_theme.dart';
+import 'wordbook_management_screen.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  int _currentTabIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-    _tabController.addListener(() {
-      FocusScope.of(context).unfocus();
-      if (_currentTabIndex != _tabController.index) {
-        setState(() {
-          _currentTabIndex = _tabController.index;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final activeWordbookName = context.watch<WordbookManager>().activeWordbook?.name ?? '단어장';
     final themeNotifier = context.watch<ThemeNotifier>();
+    final wordListNotifier = context.watch<WordListNotifier>();
 
-    final scaffold = Scaffold(
+    return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(activeWordbookName),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: theme.appBarTheme.foregroundColor,
-          unselectedLabelColor: theme.appBarTheme.foregroundColor?.withOpacity(0.7),
-          indicatorColor: theme.appBarTheme.foregroundColor,
-          tabs: const [
-            Tab(icon: Icon(CupertinoIcons.settings), text: '설정'),
-            Tab(icon: Icon(CupertinoIcons.square_stack_3d_down_right), text: '플래시카드'),
-            Tab(icon: Icon(CupertinoIcons.question_diamond), text: '퀴즈'),
-            Tab(icon: Icon(CupertinoIcons.sparkles), text: 'AI 학습'),
+        title: const Text('Memorize me with Juho'),
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: const Icon(CupertinoIcons.settings),
+            onPressed:
+                () => Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const AppSettingsScreen())),
+            tooltip: '앱 설정',
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            LearningModeCard(
+              heroTag: 'wordbook-hero',
+              title: '내 단어장',
+              subtitle: '단어 추가, 수정, 가져오기 및 병합',
+              icon: CupertinoIcons.book_fill,
+              onTap:
+                  () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => const WordbookManagementScreen())),
+            ),
+            const SizedBox(height: 16),
+            LearningModeCard(
+              heroTag: 'flashcards-hero',
+              title: '플래시카드',
+              subtitle: '복습할 단어: ${wordListNotifier.words.length}개',
+              icon: CupertinoIcons.square_stack_3d_down_right,
+              // ▼▼▼ [수정] 단순한 화면 이동 로직으로 복원합니다. ▼▼▼
+              onTap:
+                  () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => const FlashcardScreen())),
+            ),
+            const SizedBox(height: 16),
+            LearningModeCard(
+              heroTag: 'quiz-hero',
+              title: '셀프 테스트',
+              subtitle: '스펠링 퀴즈, 시험지 생성하기',
+              icon: CupertinoIcons.question_diamond,
+              // ▼▼▼ [수정] 단순한 화면 이동 로직으로 복원합니다. ▼▼▼
+              onTap:
+                  () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => const QuizScreen())),
+            ),
+            const SizedBox(height: 16),
+            LearningModeCard(
+              heroTag: 'ai-quiz-hero',
+              title: 'AI 학습',
+              subtitle: 'AI가 생성하는 맞춤형 문제 풀기',
+              icon: CupertinoIcons.sparkles,
+              // ▼▼▼ [수정] 단순한 화면 이동 로직으로 복원합니다. ▼▼▼
+              onTap:
+                  () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => const AiQuizSetupScreen())),
+            ),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        // ▼▼▼ [수정] children 목록 앞에서 const 키워드 제거 ▼▼▼
-        children: const [SettingsScreen(), FlashcardScreen(), QuizScreen(), AiQuizSetupScreen()],
-      ),
     );
-
-    if (themeNotifier.currentTheme == AppThemeType.basic) {
-      return GradientBackground(child: scaffold);
-    } else {
-      Color currentSepiaColor;
-      switch (themeNotifier.eyeCareLevel) {
-        case 2:
-          currentSepiaColor = AppTheme.backgroundSepiaLevel2;
-          break;
-        case 3:
-          currentSepiaColor = AppTheme.backgroundSepiaLevel3;
-          break;
-        case 1:
-        default:
-          currentSepiaColor = AppTheme.backgroundSepiaLevel1;
-      }
-      return Container(color: currentSepiaColor, child: scaffold);
-    }
   }
 }

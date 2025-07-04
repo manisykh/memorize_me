@@ -1,14 +1,33 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 
+// 백그라운드 Isolate에서 단어를 가져올 최상위 함수
+Future<List<Word>> _getAllWordsInBackground(Map<String, dynamic> params) async {
+  final String dbFileName = params['dbFileName'];
+  final RootIsolateToken rootIsolateToken = params['token'];
+
+  // 전달받은 토큰으로 백그라운드 스레드의 통신을 초기화합니다.
+  BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
+
+  Directory documentsDirectory = await getApplicationDocumentsDirectory();
+  String path = p.join(documentsDirectory.path, dbFileName);
+
+  final db = await openDatabase(path);
+  final List<Map<String, dynamic>> maps = await db.query('words', orderBy: 'id DESC');
+  await db.close();
+
+  return List.generate(maps.length, (i) => Word.fromMap(maps[i]));
+}
+
 class DatabaseService {
   Database? _metaDb;
 
-  // --- 메타 데이터베이스 (단어장 목록, 오답노트 등) ---
   Future<Database> get _metaDatabase async {
     if (_metaDb != null) return _metaDb!;
     _metaDb = await _initMetaDB();
@@ -50,13 +69,13 @@ class DatabaseService {
             'ALTER TABLE incorrect_words ADD COLUMN wordbookName TEXT DEFAULT "오답노트"',
           );
         } catch (e) {
+          // ignore: avoid_print
           print("Error adding column: $e");
         }
         break;
     }
   }
 
-  // --- 단어장 목록 관련 메서드 ---
   Future<List<Wordbook>> getWordbooks() async {
     final db = await _metaDatabase;
     final List<Map<String, dynamic>> maps = await db.query('wordbooks', orderBy: 'id DESC');
@@ -85,7 +104,6 @@ class DatabaseService {
     }
   }
 
-  // --- 오답노트 관련 메서드 ---
   Future<void> addIncorrectWords(String wordbookName, List<Word> words) async {
     if (words.isEmpty) return;
     final db = await _metaDatabase;
@@ -128,8 +146,6 @@ class DatabaseService {
     await db.delete('incorrect_words', where: 'wordbookName = ?', whereArgs: [wordbookName]);
   }
 
-  // --- 개별 단어장 DB 접근 메서드 (구조 개선) ---
-
   Future<Database> _openWordDB(String dbFileName) async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, dbFileName);
@@ -145,10 +161,19 @@ class DatabaseService {
   }
 
   Future<List<Word>> getAllWords(String dbFileName) async {
-    final db = await _openWordDB(dbFileName);
-    final List<Map<String, dynamic>> maps = await db.query('words', orderBy: 'id DESC');
-    await db.close();
-    return List.generate(maps.length, (i) => Word.fromMap(maps[i]));
+    final token = RootIsolateToken.instance;
+    if (token == null) {
+      // This is a fallback for rare cases where the token might not be available.
+      // It runs the operation on the main thread, which could cause a freeze,
+      // but prevents a crash.
+      return _getAllWordsInBackground({
+        'dbFileName': dbFileName,
+        'token': RootIsolateToken.instance,
+      });
+    }
+
+    final params = {'dbFileName': dbFileName, 'token': token};
+    return compute(_getAllWordsInBackground, params);
   }
 
   Future<void> addWord(String dbFileName, Word word) async {
@@ -163,7 +188,6 @@ class DatabaseService {
     await db.transaction((txn) async {
       final batch = txn.batch();
       for (final word in words) {
-        // toMap() 대신 toMapForInsert()를 사용하여 id를 제외하고 insert
         batch.insert('words', word.toMapForInsert(), conflictAlgorithm: ConflictAlgorithm.replace);
       }
       await batch.commit(noResult: true);

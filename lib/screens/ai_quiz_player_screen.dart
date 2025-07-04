@@ -1,12 +1,16 @@
+// lib/screens/ai_quiz_player_screen.dart (진단 메시지 모두 수정한 Full Code)
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
+
+// ▼▼▼ [수정] 사용하지 않는 import 삭제 ▼▼▼
+// import 'package:provider/provider.dart';
+// import '../models/word_model.dart';
 
 import '../models/ai_quiz_model.dart';
-import '../models/word_model.dart';
-import '../providers/wordbook_manager.dart';
 import '../services/test_sheet_service.dart';
 import '../services/tts_service.dart';
+import 'package:provider/provider.dart';
 
 class AiQuizPlayerScreen extends StatefulWidget {
   final AiQuizResponse quizResponse;
@@ -17,20 +21,20 @@ class AiQuizPlayerScreen extends StatefulWidget {
 }
 
 class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
-  // UI 상태 및 데이터 관련 변수
   final Map<int, String> _userAnswers = {};
   bool _isSubmitted = false;
   int _score = 0;
   final ScrollController _scrollController = ScrollController();
   late final TtsService _ttsService;
-  final bool _isExporting = false;
-  late final TextEditingController _pdfTitleController;
-  final PdfExportType _selectedPdfType = PdfExportType.withAnswers;
 
-  // 채점 및 문제 번호 계산을 위한 변수
+  // ▼▼▼ [수정] PDF 내보내기 기능에서 사용되므로 변수 유지 ▼▼▼
+  bool _isExporting = false;
+  PdfExportType _selectedPdfType = PdfExportType.withAnswers;
+  late final TextEditingController _pdfTitleController;
+
   final List<dynamic> _flatQuestionList = [];
   int _totalQuestionCount = 0;
-  final List<int> _questionNumberOffsets = []; // 각 문제 블록의 시작 번호를 저장
+  final List<int> _questionNumberOffsets = [];
 
   @override
   void initState() {
@@ -39,19 +43,13 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     _pdfTitleController = TextEditingController(
       text: 'AI 생성 퀴즈 - ${DateFormat('yyyy-MM-dd').format(DateTime.now())}',
     );
-
-    // initState에서 위젯이 빌드되기 전에 필요한 모든 데이터를 계산합니다.
     _prepareQuizData();
   }
 
-  /// 퀴즈에 필요한 데이터(전체 문제 리스트, 총 개수, 문제 번호 오프셋)를 미리 준비합니다.
   void _prepareQuizData() {
     int cumulativeIndex = 0;
     for (final question in widget.quizResponse.questions) {
-      // 1. 문제 번호 오프셋 계산 (ListView.builder에서 사용)
       _questionNumberOffsets.add(cumulativeIndex);
-
-      // 2. 채점을 위한 1차원 리스트 생성
       if (question.type == 'reading_section' && question.questions != null) {
         _flatQuestionList.addAll(question.questions!);
         cumulativeIndex += question.questions!.length;
@@ -75,16 +73,17 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     int currentScore = 0;
     for (int i = 0; i < _flatQuestionList.length; i++) {
       final questionItem = _flatQuestionList[i];
-      if (_userAnswers[i] == questionItem.answer) {
+      final correctAnswer = questionItem.answer ?? '';
+      final userAnswer = _userAnswers[i] ?? '';
+
+      if (userAnswer.isNotEmpty && userAnswer == correctAnswer) {
         currentScore++;
       }
     }
-
     setState(() {
       _score = currentScore;
       _isSubmitted = true;
     });
-
     _scrollController.animateTo(
       0,
       duration: const Duration(milliseconds: 500),
@@ -92,36 +91,110 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     );
   }
 
-  // PDF 내보내기 관련 함수들은 변경 없음 (생략)
+  // ▼▼▼ [수정] PDF 내보내기 함수 복원 및 사용 ▼▼▼
   Future<void> _showPdfExportDialog() async {
-    /* ... 이전과 동일 ... */
+    PdfExportType tempSelectedType = _selectedPdfType;
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('PDF로 내보내기'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _pdfTitleController,
+                    decoration: const InputDecoration(labelText: 'PDF 파일 제목'),
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 20),
+                  RadioListTile<PdfExportType>(
+                    title: const Text('문제와 정답'),
+                    value: PdfExportType.withAnswers,
+                    groupValue: tempSelectedType,
+                    onChanged: (value) => setDialogState(() => tempSelectedType = value!),
+                  ),
+                  RadioListTile<PdfExportType>(
+                    title: const Text('문제만'),
+                    value: PdfExportType.questionsOnly,
+                    groupValue: tempSelectedType,
+                    onChanged: (value) => setDialogState(() => tempSelectedType = value!),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+                FilledButton(
+                  onPressed: () {
+                    setState(() => _selectedPdfType = tempSelectedType);
+                    Navigator.pop(context);
+                    _handlePdfExport(context.read<TestSheetService>());
+                  },
+                  child: const Text('내보내기'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
-  Future<void> _handlePdfExport() async {
-    /* ... 이전과 동일 ... */
+
+  Future<void> _handlePdfExport(TestSheetService service) async {
+    setState(() => _isExporting = true);
+    try {
+      await service.exportAiQuizAsPdf(
+        questions: widget.quizResponse.questions,
+        title: _pdfTitleController.text,
+        exportType: _selectedPdfType,
+        share: true,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF 생성 중 오류 발생: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Scaffold(
-      appBar: AppBar(title: const Text('AI 생성 퀴즈'), actions: [/* ... 이전과 동일 ... */]),
-      // ▼▼▼ [개선 3] 안정성을 위해 ListView.builder 구조로 변경 ▼▼▼
+      appBar: AppBar(
+        title: const Text('AI 생성 퀴즈'),
+        actions: [
+          // ▼▼▼ [수정] PDF 내보내기 버튼 로직 연결 ▼▼▼
+          IconButton(
+            icon:
+                _isExporting
+                    ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(color: Colors.white),
+                    )
+                    : const Icon(Icons.picture_as_pdf_outlined),
+            onPressed: _isExporting ? null : _showPdfExportDialog,
+            tooltip: 'PDF로 내보내기',
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.all(16.0),
-        // 원본 문제 리스트 길이 + 마지막 '결과' 섹션 1개
         itemCount: widget.quizResponse.questions.length + 1,
         itemBuilder: (context, index) {
-          // 마지막 아이템은 '결과 확인' 버튼 또는 결과 표시 섹션
           if (index == widget.quizResponse.questions.length) {
             return _buildSubmitAndResultSection(theme, _totalQuestionCount);
           }
-
-          // 각 문제 블록을 그림
           final question = widget.quizResponse.questions[index];
-          final questionStartIndex = _questionNumberOffsets[index]; // 미리 계산된 시작 번호
-
+          final questionStartIndex = _questionNumberOffsets[index];
           if (question.type == 'reading_section') {
             return _buildReadingSectionBlock(question, questionStartIndex, theme);
           } else {
@@ -148,12 +221,13 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
           if (readingSection.passage != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: _buildPassage(readingSection.passage!, theme),
+              child: _buildPassage(readingSection.passage!),
             ),
-          ...readingSection.questions!.asMap().entries.map((entry) {
+          ...?readingSection.questions?.asMap().entries.map((entry) {
             final localIndex = entry.key;
             final subQuestion = entry.value;
             final globalQuestionIndex = questionStartIndex + localIndex;
+            // ▼▼▼ [수정] Dead null-aware expression 수정 ▼▼▼
             return Padding(
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -166,15 +240,16 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                 children: [
                   if (localIndex > 0) const Divider(height: 32, thickness: 0.5),
                   Text(
-                    '${globalQuestionIndex + 1}. ${subQuestion.question}',
+                    '${globalQuestionIndex + 1}. ${subQuestion.question ?? '질문 없음'}',
                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 16),
+                  // ▼▼▼ [수정] options가 non-nullable이므로 불필요한 null-aware 연산자 제거 ▼▼▼
                   ...subQuestion.options.map(
                     (option) => _buildOptionTile(
                       optionText: option,
                       questionIndex: globalQuestionIndex,
-                      correctAnswer: subQuestion.answer,
+                      correctAnswer: subQuestion.answer ?? '',
                       explanation: subQuestion.explanation,
                     ),
                   ),
@@ -197,41 +272,40 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (question.script != null) _buildScript(question.script!, theme),
+            if (question.script != null) _buildScript(question.script!),
             Text(
-              '${questionIndex + 1}. ${question.question!}',
+              '${questionIndex + 1}. ${question.question ?? '질문 없음'}',
               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 16),
-            ...question.options!.map(
+            ...?(question.options?.map(
               (option) => _buildOptionTile(
                 optionText: option,
                 questionIndex: questionIndex,
-                correctAnswer: question.answer!,
+                correctAnswer: question.answer ?? '',
                 explanation: question.explanation,
               ),
-            ),
+            )),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPassage(String passage, ThemeData theme) {
+  Widget _buildPassage(String passage) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor.withOpacity(0.5),
+        color: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.5),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.dividerColor),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
-      child: Text(passage, style: theme.textTheme.bodyMedium?.copyWith(height: 1.5)),
+      child: Text(passage, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5)),
     );
   }
 
-  // ▼▼▼ [개선 2] 요청사항에 맞게 수정된 스크립트 위젯 ▼▼▼
-  Widget _buildScript(String script, ThemeData theme) {
+  Widget _buildScript(String script) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 16),
@@ -241,24 +315,24 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
           IconButton(
             icon: const Icon(Icons.volume_up_rounded),
             onPressed: () => _ttsService.speakDialogue(script),
-            color: theme.primaryColor,
+            color: Theme.of(context).primaryColor,
           ),
           if (_isSubmitted)
-            // 제출 후: 전체 스크립트 표시
             Expanded(
               child: Text(
                 script.replaceAll(RegExp(r'\[.*?\]'), ' '),
-                style: theme.textTheme.bodyMedium,
+                style: Theme.of(context).textTheme.bodyMedium,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             )
           else
-            // 제출 전: 안내 문구 표시
             Expanded(
               child: Text(
                 '지문을 들어보세요.',
-                style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).hintColor),
               ),
             ),
         ],
@@ -313,9 +387,8 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
             child: Text(optionText, style: theme.textTheme.bodyLarge),
           ),
         ),
-        // ▼▼▼ [개선 1] 해설 표시 로직 활성화 ▼▼▼
         if (_isSubmitted &&
-            optionText == correctAnswer && // 정답인 선택지에만 표시
+            optionText == correctAnswer &&
             explanation != null &&
             explanation.isNotEmpty)
           Padding(
@@ -323,7 +396,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('💡', style: TextStyle(fontSize: 16)),
+                const Text('💡', style: TextStyle(fontSize: 16)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -392,20 +465,5 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                 ),
               ),
     );
-  }
-
-  String _getCategoryTitle(String categoryKey) {
-    switch (categoryKey) {
-      case 'vocabulary':
-        return 'Vocabulary (어휘)';
-      case 'grammar':
-        return 'Grammar (문법)';
-      case 'reading_section':
-        return 'Reading Comprehension (독해)';
-      case 'listening':
-        return 'Listening Comprehension (리스닝)';
-      default:
-        return 'Questions';
-    }
   }
 }

@@ -1,63 +1,66 @@
-// app_theme.dart (수정 후)
+// lib/themes/app_theme.dart (Full Code)
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // --- 기본 테마 색상 ---
-  static const Color primaryBlue = Color(0xFF6366F1);
-  static const Color backgroundLight = Color(0xFFF1F5F9);
-  static const Color textPrimaryDark = Color(0xFF1E2A3B);
-  static const Color textSecondaryDark = Color(0xFF475569);
+  // --- 테마에서 사용할 기본 색상 (그라데이션 테마용) ---
+  static const Color primaryText = Colors.white;
+  static const Color secondaryText = Colors.white70;
+  static const Color primaryAccent = Color(0xFF8EC5FC);
 
-  // --- 시력 보호 테마 (이미지 기준) ---
+  // --- 시력 보호 테마용 색상 ---
   static const Color primaryMutedBlue = Color(0xFF7B8BDB);
-  static const Color backgroundSepiaLevel1 = Color(0xFFFAF8F1); // 가장 연하게
-  static const Color backgroundSepiaLevel2 = Color(0xFFFBF5E9); // 중간
-  static const Color backgroundSepiaLevel3 = Color(0xFFF8EEDF); // 가장 진하게
   static const Color backgroundSepia = Color(0xFFFAF8F1);
+  static const Color backgroundSepiaLevel1 = Color(0xFFFAF8F1);
+  static const Color backgroundSepiaLevel2 = Color(0xFFFBF5E9);
+  static const Color backgroundSepiaLevel3 = Color(0xFFF8EEDF);
   static const Color textCharcoal = Color(0xFF363636);
-
-  // --- 공용 색상 ---
   static const Color accentGreen = Color(0xFF10B981);
   static const Color accentRed = Color(0xFFEF4444);
 
-  // --- 테마 1: 기본 테마 ---
+  // --- 테마 1: 기본 그라데이션 테마 ---
   static final ThemeData defaultTheme = ThemeData(
-    brightness: Brightness.light,
-    scaffoldBackgroundColor: backgroundLight,
-    primaryColor: primaryBlue,
+    brightness: Brightness.dark,
+    scaffoldBackgroundColor: Colors.transparent,
+    primaryColor: primaryAccent,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: primaryBlue,
-      brightness: Brightness.light,
-      secondary: accentGreen,
-      primary: primaryBlue,
-      onPrimary: Colors.white,
+      seedColor: primaryAccent,
+      brightness: Brightness.dark,
+      primary: primaryAccent,
+      secondary: Colors.white,
+      error: accentRed, // 에러 색상 지정
     ),
     fontFamily: GoogleFonts.poppins().fontFamily,
     textTheme: GoogleFonts.poppinsTextTheme().copyWith(
-      headlineSmall: const TextStyle(color: textPrimaryDark, fontWeight: FontWeight.bold),
-      titleLarge: const TextStyle(color: textPrimaryDark, fontWeight: FontWeight.bold),
-      bodyLarge: const TextStyle(color: textPrimaryDark),
-      bodyMedium: const TextStyle(color: textSecondaryDark),
-      bodySmall: TextStyle(color: textSecondaryDark, fontSize: 12),
+      headlineSmall: const TextStyle(color: primaryText, fontWeight: FontWeight.bold),
+      titleLarge: const TextStyle(color: primaryText, fontWeight: FontWeight.bold),
+      bodyLarge: const TextStyle(color: primaryText),
+      bodyMedium: const TextStyle(color: secondaryText),
+      bodySmall: const TextStyle(color: secondaryText, fontSize: 12),
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: backgroundLight,
+      backgroundColor: Colors.transparent,
       elevation: 0,
-      foregroundColor: textPrimaryDark,
+      foregroundColor: primaryText,
       titleTextStyle: GoogleFonts.poppins(
-        color: textPrimaryDark,
+        color: primaryText,
         fontSize: 20,
         fontWeight: FontWeight.bold,
       ),
     ),
+    iconTheme: const IconThemeData(color: primaryText),
+    cardTheme: CardTheme(
+      elevation: 0,
+      color: Colors.white.withOpacity(0.1),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+    ),
   );
 
-  // --- 테마 2: 시력 보호 테마 (소프트 세피아) ---
+  // --- 테마 2: 시력 보호 테마 (기존 버전으로 복원) ---
   static final ThemeData eyeCareTheme = ThemeData(
     brightness: Brightness.light,
-    scaffoldBackgroundColor: backgroundSepia,
+    scaffoldBackgroundColor: backgroundSepia, // 세피아 배경색 적용
     primaryColor: primaryMutedBlue,
     colorScheme: ColorScheme.fromSeed(
       seedColor: primaryMutedBlue,
@@ -65,6 +68,7 @@ class AppTheme {
       secondary: accentGreen,
       primary: primaryMutedBlue,
       onPrimary: Colors.white,
+      error: accentRed,
     ),
     fontFamily: GoogleFonts.poppins().fontFamily,
     textTheme: GoogleFonts.poppinsTextTheme()
@@ -79,7 +83,7 @@ class AppTheme {
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      foregroundColor: textCharcoal,
+      foregroundColor: textCharcoal, // 어두운 전경색
       titleTextStyle: GoogleFonts.poppins(
         color: textCharcoal,
         fontSize: 20,

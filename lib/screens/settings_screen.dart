@@ -12,7 +12,6 @@ import '../providers/theme_provider.dart';
 import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/test_sheet_service.dart';
-import '../themes/app_theme.dart';
 import '../widgets/glassmorphic_card.dart';
 import 'manage_words_screen.dart';
 import 'merge_wordbooks_screen.dart';
@@ -47,52 +46,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('계정 및 단어장 관리', style: theme.textTheme.headlineSmall),
-            const SizedBox(height: 16),
-            _buildAuthSection(context),
-            const SizedBox(height: 24),
-            Text('내 단어장', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 10),
-            _buildWordbookList(context),
-            const SizedBox(height: 24),
-            Text('학습 및 시험지 만들기', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 16),
-            GlassmorphicCard(child: _buildSettingsAndExportSection(context)),
-            const SizedBox(height: 24),
-            Text('테마 설정', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 16),
-            _buildThemeSettingsSection(context),
-            const SizedBox(height: 24),
-            Text('듣기 평가 설정', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 16),
-            GlassmorphicCard(
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
-                leading: const Icon(CupertinoIcons.speaker_2_fill),
-                title: const Text('TTS 목소리 설정'),
-                trailing: const Icon(CupertinoIcons.right_chevron),
-                onTap: () {
-                  Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => const TtsSettingsScreen()));
-                },
-              ),
+    return Hero(
+      tag: 'settings-hero',
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('단어장 및 설정'),
+          automaticallyImplyLeading: true, // 뒤로가기 버튼 표시
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('계정 및 단어장 관리', style: theme.textTheme.headlineSmall),
+                const SizedBox(height: 16),
+                _buildAuthSection(context),
+                const SizedBox(height: 24),
+                Text('내 단어장', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 10),
+                _buildWordbookList(context),
+                const SizedBox(height: 24),
+                Text('학습 및 시험지 만들기', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 16),
+                GlassmorphicCard(child: _buildSettingsAndExportSection(context)),
+                const SizedBox(height: 24),
+                Text('테마 설정', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 16),
+                _buildThemeSettingsSection(context),
+                const SizedBox(height: 24),
+                Text('듣기 평가 설정', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 16),
+                GlassmorphicCard(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    leading: const Icon(CupertinoIcons.speaker_2_fill),
+                    title: const Text('TTS 목소리 설정'),
+                    trailing: const Icon(CupertinoIcons.right_chevron),
+                    onTap: () {
+                      Navigator.of(
+                        context,
+                      ).push(MaterialPageRoute(builder: (_) => const TtsSettingsScreen()));
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  // --- 이하 모든 헬퍼 함수들 ---
-
+  // 이하 모든 헬퍼 함수들은 기존과 동일합니다.
+  // ... (기존 _showWordTestPdfExportDialog, _handleExport 등 모든 함수 유지)
   Future<void> _showWordTestPdfExportDialog({required bool share}) async {
     _pdfTitleController.text = '단어 시험지 - ${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
     await showDialog(

@@ -80,54 +80,128 @@ class AiService {
     bool includeExplanation,
   ) {
     final wordListString = words.map((w) => '"${w.word}":"${w.meaning}"').join(', ');
-    final areaInstruction =
-        (quizType != '종합')
-            ? "You MUST generate questions ONLY for the following area: `${quizType.toLowerCase().replaceAll(' ', '_')}`."
-            : "Generate a mix of questions from `vocabulary`, `grammar`, `reading_section`, `listening`.";
 
+    // 1. 난이도 정의 (기존과 동일)
+    String difficultyDescription;
+    switch (difficulty) {
+      case '쉬움':
+        difficultyDescription =
+            "Elementary and Middle school level. Use basic vocabulary and simple sentence structures.";
+        break;
+      case '어려움':
+        difficultyDescription =
+            "Advanced level, including High school, TOEIC, TOEFL, and SAT vocabulary. Use complex sentences and nuanced contexts.";
+        break;
+      case '보통':
+      default:
+        difficultyDescription =
+            "Intermediate level, including Elementary, Middle, and High school vocabulary. Standard sentence structures.";
+    }
+
+    // 2. 어휘 문제 유형 상세 지침 (수정됨)
+    const vocabularyInstructions = """
+  **Area Specific Instructions for 'vocabulary' questions:**
+  You MUST generate a diverse mix of the following sub-types. The `sub_type` field is MANDATORY.
+
+  - **`sentence_completion`**: The `question` field itself MUST be a complete sentence containing a blank (e.g., '______'). The user must choose the word that best fills this blank.
+    - *Example Question*: "The new policy is expected to ______ significant changes across the company."
+  
+  - **`definition_matching`**: The question is a definition, and the options are words.
+    - *Example Question*: "The act of formally giving up a position or a right."
+  
+  - **`synonym_antonym`**: Ask for a synonym or an antonym of a given word.
+    - *Example Question*: "Which word is an antonym for 'transient'?"
+
+  - **`word_form`**: Provide a sentence with a blank. The options MUST be different forms of the same root word.
+    - *Example Question*: "Her ______ to the team was invaluable."
+    - *Example Options*: ["contribute", "contribution", "contributor", "contributing"]
+
+  - **`categorization`**: Ask the user to identify which word belongs to a specific category.
+    - *Example Question*: "Which of the following words is a type of vehicle?"
+
+  - **`confusing_words`**: Provide a sentence that tests the ability to distinguish between commonly confused words.
+    - *Example Question*: "Please ______ this gift as a token of our appreciation."
+    - *Example Options*: ["accept", "except", "aspect", "expect"]
+  """;
+
+    // 3. ▼▼▼ [신규] 독해 문제 유형 상세 지침 ▼▼▼
+    const readingInstructions = """
+  **Area Specific Instructions for 'reading' questions:**
+  You MUST generate a diverse mix of the following sub-types. The `type` MUST be "reading_section".
+
+  1.  **sub_type: `standard_comprehension`**
+      - **Description:** Provide a longer passage (1-3 paragraphs). Then, provide MULTIPLE questions that test the user's overall understanding of the passage (e.g., main idea, specific details, author's intent).
+      - **JSON Structure:** The `passage` field contains the long text, and the `questions` field is a LIST of 2 or more sub-question objects.
+
+  2.  **sub_type: `contextual_inference`**
+      - **Description:** Provide a SHORT passage (1-2 sentences). Then, provide ONLY ONE question that asks for the meaning of a specific word as it is used within that short passage.
+      - **JSON Structure:** The `passage` field contains the short text, and the `questions` field is a LIST containing EXACTLY ONE sub-question object.
+  """;
+
+    // 4. 영역별 지시사항 동적 설정
+    String areaInstruction;
+    if (quizType == '어휘') {
+      areaInstruction = vocabularyInstructions;
+    } else if (quizType == '독해') {
+      areaInstruction = readingInstructions;
+    } else if (quizType != '종합') {
+      areaInstruction =
+          "You MUST generate questions ONLY for the following area: `${quizType.toLowerCase().replaceAll(' ', '_')}`.";
+    } else {
+      areaInstruction =
+          "Generate a mix of questions from `vocabulary`, `grammar`, `reading_section`, and `listening`. For `vocabulary` and `reading` questions, follow their specific instructions if applicable.";
+    }
+
+    // 5. 최종 프롬프트 조합
     return """
-      You are an expert English Language Test (like TOEIC) creator for Korean students.
-      Follow all instructions VERY STRICTLY.
+    You are an expert English Language Test creator for Korean students.
+    Your task is to create a quiz based on the provided word list and instructions.
+    Follow all rules VERY STRICTLY.
 
-      # MANDATORY RULES:
-      1.  **TOTAL ANSWERABLE QUESTIONS:** The total number of individual, answerable questions you generate MUST be EXACTLY `$count`. For a 'reading_section', its sub-questions count towards this total. Example: For a `$count` of 10, provide 7 normal questions and one 'reading_section' with 3 sub-questions.
-      2.  **QUESTION AREAS:** $areaInstruction
-      3.  **STRICTLY ENGLISH QUESTIONS:** ALL response fields (`type`, `passage`, `script`, `question`, `options`, `answer`) MUST be in ENGLISH.
-      4.  **EXPLANATION IN KOREAN:** If `include_explanation` is true, you MUST provide a brief, clear explanation for the correct answer in the `explanation` field. The explanation MUST be in KOREAN. If false, this field must be null.
-      5.  **NO MARKDOWN:** Do not use markdown like `**` in the output strings.
-      6.  **JSON ONLY:** Your output MUST be a single, valid JSON object.
+    # 1. MANDATORY RULES
+    - The total number of answerable questions MUST be EXACTLY `$count`. For types like `reading_section`, its sub-questions count towards this total.
+    - All text in the JSON fields MUST be in ENGLISH, except for the `explanation` field, which MUST be in KOREAN.
+    - Do not use any markdown like `**` in the JSON output.
+    - The correct answer MUST be clearly distinguishable from the incorrect options.
+    - You can use other words to create questions, but the user-selected words from the `Vocabulary List` MUST be included in the quiz, either as a question target or as one of the options.
 
-      # VOCABULARY LIST & FORMATTING INFO
-      - **Vocabulary List:** { $wordListString }
-      - **Include Explanation:** `$includeExplanation`
-      - **Difficulty:** '$difficulty'
+    # 2. QUIZ CONFIGURATION
+    - **Vocabulary List:** { $wordListString }
+    - **Target Difficulty:** $difficulty. ($difficultyDescription)
+    - **Include Explanation in Korean:** `$includeExplanation`
 
-      # REQUIRED JSON RESPONSE FORMAT
-      {
-        "questions": [
-          {
-            "type": "vocabulary",
-            "question": "...",
-            "options": ["...", "...", "...", "..."],
-            "answer": "...",
-            "explanation": "이것이 정답인 이유에 대한 한글 설명입니다. (or null)"
-          },
-          {
-            "type": "reading_section",
-            "passage": "A SINGLE passage...",
-            "questions": [
-              {
-                "question": "Question 1...",
-                "options": ["...", "...", "...", "..."],
-                "answer": "...",
-                "explanation": "1번 문제에 대한 한글 해설입니다. (or null)"
-              }
-            ]
-          }
-        ]
-      }
+    # 3. QUESTION AREA & TYPE INSTRUCTIONS
+    $areaInstruction
 
-      **FINAL CHECK: Ensure total answerable questions are EXACTLY `$count` and follow all rules.**
-    """;
+    # 4. REQUIRED JSON RESPONSE FORMAT
+    Your output MUST be a single, valid JSON object. For vocabulary questions, `sub_type` in each question object is mandatory. For reading questions, `sub_type` in each `reading_section` object is mandatory.
+    {
+      "questions": [
+        {
+          "type": "vocabulary",
+          "sub_type": "sentence_completion",
+          "question": "The company decided to ______ its new headquarters in the city center.",
+          "options": ["locate", "donate", "vibrate", "hesitate"],
+          "answer": "locate",
+          "explanation": "'locate'는 '~에 위치시키다'라는 의미로 문맥에 가장 적절합니다."
+        },
+        {
+          "type": "reading_section",
+          "sub_type": "contextual_inference",
+          "passage": "The team's proposal was met with derision from the board members, who found the ideas to be completely impractical.",
+          "questions": [
+            {
+              "question": "In the passage, the word 'derision' is closest in meaning to:",
+              "options": ["praise", "ridicule", "indifference", "curiosity"],
+              "answer": "ridicule",
+              "explanation": "'derision'은 조롱, 비웃음을 의미하며, 문맥상 아이디어가 비현실적이라고 생각했으므로 'ridicule'이 가장 가깝습니다."
+            }
+          ]
+        }
+      ]
+    }
+
+    **FINAL CHECK: Create exactly `$count` questions following all rules, difficulty levels, and type definitions.**
+  """;
   }
 }
