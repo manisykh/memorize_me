@@ -1,13 +1,109 @@
+// import 'dart:convert';
+// import 'package:flutter/foundation.dart';
+// import 'package:google_generative_ai/google_generative_ai.dart' as gemini;
+// import 'package:dart_openai/dart_openai.dart' as openai;
+
+// import '../models/word_model.dart';
+// import '../models/ai_quiz_model.dart';
+// import 'api_key_service.dart';
+
+// // 사용자에게 보여줄 명확한 오류를 위한 사용자 정의 예외 클래스
+// class CustomApiException implements Exception {
+//   final String code;
+//   final String message;
+//   CustomApiException(this.code, this.message);
+//   @override
+//   String toString() => message;
+// }
+
+// class AiService {
+//   final ApiKeyService _apiKeyService;
+//   AiService(this._apiKeyService);
+
+//   Future<String?> generateExampleSentence(String word) async {
+//     final apiKey = await _apiKeyService.getApiKey(AiProvider.gemini);
+//     if (apiKey == null || apiKey.isEmpty) {
+//       throw CustomApiException('api_key_missing', 'Gemini API 키가 등록되지 않았습니다.');
+//     }
+
+//     final prompt = """
+//     Create a simple and natural example sentence using the word "$word".
+//     The sentence must be easy for an English learner to understand.
+//     Respond with only the sentence itself, without any additional explanations or quotation marks.
+//     """;
+
+//     try {
+//       // 현재 gemini-1.5-flash 모델을 사용하도록 고정
+//       final model = gemini.GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
+//       final response = await model.generateContent([gemini.Content.text(prompt)]);
+//       return response.text?.trim();
+//     } on Exception catch (e) {
+//       debugPrint('Gemini 예문 생성 오류: $e');
+//       // 기존 generateQuiz의 오류 처리 로직을 재사용하거나 단순화할 수 있습니다.
+//       throw CustomApiException('sentence_generation_failed', '예문 생성에 실패했습니다. API 키와 네트워크를 확인해주세요.');
+//     }
+//   }
+
+//   Future<AiQuizResponse?> generateQuiz({
+//     required AiProvider provider,
+//     required String modelName,
+//     required List<Word> selectedWords,
+//     required String quizType,
+//     required String difficulty,
+//     required int questionCount,
+//     required bool includeExplanation,
+//   }) async {
+//     final apiKey = await _apiKeyService.getApiKey(provider);
+//     if (apiKey == null || apiKey.isEmpty) {
+//       throw CustomApiException('api_key_missing', '${provider.name} API 키가 등록되지 않았습니다.');
+//     }
+//     final prompt = _buildImprovedPrompt(
+//       selectedWords,
+//       quizType,
+//       difficulty,
+//       questionCount,
+//       includeExplanation,
+//     );
+//     try {
+//       String? responseText;
+//       if (provider == AiProvider.gemini) {
+//         final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey);
+//         final response = await model.generateContent([gemini.Content.text(prompt)]);
+//         responseText = response.text;
+//       } else {
+//         // OpenAI 호출 로직...
+//       }
+//       if (responseText != null) {
+//         final cleanedText = responseText.replaceAll('**', '');
+//         return AiQuizResponse.parse(cleanedText);
+//       }
+//       return null;
+//     } on Exception catch (e) {
+//       debugPrint('$provider AI 서비스 오류 발생: $e');
+//       if (e.toString().contains('overloaded') || e.toString().contains('503')) {
+//         throw CustomApiException('server_overloaded', 'AI 서버가 현재 바쁩니다. 잠시 후 다시 시도해주세요.');
+//       } else if (e.toString().contains('quota') || e.toString().contains('429')) {
+//         throw CustomApiException(
+//           'quota_exceeded',
+//           'API 사용량 한도를 초과했습니다. 내일 다시 시도하거나 다른 AI 엔진을 선택해주세요.',
+//         );
+//       } else {
+//         throw CustomApiException(
+//           'unknown_error',
+//           '알 수 없는 오류가 발생했습니다. 네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요.',
+//         );
+//       }
+//     }
+//   }
+
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart' as gemini;
-import 'package:dart_openai/dart_openai.dart' as openai;
 
-import '../models/word_model.dart';
 import '../models/ai_quiz_model.dart';
+import '../models/word_model.dart';
 import 'api_key_service.dart';
 
-// 사용자에게 보여줄 명확한 오류를 위한 사용자 정의 예외 클래스
 class CustomApiException implements Exception {
   final String code;
   final String message;
@@ -20,6 +116,49 @@ class AiService {
   final ApiKeyService _apiKeyService;
   AiService(this._apiKeyService);
 
+  // ▼▼▼ [수정] modelName을 인자로 받도록 변경 ▼▼▼
+  Future<Map<String, String>> generateSentencesForWords(
+    List<String> words,
+    String modelName,
+  ) async {
+    final apiKey = await _apiKeyService.getApiKey(AiProvider.gemini);
+    if (apiKey == null || apiKey.isEmpty) {
+      throw CustomApiException('api_key_missing', 'Gemini API 키가 등록되지 않았습니다.');
+    }
+
+    final wordListString = words.join(', ');
+    final prompt = """
+    For the following list of English words, create one simple and natural example sentence for each word.
+    The sentences must be easy for an English learner to understand.
+    Respond with ONLY a valid JSON object where each key is the word and the value is its corresponding example sentence.
+
+    Word list: [$wordListString]
+
+    Example response format for words "apple", "book":
+    {
+      "apple": "She took a big bite of the juicy apple.",
+      "book": "He is reading a fascinating book about history."
+    }
+    """;
+
+    debugPrint("📝 [AI_SERVICE] 일괄 예문 생성 프롬프트:\n$prompt");
+
+    try {
+      // ▼▼▼ [수정] 고정된 모델 이름 대신 전달받은 modelName 사용 ▼▼▼
+      final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey);
+      final response = await model.generateContent([gemini.Content.text(prompt)]);
+      final responseText = response.text ?? '{}';
+      debugPrint("📄 [AI_SERVICE] 일괄 예문 생성 원본 응답:\n$responseText");
+
+      final cleanedJson = responseText.replaceAll(RegExp(r'```json|```'), '').trim();
+      final decodedJson = jsonDecode(cleanedJson) as Map<String, dynamic>;
+      return decodedJson.map((key, value) => MapEntry(key, value.toString()));
+    } catch (e) {
+      debugPrint("❌ [AI_SERVICE] 일괄 예문 생성 중 오류 발생: $e");
+      throw CustomApiException('sentence_generation_failed', '일괄 예문 생성에 실패했습니다.');
+    }
+  }
+
   Future<AiQuizResponse?> generateQuiz({
     required AiProvider provider,
     required String modelName,
@@ -29,10 +168,16 @@ class AiService {
     required int questionCount,
     required bool includeExplanation,
   }) async {
+    debugPrint("🤖 [AI_SERVICE] generateQuiz 호출됨");
+    debugPrint("   - Provider: $provider, Model: $modelName");
+    debugPrint("   - QuizType: $quizType, Difficulty: $difficulty, Count: $questionCount");
+
     final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
+      debugPrint("❌ [AI_SERVICE] API 키 없음. 오류 발생시킴.");
       throw CustomApiException('api_key_missing', '${provider.name} API 키가 등록되지 않았습니다.');
     }
+
     final prompt = _buildImprovedPrompt(
       selectedWords,
       quizType,
@@ -40,34 +185,33 @@ class AiService {
       questionCount,
       includeExplanation,
     );
+
+    debugPrint("📝 [AI_SERVICE] 최종 프롬프트:\n$prompt");
+
     try {
       String? responseText;
       if (provider == AiProvider.gemini) {
         final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey);
+        debugPrint("✅ [AI_SERVICE] Gemini API 호출 시작...");
         final response = await model.generateContent([gemini.Content.text(prompt)]);
         responseText = response.text;
-      } else {
-        // OpenAI 호출 로직...
+        debugPrint("✅ [AI_SERVICE] Gemini API 응답 수신 완료.");
       }
+
       if (responseText != null) {
+        debugPrint("📄 [AI_SERVICE] AI 원본 응답:\n$responseText");
         final cleanedText = responseText.replaceAll('**', '');
         return AiQuizResponse.parse(cleanedText);
       }
       return null;
     } on Exception catch (e) {
-      debugPrint('$provider AI 서비스 오류 발생: $e');
+      debugPrint("❌ [AI_SERVICE] API 호출 중 심각한 오류 발생: $e");
       if (e.toString().contains('overloaded') || e.toString().contains('503')) {
         throw CustomApiException('server_overloaded', 'AI 서버가 현재 바쁩니다. 잠시 후 다시 시도해주세요.');
       } else if (e.toString().contains('quota') || e.toString().contains('429')) {
-        throw CustomApiException(
-          'quota_exceeded',
-          'API 사용량 한도를 초과했습니다. 내일 다시 시도하거나 다른 AI 엔진을 선택해주세요.',
-        );
+        throw CustomApiException('quota_exceeded', 'API 사용량 한도를 초과했습니다.');
       } else {
-        throw CustomApiException(
-          'unknown_error',
-          '알 수 없는 오류가 발생했습니다. 네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요.',
-        );
+        throw CustomApiException('unknown_error', '알 수 없는 오류가 발생했습니다: ${e.toString()}');
       }
     }
   }

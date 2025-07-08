@@ -1,24 +1,39 @@
-// lib/models/word_model.dart (수정된 전체 코드)
-
 class Word {
   final int? id;
   final String word;
   final String meaning;
+  final String? exampleSentence;
 
-  Word({this.id, required this.word, required this.meaning});
+  Word({
+    this.id,
+    required this.word,
+    required this.meaning,
+    this.exampleSentence, // ▼▼▼ [수정] 생성자에 누락된 필드 초기화 추가
+  });
 
-  // DB 저장을 위해 Map 형태로 변환하는 메서드
   Map<String, dynamic> toMap() {
-    return {'id': id, 'word': word, 'meaning': meaning};
+    return {
+      'id': id,
+      'word': word,
+      'meaning': meaning,
+      'exampleSentence': exampleSentence, // ▼▼▼ [수정] 맵 변환 문법 오류 수정
+    };
   }
 
-  // ▼▼▼ [추가] 새로운 단어로 삽입할 때 사용할 맵 (id 제외) ▼▼▼
   Map<String, dynamic> toMapForInsert() {
-    return {'word': word, 'meaning': meaning};
+    return {
+      'word': word,
+      'meaning': meaning,
+      'exampleSentence': exampleSentence, // ▼▼▼ [수정] 여기도 동일하게 수정
+    };
   }
 
-  // Map 형태에서 Word 객체로 변환하는 메서드
   factory Word.fromMap(Map<String, dynamic> map) {
-    return Word(id: map['id'], word: map['word'], meaning: map['meaning']);
+    return Word(
+      id: map['id'],
+      word: map['word'],
+      meaning: map['meaning'],
+      exampleSentence: map['exampleSentence'], // ▼▼▼ [수정] 정상적으로 인자 전달
+    );
   }
 }

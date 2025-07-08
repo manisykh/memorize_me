@@ -1,29 +1,26 @@
-import 'dart:math';
 import '../models/word_model.dart';
-import '../providers/settings_provider.dart';
+import '../providers/settings_provider.dart'; // ▼▼▼ [수정] import 추가
 
 class QuizItem {
   final Word word;
-  final TestType questionType;
+  final SelfTestType questionType; // ▼▼▼ [수정] SelfTestType으로 변경
   QuizItem({required this.word, required this.questionType});
 }
 
 // 질문 텍스트 생성
-String getQuestionText(Word word, TestType type) {
-  if (type == TestType.wordToMeaning) {
+String getQuestionText(Word word, SelfTestType type) {
+  // ▼▼▼ [수정]
+  if (type == SelfTestType.wordToMeaning) {
     return word.word;
   }
-  if (type == TestType.meaningToWord) {
+  if (type == SelfTestType.meaningToWord) {
     return word.meaning;
-  }
-  if (type == TestType.meaningToWordWithHint) {
-    final hint = word.word.isNotEmpty ? '${word.word[0]}${'_' * (word.word.length - 1)}' : '';
-    return '${word.meaning} ($hint)';
   }
   return '';
 }
 
 // 정답 텍스트 생성
-String getAnswerText(Word word, TestType type) {
-  return type == TestType.wordToMeaning ? word.meaning : word.word;
+String getAnswerText(Word word, SelfTestType type) {
+  // ▼▼▼ [수정]
+  return type == SelfTestType.wordToMeaning ? word.meaning : word.word;
 }

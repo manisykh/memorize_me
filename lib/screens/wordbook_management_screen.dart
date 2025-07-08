@@ -15,6 +15,8 @@ class WordbookManagementScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // ▼▼▼ [수정] 배경 투명화 ▼▼▼
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('내 단어장'), automaticallyImplyLeading: true),
       body: SafeArea(
         child: SingleChildScrollView(

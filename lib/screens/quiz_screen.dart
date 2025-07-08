@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -44,7 +44,6 @@ class _QuizScreenState extends State<QuizScreen> {
   late QuizMode _currentMode;
   List<Word> _incorrectWordsForSession = [];
   String _incorrectWordbookName = '';
-
   bool _isExporting = false;
   late final TextEditingController _pdfTitleController;
 
@@ -65,7 +64,7 @@ class _QuizScreenState extends State<QuizScreen> {
 
   void _changeMode(QuizMode newMode) {
     final allWords = context.read<WordListNotifier>().words;
-    if (newMode != QuizMode.none && allWords.isEmpty) {
+    if (newMode != QuizMode.none && newMode != QuizMode.exportSheet && allWords.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('활성화된 단어장에 단어가 없습니다.')));
@@ -101,13 +100,12 @@ class _QuizScreenState extends State<QuizScreen> {
                       title: Text(name, style: Theme.of(ctx).textTheme.bodyLarge),
                       onTap: () async {
                         final words = await manager.getIncorrectWords(name);
-                        if (mounted) Navigator.pop(ctx);
+                        if (!mounted) return;
+                        Navigator.pop(ctx);
                         if (words.isEmpty) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(
-                              context,
-                            ).showSnackBar(const SnackBar(content: Text('이 오답노트에는 단어가 없습니다.')));
-                          }
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(const SnackBar(content: Text('이 오답노트에는 단어가 없습니다.')));
                           return;
                         }
                         setState(() {
@@ -171,8 +169,9 @@ class _QuizScreenState extends State<QuizScreen> {
         await service.exportExcel(allWords, settings, share: share);
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('작업 중 오류 발생: $e')));
+      }
     } finally {
       if (mounted) setState(() => _isExporting = false);
     }
@@ -219,7 +218,7 @@ class _QuizScreenState extends State<QuizScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(Icons.save_alt),
+            icon: Icon(Icons.save_alt, color: theme.textTheme.bodyLarge?.color),
             onPressed: () {
               Navigator.pop(ctx);
               if (exportType == 'pdf') {
@@ -231,7 +230,7 @@ class _QuizScreenState extends State<QuizScreen> {
             tooltip: '저장',
           ),
           IconButton(
-            icon: const Icon(Icons.share),
+            icon: Icon(Icons.share, color: theme.textTheme.bodyLarge?.color),
             onPressed: () {
               Navigator.pop(ctx);
               if (exportType == 'pdf') {
@@ -253,6 +252,7 @@ class _QuizScreenState extends State<QuizScreen> {
     final activeWordbookName = context.watch<WordbookManager>().activeWordbook?.name;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(_currentMode == QuizMode.exportSheet ? '시험지 생성' : '셀프 테스트'),
         bottom:
@@ -276,7 +276,6 @@ class _QuizScreenState extends State<QuizScreen> {
           QuizMode.none => _buildModeSelectionUI(theme),
           QuizMode.exportSheet => _buildExportSheetView(),
           QuizMode.legacy => _LegacyQuizView(onFinish: () => _changeMode(QuizMode.none)),
-          // ▼▼▼ [수정] _SpellingQuizView를 클래스 생성자로 호출합니다. ▼▼▼
           QuizMode.spelling => _SpellingQuizView(onFinish: () => _changeMode(QuizMode.none)),
           QuizMode.incorrectSpelling => _SpellingQuizView(
             onFinish: () => _changeMode(QuizMode.none),
@@ -387,13 +386,12 @@ class _QuizScreenState extends State<QuizScreen> {
     final settings = settingsNotifier.settings;
     final double minValue = allWords.isEmpty ? 1.0 : 1.0;
     final double maxValue = allWords.isEmpty ? 1.0 : allWords.length.toDouble();
-    const testTypeMap = {
-      TestType.random: '랜덤',
-      TestType.wordToMeaning: '단어 → 뜻',
-      TestType.meaningToWord: '뜻 → 단어',
-      TestType.meaningToWordWithHint: '뜻 → 단어 (힌트)',
+    final testTypeMap = {
+      SelfTestType.random: '랜덤',
+      SelfTestType.wordToMeaning: '단어 → 뜻',
+      SelfTestType.meaningToWord: '뜻 → 단어',
     };
-    const exportOptionMap = {
+    final exportOptionMap = {
       ExportOption.both: '시험지와 답안지 모두',
       ExportOption.testOnly: '시험지만',
       ExportOption.answersOnly: '답안지만',
@@ -452,11 +450,10 @@ class _QuizScreenState extends State<QuizScreen> {
 
   void _showTestTypePicker(BuildContext context) {
     final settingsNotifier = context.read<SettingsNotifier>();
-    const testTypeMap = {
-      TestType.random: '랜덤',
-      TestType.wordToMeaning: '단어 → 뜻',
-      TestType.meaningToWord: '뜻 → 단어',
-      TestType.meaningToWordWithHint: '뜻 → 단어 (첫 글자 힌트)',
+    final testTypeMap = {
+      SelfTestType.random: '랜덤',
+      SelfTestType.wordToMeaning: '단어 → 뜻',
+      SelfTestType.meaningToWord: '뜻 → 단어',
     };
     showModalBottomSheet(
       context: context,
@@ -485,7 +482,7 @@ class _QuizScreenState extends State<QuizScreen> {
 
   void _showExportOptionPicker(BuildContext context) {
     final settingsNotifier = context.read<SettingsNotifier>();
-    const exportOptionMap = {
+    final exportOptionMap = {
       ExportOption.both: '시험지와 답안지 모두',
       ExportOption.testOnly: '시험지만',
       ExportOption.answersOnly: '답안지만',
@@ -515,8 +512,6 @@ class _QuizScreenState extends State<QuizScreen> {
     );
   }
 }
-
-// ▼▼▼ [수정] 아래에 생략되었던 모든 클래스들의 구현을 복원합니다. ▼▼▼
 
 class _LegacyQuizView extends StatefulWidget {
   final VoidCallback onFinish;
@@ -558,9 +553,9 @@ class _LegacyQuizViewState extends State<_LegacyQuizView> {
     setState(() {
       _sessionItems =
           sessionWords.map((word) {
-            TestType type = settings.testType;
-            if (type == TestType.random) {
-              type = [TestType.wordToMeaning, TestType.meaningToWord][Random().nextInt(2)];
+            SelfTestType type = settings.testType;
+            if (type == SelfTestType.random) {
+              type = SelfTestType.values[random.nextInt(2)];
             }
             return QuizItem(word: word, questionType: type);
           }).toList();
@@ -610,7 +605,9 @@ class _LegacyQuizViewState extends State<_LegacyQuizView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (_sessionItems.isEmpty) return const Center(child: CircularProgressIndicator());
+    if (_sessionItems.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     final quizItem = _sessionItems[_currentIndex];
     final String questionText = getQuestionText(quizItem.word, quizItem.questionType);
@@ -1126,45 +1123,38 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
     }
     final currentWord = _sessionWords[_currentIndex];
     final title = widget.wordbookName != null ? '${widget.wordbookName} (오답)' : '스펠링 퀴즈';
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: Text(title),
-        leading: IconButton(icon: const Icon(Icons.close), onPressed: widget.onFinish),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            Text(
-              '퀴즈 (${_currentIndex + 1}/${_sessionWords.length})',
-              style: theme.textTheme.bodyMedium,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        children: [
+          Text(
+            '퀴즈 (${_currentIndex + 1}/${_sessionWords.length})',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 20),
+          Text(
+            currentWord.meaning,
+            style: theme.textTheme.headlineSmall,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 30),
+          Opacity(
+            opacity: 0,
+            child: TextField(
+              controller: _textController,
+              focusNode: _focusNode,
+              autofocus: false,
+              enableSuggestions: false,
+              autocorrect: false,
+              onSubmitted: (_) {
+                _checkAnswer();
+              },
             ),
-            const SizedBox(height: 20),
-            Text(
-              currentWord.meaning,
-              style: theme.textTheme.headlineSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 30),
-            Opacity(
-              opacity: 0,
-              child: TextField(
-                controller: _textController,
-                focusNode: _focusNode,
-                autofocus: false,
-                enableSuggestions: false,
-                autocorrect: false,
-                onSubmitted: (_) {
-                  _checkAnswer();
-                },
-              ),
-            ),
-            GestureDetector(onTap: _ensureKeyboardVisible, child: _buildAnswerBoxes()),
-            const SizedBox(height: 40),
-            _buildActionButtons(),
-          ],
-        ),
+          ),
+          GestureDetector(onTap: _ensureKeyboardVisible, child: _buildAnswerBoxes()),
+          const SizedBox(height: 40),
+          _buildActionButtons(),
+        ],
       ),
     );
   }
@@ -1200,6 +1190,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    _saveIncorrectWords(context);
     final theme = Theme.of(context);
     final totalQuestions = results.length;
     final firstTryCorrect = results.where((r) => r.isCorrectOnFirstTry).length;
@@ -1208,13 +1199,6 @@ class _SpellingQuizResultScreen extends StatelessWidget {
     final incorrect = totalQuestions - firstTryCorrect - retryCorrect - skipped;
     final accuracyRate =
         totalQuestions > 0 ? ((firstTryCorrect + retryCorrect) / totalQuestions * 100).round() : 0;
-
-    // initState 대신 build 메서드에서 호출
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (originalWordbookName != null) {
-        _saveIncorrectWords(context);
-      }
-    });
 
     return Scaffold(
       appBar: AppBar(title: const Text('퀴즈 결과'), backgroundColor: Colors.transparent, elevation: 0),
@@ -1270,8 +1254,6 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: onRestart,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                     ),
                     child: const Text('다시 시작'),
@@ -1282,8 +1264,6 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: onFinish,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey,
-                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                     ),
                     child: const Text('완료'),

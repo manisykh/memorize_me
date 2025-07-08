@@ -5,8 +5,6 @@ import 'package:provider/provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
-import '../themes/app_theme.dart';
-import '../widgets/gradient_background.dart';
 import '../widgets/learning_mode_card.dart';
 import 'ai_quiz_setup_screen.dart';
 import 'app_settings_screen.dart';
@@ -19,7 +17,6 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeNotifier = context.watch<ThemeNotifier>();
     final wordListNotifier = context.watch<WordListNotifier>();
 
     return Scaffold(
@@ -57,9 +54,8 @@ class HomeScreen extends StatelessWidget {
             LearningModeCard(
               heroTag: 'flashcards-hero',
               title: '플래시카드',
-              subtitle: '복습할 단어: ${wordListNotifier.words.length}개',
+              subtitle: '활성 단어장의 ${wordListNotifier.words.length}개 단어 학습',
               icon: CupertinoIcons.square_stack_3d_down_right,
-              // ▼▼▼ [수정] 단순한 화면 이동 로직으로 복원합니다. ▼▼▼
               onTap:
                   () => Navigator.of(
                     context,
@@ -71,7 +67,6 @@ class HomeScreen extends StatelessWidget {
               title: '셀프 테스트',
               subtitle: '스펠링 퀴즈, 시험지 생성하기',
               icon: CupertinoIcons.question_diamond,
-              // ▼▼▼ [수정] 단순한 화면 이동 로직으로 복원합니다. ▼▼▼
               onTap:
                   () => Navigator.of(
                     context,
@@ -81,9 +76,8 @@ class HomeScreen extends StatelessWidget {
             LearningModeCard(
               heroTag: 'ai-quiz-hero',
               title: 'AI 학습',
-              subtitle: 'AI가 생성하는 맞춤형 문제 풀기',
+              subtitle: 'AI가 만들어주는 실전 문제',
               icon: CupertinoIcons.sparkles,
-              // ▼▼▼ [수정] 단순한 화면 이동 로직으로 복원합니다. ▼▼▼
               onTap:
                   () => Navigator.of(
                     context,

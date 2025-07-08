@@ -19,33 +19,39 @@ enum PdfExportType { questionsOnly, withAnswers }
 class TestSheetService {
   // --- 1. 기존 단어장 기반 시험지 생성 기능 ---
 
-  String _getQuestionText(Word word, TestType type) {
-    if (type == TestType.wordToMeaning) {
+  String _getQuestionText(Word word, SelfTestType type) {
+    if (type == SelfTestType.wordToMeaning) {
       return word.word;
-    } else if (type == TestType.meaningToWord) {
+    }
+    if (type == SelfTestType.meaningToWord) {
       return word.meaning;
-    } else if (type == TestType.meaningToWordWithHint) {
-      final hint = word.word.isNotEmpty ? '${word.word[0]}${'_' * (word.word.length - 1)}' : '';
-      return '${word.meaning} ($hint)';
     }
     return '';
   }
 
-  String _getAnswerText(Word word, TestType type) {
-    return (type == TestType.wordToMeaning) ? word.meaning : word.word;
+  String _getAnswerText(Word word, SelfTestType type) {
+    return (type == SelfTestType.wordToMeaning) ? word.meaning : word.word;
   }
 
   List<Map<String, String>> _prepareTestData(List<Word> allWords, AppSettings settings) {
     if (allWords.isEmpty) return [];
-    final words = List<Word>.from(allWords)..shuffle();
-    final wordCount = settings.wordCount.clamp(1, allWords.length);
-    final sessionWords = words.take(wordCount).toList();
+
+    final sourceCopy = List<Word>.from(allWords);
     final random = Random();
+    final sessionWords = <Word>[];
+    final wordCount = settings.wordCount.clamp(1, allWords.length);
+
+    for (int i = 0; i < wordCount; i++) {
+      if (sourceCopy.isEmpty) break;
+      final randomIndex = random.nextInt(sourceCopy.length);
+      sessionWords.add(sourceCopy.removeAt(randomIndex));
+    }
+
     List<Map<String, String>> testData = [];
     for (final word in sessionWords) {
-      TestType currentType = settings.testType;
-      if (currentType == TestType.random) {
-        currentType = TestType.values[random.nextInt(3)];
+      SelfTestType currentType = settings.testType;
+      if (currentType == SelfTestType.random) {
+        currentType = SelfTestType.values[random.nextInt(2)];
       }
       testData.add({
         'question': _getQuestionText(word, currentType),
@@ -158,7 +164,6 @@ class TestSheetService {
               ),
             ];
           } else {
-            // ▼▼▼ [수정] pw.Text를 pw.Row로 변경하여 정렬 문제 해결 ▼▼▼
             return [
               pw.ListView.separated(
                 itemCount: testData.length,
@@ -167,12 +172,7 @@ class TestSheetService {
                   return pw.Row(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      // 1. 문제 번호를 위한 고정 너비의 컨테이너
-                      pw.Container(
-                        width: 35, // 두 자릿수 번호도 충분히 들어갈 너비
-                        child: pw.Text('${index + 1}.'),
-                      ),
-                      // 2. 나머지 공간을 모두 차지하는 단어 부분
+                      pw.Container(width: 35, child: pw.Text('${index + 1}.')),
                       pw.Expanded(
                         child: pw.Text(
                           '${testData[index]['question']}  →  _________________________',
@@ -183,7 +183,6 @@ class TestSheetService {
                 },
               ),
             ];
-            // ▲▲▲ 수정 완료 ▲▲▲
           }
         },
       ),
@@ -324,12 +323,10 @@ class TestSheetService {
       itemBuilder: (context, index) {
         final q = questions[index];
 
-        // 1. 독해(reading_section) 유형 처리
         if (q.type == 'reading_section') {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // 지문 표시
               if (q.passage != null)
                 pw.Container(
                   padding: const pw.EdgeInsets.all(12),
@@ -340,7 +337,6 @@ class TestSheetService {
                   child: pw.Text(q.passage!),
                 ),
               pw.SizedBox(height: 12),
-              // 지문에 딸린 하위 문제들 표시
               ...?q.questions?.map((subQ) {
                 questionCounter++;
                 return pw.Column(
@@ -374,7 +370,6 @@ class TestSheetService {
                             );
                           }).toList(),
                     ),
-                    // 답안지이고 해설이 있을 경우에만 표시
                     if (isAnswerSheet && subQ.explanation != null && subQ.explanation!.isNotEmpty)
                       pw.Padding(
                         padding: const pw.EdgeInsets.only(top: 4, left: 12),
@@ -395,7 +390,6 @@ class TestSheetService {
             ],
           );
         } else {
-          // 2. 그 외(어휘, 문법, 듣기) 유형 처리
           questionCounter++;
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -437,8 +431,6 @@ class TestSheetService {
                       }).toList(),
                 ),
               ],
-
-              // 답안지이고 해설이 있을 경우에만 표시
               if (isAnswerSheet && q.explanation != null && q.explanation!.isNotEmpty)
                 pw.Padding(
                   padding: const pw.EdgeInsets.only(top: 4, left: 12),

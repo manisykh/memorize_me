@@ -64,9 +64,16 @@ class WordbookManager extends ChangeNotifier {
     _setLoading(false);
   }
 
+  // ▼▼▼ [수정] WordListNotifier의 변경된 방식에 맞게 로직 수정 ▼▼▼
   Future<void> setActiveWordbook(Wordbook? wordbook) async {
     _activeWordbook = wordbook;
-    await _wordListNotifier.switchWordbook(wordbook);
+
+    if (wordbook != null) {
+      // WordListNotifier에게 어떤 DB 파일에서 단어를 로드할지 알려줍니다.
+      await _wordListNotifier.loadWords(wordbook.dbFileName);
+    } else {
+      _wordListNotifier.clearWords();
+    }
     notifyListeners();
   }
 

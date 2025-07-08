@@ -1,32 +1,59 @@
-// providers/theme_provider.dart (수정 후)
-
 import 'package:flutter/material.dart';
-
-/// 앱에서 사용할 테마의 종류를 정의합니다.
-enum AppThemeType {
-  basic, // 기본 테마
-  eyeCare, // 시력 보호 테마
-}
+import 'package:shared_preferences/shared_preferences.dart';
+import '../themes/app_theme.dart';
 
 class ThemeNotifier extends ChangeNotifier {
-  AppThemeType _currentTheme = AppThemeType.basic;
-  AppThemeType get currentTheme => _currentTheme;
+  final String _themeKey = "selected_theme";
+  final String _levelKey = "eye_care_level";
 
-  // 시력 보호 테마의 배경색 단계를 저장 (1, 2, 3)
-  int _eyeCareLevel = 1;
+  SharedPreferences? _prefs;
+  late AppThemeType _currentTheme;
+  late int _eyeCareLevel;
+
+  ThemeNotifier() {
+    _currentTheme = AppThemeType.lightGreen;
+    _eyeCareLevel = 1;
+    _loadFromPrefs();
+  }
+
+  AppThemeType get currentTheme => _currentTheme;
   int get eyeCareLevel => _eyeCareLevel;
 
+  ThemeData getTheme() => AppTheme.appThemes[_currentTheme]!;
+
+  Future<void> _initPrefs() async {
+    _prefs ??= await SharedPreferences.getInstance();
+  }
+
+  Future<void> _loadFromPrefs() async {
+    await _initPrefs();
+    String? themeName = _prefs!.getString(_themeKey);
+    _currentTheme = AppThemeType.values.firstWhere(
+      (e) => e.name == themeName,
+      orElse: () => AppThemeType.lightGreen,
+    );
+    _eyeCareLevel = _prefs!.getInt(_levelKey) ?? 1;
+    notifyListeners();
+  }
+
+  Future<void> _saveToPrefs() async {
+    await _initPrefs();
+    _prefs!.setString(_themeKey, _currentTheme.name);
+    _prefs!.setInt(_levelKey, _eyeCareLevel);
+  }
+
   void setTheme(AppThemeType themeType) {
-    if (_currentTheme != themeType) {
-      _currentTheme = themeType;
-      notifyListeners();
-    }
+    if (_currentTheme == themeType) return;
+    _currentTheme = themeType;
+    _saveToPrefs();
+    notifyListeners();
   }
 
   void setEyeCareLevel(int level) {
-    if (_eyeCareLevel != level && level >= 1 && level <= 3) {
-      _eyeCareLevel = level;
-      notifyListeners();
-    }
+    // ▼▼▼ [수정] 최대 레벨을 3에서 5로 변경 ▼▼▼
+    if (_eyeCareLevel == level || level < 1 || level > 5) return;
+    _eyeCareLevel = level;
+    _saveToPrefs();
+    notifyListeners();
   }
 }

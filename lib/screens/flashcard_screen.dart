@@ -3,14 +3,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flip_card/flip_card.dart';
+import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 
 import '../models/word_model.dart';
-import '../providers/settings_provider.dart';
+import '../providers/flashcard_settings_provider.dart';
 import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/tts_service.dart';
 import '../widgets/glassmorphic_card.dart';
-import 'quiz_helpers.dart';
+import '../widgets/wordbook_selection_dialog.dart';
 
 class FlashcardScreen extends StatefulWidget {
   const FlashcardScreen({super.key});
@@ -19,13 +20,11 @@ class FlashcardScreen extends StatefulWidget {
 }
 
 class _FlashcardScreenState extends State<FlashcardScreen> {
-  final GlobalKey<FlipCardState> _cardKey = GlobalKey<FlipCardState>();
-
-  final List<QuizItem> _sessionItems = [];
-  final int _currentIndex = 0;
+  final CardSwiperController _swiperController = CardSwiperController();
+  List<Word> _sessionWords = [];
   bool _sessionActive = false;
   late final TtsService _ttsService;
-  final String _sessionTitle = '플래시카드';
+  String _sessionTitle = '플래시카드';
 
   @override
   void initState() {
@@ -36,13 +35,16 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   @override
   void dispose() {
     _ttsService.stop();
+    _swiperController.dispose();
     super.dispose();
   }
 
-  // ▼▼▼ [삭제] 단어장 변경 로직(_changeWordbook)을 삭제했습니다. ▼▼▼
+  bool _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) {
+    // 스와이프 시 로직 (예: 오답노트 기록)을 여기에 추가할 수 있습니다.
+    return true;
+  }
 
   void _startSession() {
-    // ▼▼▼ [수정] 전역 Provider에서 단어 목록을 가져오도록 복원합니다. ▼▼▼
     final wordListNotifier = context.read<WordListNotifier>();
     final allWords = wordListNotifier.words;
 
@@ -54,107 +56,185 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
       }
       return;
     }
-    final settings = context.read<SettingsNotifier>().settings;
-    final wordCount = settings.wordCount.clamp(1, allWords.length);
 
-    // 성능 개선을 위해 수정한 효율적인 무작위 추출 로직은 유지합니다.
-    final sourceCopy = List<Word>.from(allWords);
-    final random = Random();
-    final sessionWords = <Word>[];
+    setState(() {
+      _sessionWords = List<Word>.from(allWords)..shuffle();
+      _sessionTitle = context.read<WordbookManager>().activeWordbook?.name ?? '플래시카드';
+      _sessionActive = true;
+    });
+  }
 
-    for (int i = 0; i < wordCount; i++) {
-      if (sourceCopy.isEmpty) break;
-      final randomIndex = random.nextInt(sourceCopy.length);
-      sessionWords.add(sourceCopy.removeAt(randomIndex));
+  Future<void> _startIncorrectWordSession(String name) async {
+    final manager = context.read<WordbookManager>();
+    final incorrectWords = await manager.getIncorrectWords(name);
+
+    if (incorrectWords.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('이 오답노트에는 단어가 없습니다.')));
+      }
+      return;
     }
 
-    _initializeSession(
-      words: sessionWords,
-      settings: settings,
-      title: wordListNotifier.activeWordbook?.name ?? '플래시카드',
-    );
+    setState(() {
+      _sessionWords = incorrectWords..shuffle();
+      _sessionTitle = '$name (오답노트)';
+      _sessionActive = true;
+    });
   }
 
-  // --- 나머지 함수들은 기존과 동일 ---
-  void _nextCard() {
-    /*...*/
-  }
-  void _prevCard() {
-    /*...*/
-  }
-  Future<void> _startIncorrectWordSession(String name) async {
-    /*...*/
-  }
-  void _initializeSession({
-    required List<Word> words,
-    required AppSettings settings,
-    required String title,
-  }) {
-    /*...*/
-  }
   void _showIncorrectWordbookList() {
-    /*...*/
+    final manager = context.read<WordbookManager>();
+    final names = manager.incorrectWordbookNames;
+
+    if (names.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('생성된 오답노트가 없습니다.')));
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: GlassmorphicCard(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text('오답노트 선택', style: Theme.of(ctx).textTheme.titleLarge),
+                ),
+                ...names.map((name) {
+                  return ListTile(
+                    title: Text(name, style: Theme.of(ctx).textTheme.bodyLarge),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _startIncorrectWordSession(name);
+                    },
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final activeWordbookName = context.watch<WordbookManager>().activeWordbook?.name;
-
     if (!_sessionActive) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('플래시카드'),
-          automaticallyImplyLeading: true,
-          // ▼▼▼ [삭제] actions에 있던 단어장 변경 버튼을 삭제했습니다. ▼▼▼
-        ),
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (activeWordbookName != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 24.0),
-                    child: Text('현재 단어장: $activeWordbookName', style: theme.textTheme.titleMedium),
-                  ),
-                GlassmorphicCard(
-                  onTap: _startSession,
-                  child: const SizedBox(
-                    width: 220,
-                    height: 50,
-                    child: Center(child: Text('플래시카드 학습 시작')),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                GlassmorphicCard(
-                  onTap: _showIncorrectWordbookList,
-                  child: const SizedBox(
-                    width: 220,
-                    height: 50,
-                    child: Center(child: Text('오답노트로 학습하기')),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return _buildSetupScreen();
+    } else {
+      return _buildFlashcardSession();
     }
+  }
 
-    // 세션 진행 중 UI
-    if (_sessionItems.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(title: Text(_sessionTitle)),
-        body: const Center(child: Text("학습할 단어가 없습니다.")),
-      );
-    }
-
-    final quizItem = _sessionItems[_currentIndex];
-    final String frontText = getQuestionText(quizItem.word, quizItem.questionType);
-    final String backText = getAnswerText(quizItem.word, quizItem.questionType);
+  // 학습 시작 전 설정 화면 UI
+  Widget _buildSetupScreen() {
+    final theme = Theme.of(context);
+    final activeWordbook = context.watch<WordbookManager>().activeWordbook;
+    final words = context.watch<WordListNotifier>().words;
+    final settings = context.watch<FlashcardSettingsProvider>();
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('플래시카드 학습 설정'), automaticallyImplyLeading: true),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('1. 학습 단어장 선택', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 10),
+              // 단어장 선택 UI
+              GlassmorphicCard(
+                onTap: () async {
+                  // ▼▼▼ [수정] wordbook_selection_dialog.dart의 함수를 호출합니다. ▼▼▼
+                  final selected = await showWordbookSelectionDialog(context);
+                  if (selected != null) {
+                    context.read<WordbookManager>().setActiveWordbook(selected);
+                  }
+                },
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  title: Text(
+                    activeWordbook?.name ?? '단어장을 선택해주세요',
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                  subtitle: activeWordbook != null ? Text('${words.length}개의 단어 포함') : null,
+                  trailing: const Icon(Icons.change_circle_outlined),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              Text('2. 카드 앞면 설정', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 10),
+              // 카드 앞면 설정 UI
+              GlassmorphicCard(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  children: [
+                    RadioListTile<FlashcardFrontType>(
+                      title: const Text('단어/예문 먼저 보기'),
+                      subtitle: const Text('카드를 뒤집으면 뜻이 보입니다.'),
+                      value: FlashcardFrontType.word,
+                      groupValue: settings.frontType,
+                      onChanged: (value) {
+                        if (value != null) settings.setFrontType(value);
+                      },
+                    ),
+                    RadioListTile<FlashcardFrontType>(
+                      title: const Text('뜻 먼저 보기'),
+                      subtitle: const Text('카드를 뒤집으면 단어/예문이 보입니다.'),
+                      value: FlashcardFrontType.meaning,
+                      groupValue: settings.frontType,
+                      onChanged: (value) {
+                        if (value != null) settings.setFrontType(value);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('플래시카드 학습 시작'),
+                  onPressed: activeWordbook == null ? null : _startSession,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: TextButton.icon(
+                  icon: const Icon(Icons.library_books_outlined),
+                  label: const Text('오답노트로 학습하기'),
+                  onPressed: _showIncorrectWordbookList,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 실제 학습 세션 UI
+  Widget _buildFlashcardSession() {
+    final theme = Theme.of(context);
+    final settings = context.watch<FlashcardSettingsProvider>();
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(_sessionTitle),
         centerTitle: true,
@@ -163,84 +243,142 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
           onPressed: () => setState(() => _sessionActive = false),
         ),
       ),
-
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '${_currentIndex + 1} / ${_sessionItems.length}',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: FlipCard(
-                  key: _cardKey,
-                  flipOnTouch: true,
-                  direction: FlipDirection.HORIZONTAL,
-                  front: GlassmorphicCard(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Text(
-                          frontText,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.headlineSmall,
-                        ),
-                      ),
-                    ),
-                  ),
-                  back: GlassmorphicCard(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              backText,
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.headlineSmall,
+        child: Column(
+          children: [
+            Expanded(
+              child:
+                  _sessionWords.isEmpty
+                      ? const Center(child: Text("학습할 단어가 없습니다."))
+                      : CardSwiper(
+                        controller: _swiperController,
+                        cardsCount: _sessionWords.length,
+                        onSwipe: _onSwipe,
+                        padding: const EdgeInsets.all(24.0),
+                        cardBuilder: (context, index, percentThresholdX, percentThresholdY) {
+                          final word = _sessionWords[index];
+
+                          final frontContent =
+                              settings.frontType == FlashcardFrontType.word
+                                  ? _buildCardSide(
+                                    context: context,
+                                    content: word.word,
+                                    example: word.exampleSentence,
+                                    wordToSpeak: word.word,
+                                  )
+                                  : _buildCardSide(context: context, content: word.meaning);
+
+                          final backContent =
+                              settings.frontType == FlashcardFrontType.word
+                                  ? _buildCardSide(context: context, content: word.meaning)
+                                  : _buildCardSide(
+                                    context: context,
+                                    content: word.word,
+                                    example: word.exampleSentence,
+                                    wordToSpeak: word.word,
+                                  );
+
+                          return Card(
+                            color: Theme.of(context).colorScheme.surface,
+                            elevation: 4.0,
+                            shape: theme.cardTheme.shape,
+                            clipBehavior: Clip.hardEdge,
+                            child: FlipCard(
+                              key: ValueKey(word.id),
+                              direction: FlipDirection.HORIZONTAL,
+                              front: frontContent,
+                              back: backContent,
                             ),
-                            const SizedBox(height: 15),
-                            IconButton(
-                              icon: const Icon(CupertinoIcons.speaker_2_fill),
-                              iconSize: 30,
-                              onPressed: () => _ttsService.speak(quizItem.word.word),
-                            ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 40),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  GlassmorphicCard(
-                    onTap: _prevCard,
-                    padding: const EdgeInsets.all(20),
-                    child: const Icon(Icons.arrow_back, size: 30),
+                  IconButton(
+                    onPressed: _swiperController.undo,
+                    icon: Icon(Icons.replay, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                    iconSize: 32,
+                    tooltip: '되돌리기',
                   ),
-                  GlassmorphicCard(
-                    onTap: () => setState(() => _sessionActive = false),
-                    padding: const EdgeInsets.all(20),
-                    child: const Icon(Icons.stop, size: 30),
+                  IconButton(
+                    onPressed: () => _swiperController.swipe(CardSwiperDirection.left),
+                    icon: Icon(CupertinoIcons.xmark_circle, color: Colors.red.shade300),
+                    iconSize: 50,
+                    tooltip: '몰라요',
                   ),
-                  GlassmorphicCard(
-                    onTap: _nextCard,
-                    padding: const EdgeInsets.all(20),
-                    child: const Icon(Icons.arrow_forward, size: 30),
+                  IconButton(
+                    onPressed: () => _swiperController.swipe(CardSwiperDirection.right),
+                    icon: Icon(CupertinoIcons.check_mark_circled, color: Colors.green.shade400),
+                    iconSize: 50,
+                    tooltip: '알아요',
+                  ),
+                  IconButton(
+                    onPressed: () => setState(() => _sessionActive = false),
+                    icon: Icon(
+                      Icons.exit_to_app,
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                    iconSize: 32,
+                    tooltip: '학습 종료',
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  // 카드 한 면을 그리는 헬퍼 위젯
+  Widget _buildCardSide({
+    required BuildContext context,
+    required String content,
+    String? example,
+    String? wordToSpeak,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      content,
+                      style: theme.textTheme.headlineSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    if (example != null && example.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 20),
+                        child: Text(
+                          '"$example"',
+                          style: theme.textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (wordToSpeak != null)
+            IconButton(
+              icon: const Icon(CupertinoIcons.speaker_2_fill),
+              iconSize: 30,
+              onPressed: () => _ttsService.speak(wordToSpeak),
+            ),
+        ],
       ),
     );
   }

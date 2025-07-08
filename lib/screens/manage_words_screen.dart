@@ -1,5 +1,3 @@
-// lib/screens/manage_words_screen.dart (수정된 전체 코드)
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
@@ -7,33 +5,29 @@ import 'package:provider/provider.dart';
 
 import '../models/word_model.dart';
 import '../providers/word_list_provider.dart';
+import '../providers/wordbook_manager.dart'; // ▼▼▼ [수정] WordbookManager import
 import '../services/csv_service.dart';
 import 'add_edit_word_screen.dart';
 
 class ManageWordsScreen extends StatelessWidget {
   const ManageWordsScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final wordListNotifier = context.watch<WordListNotifier>(); // watch로 변경하여 실시간 업데이트 반영
+    final wordListNotifier = context.watch<WordListNotifier>();
+    // ▼▼▼ [수정] activeWordbook 정보는 WordbookManager에서 가져옵니다. ▼▼▼
+    final wordbookManager = context.watch<WordbookManager>();
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('단어 관리'),
+        title: const Text('단어 목록 관리'),
         actions: [
-          IconButton(
-            icon: const Icon(CupertinoIcons.arrow_down_doc),
-            onPressed:
-                () async => await context.read<WordListNotifier>().importFromCsv(
-                  context,
-                  context.read<CsvService>(),
-                ),
-          ),
+          // ▼▼▼ [수정] CSV 가져오기 버튼은 WordbookManagementScreen에 있으므로 여기서 제거합니다. ▼▼▼
           IconButton(
             icon: const Icon(CupertinoIcons.arrow_up_doc),
             onPressed: () async {
-              final activeWordbook = wordListNotifier.activeWordbook;
+              final activeWordbook = wordbookManager.activeWordbook;
               if (activeWordbook == null) {
                 ScaffoldMessenger.of(
                   context,
@@ -42,14 +36,15 @@ class ManageWordsScreen extends StatelessWidget {
               }
               await context.read<CsvService>().exportCsv(activeWordbook.dbFileName);
             },
+            tooltip: 'CSV로 내보내기',
           ),
         ],
       ),
       body: SafeArea(
-        // SafeArea 추가
         child: Consumer<WordListNotifier>(
           builder: (context, notifier, child) {
-            if (notifier.activeWordbook == null) {
+            // ▼▼▼ [수정] activeWordbook 정보는 WordbookManager에서 가져옵니다. ▼▼▼
+            if (wordbookManager.activeWordbook == null) {
               return const Center(child: Text('먼저 사용할 단어장을 선택해주세요.'));
             }
             if (notifier.words.isEmpty) {
@@ -66,10 +61,8 @@ class ManageWordsScreen extends StatelessWidget {
                     children: [
                       SlidableAction(
                         onPressed: (context) => notifier.deleteWord(word.id!),
-                        // ▼▼▼ [수정] AppTheme.accentRed 대신 테마의 error 색상을 사용합니다 ▼▼▼
-                        backgroundColor: theme.colorScheme.error,
-                        foregroundColor: theme.colorScheme.onError,
-                        // ▲▲▲ 수정 완료 ▲▲▲
+                        backgroundColor: Theme.of(context).colorScheme.error,
+                        foregroundColor: Theme.of(context).colorScheme.onError,
                         icon: Icons.delete,
                         label: '삭제',
                       ),
@@ -94,8 +87,7 @@ class ManageWordsScreen extends StatelessWidget {
             () => Navigator.of(
               context,
             ).push(MaterialPageRoute(builder: (_) => const AddEditWordScreen())),
-        backgroundColor: theme.colorScheme.primary,
-        child: Icon(Icons.add, color: theme.colorScheme.onPrimary),
+        child: const Icon(Icons.add),
       ),
     );
   }

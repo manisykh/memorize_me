@@ -14,18 +14,21 @@ class _AddEditWordScreenState extends State<AddEditWordScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _wordController;
   late TextEditingController _meaningController;
+  late TextEditingController _exampleController;
 
   @override
   void initState() {
     super.initState();
     _wordController = TextEditingController(text: widget.word?.word ?? '');
     _meaningController = TextEditingController(text: widget.word?.meaning ?? '');
+    _exampleController = TextEditingController(text: widget.word?.exampleSentence ?? '');
   }
 
   @override
   void dispose() {
     _wordController.dispose();
     _meaningController.dispose();
+    _exampleController.dispose();
     super.dispose();
   }
 
@@ -36,6 +39,7 @@ class _AddEditWordScreenState extends State<AddEditWordScreen> {
         id: widget.word?.id,
         word: _wordController.text,
         meaning: _meaningController.text,
+        exampleSentence: _exampleController.text,
       );
       if (widget.word == null) {
         notifier.addWord(newWord);
@@ -48,8 +52,8 @@ class _AddEditWordScreenState extends State<AddEditWordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: Text(widget.word == null ? '새 단어 추가' : '단어 수정')),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -60,26 +64,24 @@ class _AddEditWordScreenState extends State<AddEditWordScreen> {
               TextFormField(
                 controller: _wordController,
                 decoration: const InputDecoration(labelText: '단어'),
-                validator: (value) => (value == null || value.isEmpty) ? '단어를 입력하세요' : null,
+                validator: (value) => value!.isEmpty ? '단어를 입력해주세요.' : null,
               ),
               const SizedBox(height: 20),
               TextFormField(
                 controller: _meaningController,
                 decoration: const InputDecoration(labelText: '뜻'),
-                validator: (value) => (value == null || value.isEmpty) ? '뜻을 입력하세요' : null,
+                validator: (value) => value!.isEmpty ? '뜻을 입력해주세요.' : null,
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: _exampleController,
+                decoration: const InputDecoration(labelText: '예문 (선택 사항)'),
+                maxLines: 3,
               ),
               const Spacer(),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _saveWord,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: theme.primaryColor,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('저장', style: TextStyle(fontSize: 18)),
-                ),
+                child: ElevatedButton(onPressed: _saveWord, child: const Text('저장')),
               ),
             ],
           ),

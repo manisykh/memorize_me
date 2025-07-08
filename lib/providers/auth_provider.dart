@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as auth;
-import 'package:http/http.dart' as http;
+// ▼▼▼ [추가] 새로 설치한 패키지를 import 합니다. ▼▼▼
+import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 
 class AuthProvider extends ChangeNotifier {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
@@ -18,16 +19,13 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   AuthProvider() {
-    // 앱이 시작될 때 사용자의 로그인 상태 변경을 감지
     _googleSignIn.onCurrentUserChanged.listen((account) {
       _currentUser = account;
-      notifyListeners(); // 로그인 상태 변경을 UI에 알림
+      notifyListeners();
     });
-    // 앱 시작 시 조용히 로그인 시도
     _googleSignIn.signInSilently();
   }
 
-  // 로그인 메서드
   Future<void> signIn() async {
     _setLoading(true);
     try {
@@ -39,7 +37,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // 로그아웃 메서드
   Future<void> signOut() async {
     _setLoading(true);
     try {
@@ -52,29 +49,15 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // API 요청을 위한 인증된 http 클라이언트 생성
+  // ▼▼▼ [수정] 인증된 http 클라이언트를 가져오는 방식을 더 안정적으로 변경 ▼▼▼
   Future<auth.AuthClient?> getAuthenticatedClient() async {
-    try {
-      final headers = await _googleSignIn.currentUser?.authHeaders;
-      if (headers == null) {
-        debugPrint("AuthProvider :: User not signed in or headers are null.");
-        return null;
-      }
-
-      final String accessToken = headers['Authorization']!.substring(7);
-      final expiry = DateTime.now().toUtc().add(const Duration(hours: 1));
-
-      final credentials = auth.AccessCredentials(
-        auth.AccessToken('Bearer', accessToken, expiry),
-        null,
-        _googleSignIn.scopes,
-      );
-
-      return auth.authenticatedClient(http.Client(), credentials);
-    } catch (e) {
-      debugPrint("AuthProvider :: Error getting authenticated client: $e");
-      return null;
+    // getAuthenticatedClient 함수는 이제 더 이상 사용되지 않습니다.
+    // 대신, google_sign_in 패키지에서 제공하는 extension을 사용합니다.
+    // 이 방식은 토큰 만료 및 갱신을 자동으로 처리해줍니다.
+    if (await _googleSignIn.isSignedIn()) {
+      return await _googleSignIn.authenticatedClient();
     }
+    return null;
   }
 
   void _setLoading(bool loading) {

@@ -67,6 +67,8 @@ dependencies:
   dart_openai: ^5.1.0            # ▼▼▼ [추가] ▼▼▼
   flutter_secure_storage: ^9.1.1 # ▼▼▼ [추가] ▼▼▼
   flip_card: ^0.7.0
+  flutter_card_swiper: ^7.0.2
+  extension_google_sign_in_as_googleapis_auth: ^2.0.13
 
 
 dev_dependencies:

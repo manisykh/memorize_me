@@ -1,5 +1,3 @@
-// providers/quiz_session_provider.dart
-
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/word_model.dart';
@@ -44,7 +42,8 @@ class QuizSessionProvider extends ChangeNotifier {
 
     _sessionItems =
         sessionWords.map((word) {
-          return QuizItem(word: word, questionType: TestType.meaningToWord);
+          // ▼▼▼ [수정] TestType을 SelfTestType으로 변경합니다. ▼▼▼
+          return QuizItem(word: word, questionType: SelfTestType.meaningToWord);
         }).toList();
     notifyListeners();
   }
@@ -53,10 +52,7 @@ class QuizSessionProvider extends ChangeNotifier {
     if (_answerSubmitted) return;
 
     final currentItem = _sessionItems[_currentIndex];
-    // ▼▼▼ 수정된 부분 ▼▼▼
-    // 정답은 word 필드에서 중괄호를 제거하여 생성합니다.
     final correctAnswer = currentItem.word.word.replaceAll('{', '').replaceAll('}', '');
-    // ▲▲▲ 수정된 부분 ▲▲▲
 
     final bool isCorrect = userAnswer.trim().toLowerCase() == correctAnswer.trim().toLowerCase();
 

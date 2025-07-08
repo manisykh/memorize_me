@@ -151,11 +151,17 @@ class DatabaseService {
     String path = p.join(documentsDirectory.path, dbFileName);
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // 버전을 1에서 2로 올립니다.
       onCreate: (db, version) async {
         await db.execute(
-          'CREATE TABLE words(id INTEGER PRIMARY KEY AUTOINCREMENT, word TEXT NOT NULL, meaning TEXT NOT NULL)',
+          'CREATE TABLE words(id INTEGER PRIMARY KEY AUTOINCREMENT, word TEXT NOT NULL, meaning TEXT NOT NULL, exampleSentence TEXT)', // 생성 시에도 컬럼 추가
         );
+      },
+      // ▼▼▼ [추가] 기존 DB를 업그레이드하는 로직 ▼▼▼
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE words ADD COLUMN exampleSentence TEXT');
+        }
       },
     );
   }
