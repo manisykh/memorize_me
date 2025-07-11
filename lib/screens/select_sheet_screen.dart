@@ -1,4 +1,4 @@
-// screens/select_sheet_screen.dart
+// lib/screens/select_sheet_screen.dart (수정된 전체 코드)
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -20,7 +20,9 @@ class SelectSheetScreen extends StatefulWidget {
 
 class _SelectSheetScreenState extends State<SelectSheetScreen> {
   late Future<List<sheets.Sheet>> _sheetsFuture;
-  final _nameController = TextEditingController();
+  // ▼▼▼ [추가] 여러 시트를 선택하기 위한 Set ▼▼▼
+  final Set<sheets.Sheet> _selectedSheets = {};
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -28,10 +30,29 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
     _sheetsFuture = context.read<SheetsService>().getSheetInfo(widget.spreadsheetId);
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
+  // ▼▼▼ [추가] 선택된 시트들을 단어장으로 가져오는 함수 ▼▼▼
+  Future<void> _importSelectedSheets() async {
+    if (_selectedSheets.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('가져올 시트를 1개 이상 선택해주세요.')));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final manager = context.read<WordbookManager>();
+    await manager.createMultipleWordbooksFromSheets(_selectedSheets.toList(), widget.spreadsheetId);
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${_selectedSheets.length}개의 단어장을 가져왔습니다.')));
+      // 성공적으로 가져온 후, true 값을 반환하며 현재 화면을 닫습니다.
+      Navigator.of(context).pop(true);
+    }
+
+    setState(() => _isLoading = false);
   }
 
   @override
@@ -43,7 +64,10 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
           preferredSize: const Size.fromHeight(30.0),
           child: Padding(
             padding: const EdgeInsets.only(bottom: 8.0),
-            child: Text('단어를 가져올 시트를 선택하세요', style: Theme.of(context).textTheme.titleSmall),
+            child: Text(
+              '단어를 가져올 시트를 선택하세요 (다중 선택 가능)',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
           ),
         ),
       ),
@@ -61,71 +85,45 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
           }
 
           final sheets = snapshot.data!;
+          // ▼▼▼ [수정] ListTile을 CheckboxListTile로 변경 ▼▼▼
           return ListView.builder(
             itemCount: sheets.length,
             itemBuilder: (context, index) {
               final sheet = sheets[index];
               final sheetTitle = sheet.properties?.title ?? '이름 없는 시트';
+              final isSelected = _selectedSheets.contains(sheet);
 
-              return ListTile(
-                leading: const Icon(CupertinoIcons.doc_plaintext),
+              return CheckboxListTile(
+                secondary: const Icon(CupertinoIcons.doc_plaintext),
                 title: Text(sheetTitle),
-                onTap: () => _onSheetSelected(context, sheet),
+                value: isSelected,
+                onChanged: (bool? value) {
+                  setState(() {
+                    if (value == true) {
+                      _selectedSheets.add(sheet);
+                    } else {
+                      _selectedSheets.remove(sheet);
+                    }
+                  });
+                },
               );
             },
           );
         },
       ),
-    );
-  }
-
-  void _onSheetSelected(BuildContext context, sheets.Sheet sheet) {
-    final sheetTitle = sheet.properties?.title;
-    if (sheetTitle == null) return;
-    final theme = Theme.of(context); // 현재 테마 가져오기
-
-    // 단어장 이름을 입력받는 다이얼로그를 띄웁니다.
-    showCupertinoDialog(
-      context: context,
-      builder: (dialogContext) {
-        _nameController.text = sheetTitle; // 기본값으로 시트 이름을 제안
-        return CupertinoAlertDialog(
-          title: const Text('단어장 이름 지정'),
-          content: Padding(
-            padding: const EdgeInsets.only(top: 16.0),
-            child: CupertinoTextField(
-              controller: _nameController,
-              placeholder: '단어장 이름을 입력하세요',
-              autofocus: true,
-              style: TextStyle(color: theme.textTheme.bodyLarge?.color),
-            ),
-          ),
-          actions: [
-            CupertinoDialogAction(
-              child: const Text('취소'),
-              onPressed: () => Navigator.of(dialogContext).pop(),
-            ),
-            CupertinoDialogAction(
-              isDefaultAction: true,
-              child: const Text('생성'),
-              onPressed: () {
-                final newName = _nameController.text.trim();
-                if (newName.isEmpty) return;
-
-                // 단어장 생성 로직 호출
-                context.read<WordbookManager>().createNewWordbook(
-                  name: newName,
-                  spreadsheetId: widget.spreadsheetId,
-                  sheetName: sheetTitle,
-                );
-
-                // 생성 화면들을 모두 닫고 단어장 목록 첫 화면으로 돌아갑니다.
-                Navigator.of(dialogContext).popUntil((route) => route.isFirst);
-              },
-            ),
-          ],
-        );
-      },
+      // ▼▼▼ [추가] 선택한 시트들을 가져오는 FAB(플로팅 액션 버튼) ▼▼▼
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _isLoading ? null : _importSelectedSheets,
+        label: _isLoading ? const Text('가져오는 중...') : Text('${_selectedSheets.length}개 시트 가져오기'),
+        icon:
+            _isLoading
+                ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(color: Colors.white),
+                )
+                : const Icon(Icons.download),
+      ),
     );
   }
 }

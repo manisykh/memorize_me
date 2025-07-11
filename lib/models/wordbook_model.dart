@@ -1,5 +1,3 @@
-// lib/models/wordbook_model.dart (copyWith 추가)
-
 enum WordbookSource { googleSheet, localCsv }
 
 class Wordbook {
@@ -19,7 +17,6 @@ class Wordbook {
     required this.source,
   });
 
-  // ▼▼▼ [추가] copyWith 메서드 ▼▼▼
   Wordbook copyWith({
     int? id,
     String? name,
@@ -53,12 +50,12 @@ class Wordbook {
     final sourceString = map['source'] as String?;
     final sourceEnum = WordbookSource.values.firstWhere(
       (e) => e.toString() == sourceString,
-      orElse: () => WordbookSource.googleSheet,
+      orElse: () => WordbookSource.localCsv,
     );
 
     return Wordbook(
       id: map['id'],
-      name: map['name'],
+      name: map['name'] ?? 'Unnamed Wordbook',
       spreadsheetId: map['spreadsheetId'] ?? '',
       sheetName: map['sheetName'] ?? '',
       dbFileName: map['dbFileName'],

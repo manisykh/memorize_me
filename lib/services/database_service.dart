@@ -1,3 +1,5 @@
+// lib/services/database_service.dart (수정된 코드)
+
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -7,12 +9,9 @@ import 'package:sqflite/sqflite.dart';
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 
-// 백그라운드 Isolate에서 단어를 가져올 최상위 함수
 Future<List<Word>> _getAllWordsInBackground(Map<String, dynamic> params) async {
   final String dbFileName = params['dbFileName'];
   final RootIsolateToken rootIsolateToken = params['token'];
-
-  // 전달받은 토큰으로 백그라운드 스레드의 통신을 초기화합니다.
   BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
 
   Directory documentsDirectory = await getApplicationDocumentsDirectory();
@@ -28,6 +27,8 @@ Future<List<Word>> _getAllWordsInBackground(Map<String, dynamic> params) async {
 class DatabaseService {
   Database? _metaDb;
 
+  final Map<String, Database> _openedWordDbs = {};
+
   Future<Database> get _metaDatabase async {
     if (_metaDb != null) return _metaDb!;
     _metaDb = await _initMetaDB();
@@ -37,7 +38,6 @@ class DatabaseService {
   Future<Database> _initMetaDB() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, "meta.db");
-
     return await openDatabase(path, version: 3, onCreate: _createMetaDB, onUpgrade: _onUpgrade);
   }
 
@@ -146,21 +146,50 @@ class DatabaseService {
     await db.delete('incorrect_words', where: 'wordbookName = ?', whereArgs: [wordbookName]);
   }
 
+  // ▼▼▼ [수정] 버전 번호를 3으로 올리고, onUpgrade 로직을 강화합니다. ▼▼▼
   Future<Database> _openWordDB(String dbFileName) async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, dbFileName);
     return await openDatabase(
       path,
-      version: 2, // 버전을 1에서 2로 올립니다.
+      version: 3, // 버전을 3으로 올립니다.
       onCreate: (db, version) async {
-        await db.execute(
-          'CREATE TABLE words(id INTEGER PRIMARY KEY AUTOINCREMENT, word TEXT NOT NULL, meaning TEXT NOT NULL, exampleSentence TEXT)', // 생성 시에도 컬럼 추가
-        );
+        await db.execute('''CREATE TABLE words(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            word TEXT NOT NULL,
+            meaning TEXT NOT NULL,
+            exampleSentence TEXT,
+            srsLevel INTEGER NOT NULL DEFAULT 0,
+            nextReviewDate TEXT
+          )''');
       },
-      // ▼▼▼ [추가] 기존 DB를 업그레이드하는 로직 ▼▼▼
       onUpgrade: (db, oldVersion, newVersion) async {
+        // 각 버전별로 순차적 업그레이드를 실행합니다.
         if (oldVersion < 2) {
-          await db.execute('ALTER TABLE words ADD COLUMN exampleSentence TEXT');
+          try {
+            await db.execute('ALTER TABLE words ADD COLUMN srsLevel INTEGER NOT NULL DEFAULT 0');
+            await db.execute('ALTER TABLE words ADD COLUMN nextReviewDate TEXT');
+          } catch (e) {
+            debugPrint("Error upgrading to v2: $e");
+          }
+        }
+        if (oldVersion < 3) {
+          // 버전 3에서 추가적으로 필요한 스키마 변경이 있다면 여기에 추가합니다.
+          // 현재는 v2와 동일한 구조이므로, 혹시 모를 누락을 방지하기 위해 한번 더 실행합니다.
+          try {
+            // srsLevel 컬럼이 없는 경우에만 추가
+            var cursor = await db.rawQuery("PRAGMA table_info(words)");
+            bool hasSrsLevel = cursor.any((col) => col['name'] == 'srsLevel');
+            if (!hasSrsLevel) {
+              await db.execute('ALTER TABLE words ADD COLUMN srsLevel INTEGER NOT NULL DEFAULT 0');
+            }
+            bool hasNextReviewDate = cursor.any((col) => col['name'] == 'nextReviewDate');
+            if (!hasNextReviewDate) {
+              await db.execute('ALTER TABLE words ADD COLUMN nextReviewDate TEXT');
+            }
+          } catch (e) {
+            debugPrint("Error upgrading to v3: $e");
+          }
         }
       },
     );
@@ -169,9 +198,7 @@ class DatabaseService {
   Future<List<Word>> getAllWords(String dbFileName) async {
     final token = RootIsolateToken.instance;
     if (token == null) {
-      // This is a fallback for rare cases where the token might not be available.
-      // It runs the operation on the main thread, which could cause a freeze,
-      // but prevents a crash.
+      // This is a fallback for older Flutter versions, might not be necessary.
       return _getAllWordsInBackground({
         'dbFileName': dbFileName,
         'token': RootIsolateToken.instance,
@@ -203,6 +230,7 @@ class DatabaseService {
 
   Future<void> updateWord(String dbFileName, Word word) async {
     final db = await _openWordDB(dbFileName);
+    // toMap()은 모든 필드를 포함하므로, DB 스키마가 일치해야 합니다.
     await db.update('words', word.toMap(), where: 'id = ?', whereArgs: [word.id]);
     await db.close();
   }

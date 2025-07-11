@@ -12,7 +12,6 @@ class MergeWordbooksScreen extends StatefulWidget {
 }
 
 class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
-  // 선택된 단어장의 ID를 저장할 Set
   final Set<int> _selectedWordbookIds = {};
 
   void _onMerge() {
@@ -49,8 +48,7 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
               onPressed: () {
                 final newName = nameController.text.trim();
                 if (newName.isNotEmpty) {
-                  Navigator.pop(dialogContext); // 다이얼로그 닫기
-                  // WordbookManager의 병합 함수 호출
+                  Navigator.pop(dialogContext);
                   context.read<WordbookManager>().mergeWordbooks(
                     _selectedWordbookIds,
                     newName,
@@ -67,10 +65,10 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // WordbookManager의 wordbooks 리스트를 가져옵니다.
     final List<Wordbook> wordbooks = context.watch<WordbookManager>().wordbooks;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('단어장 병합')),
       body:
           wordbooks.isEmpty

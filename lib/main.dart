@@ -1,3 +1,5 @@
+// lib/main.dart (수정된 전체 코드)
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -12,6 +14,7 @@ import 'services/ai_service.dart';
 import 'services/api_key_service.dart';
 import 'services/csv_service.dart';
 import 'services/database_service.dart';
+import 'services/mode_state_service.dart'; // ▼▼▼ [추가]
 import 'services/sheets_service.dart';
 import 'services/test_sheet_service.dart';
 import 'services/tts_service.dart';
@@ -29,12 +32,13 @@ void main() async {
         Provider<TestSheetService>(create: (_) => TestSheetService()),
         Provider<ApiKeyService>(create: (_) => ApiKeyService()),
         Provider<TtsService>(create: (_) => TtsService()),
+        Provider<ModeStateService>(create: (_) => ModeStateService()), // ▼▼▼ [추가]
         ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
         ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
         ChangeNotifierProvider<AiSettingsProvider>(create: (_) => AiSettingsProvider()),
         ChangeNotifierProvider<FlashcardSettingsProvider>(
           create: (_) => FlashcardSettingsProvider(),
-        ), // ▼▼▼ [추가] ▼▼▼ // ▼▼▼ [추가] AI 설정 프로바이더 ▼▼▼
+        ),
         ProxyProvider<ApiKeyService, AiService>(
           update: (_, apiKeyService, __) => AiService(apiKeyService),
         ),
@@ -90,11 +94,9 @@ class MyApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           builder: (context, child) {
             final currentThemeType = themeNotifier.currentTheme;
-
             if (currentThemeType == AppThemeType.lightGreen) {
               return GradientBackground(child: child!);
             }
-
             Color backgroundColor;
             if (currentThemeType == AppThemeType.visionProtection) {
               int levelIndex = (themeNotifier.eyeCareLevel - 1).clamp(0, 4);
@@ -102,7 +104,6 @@ class MyApp extends StatelessWidget {
             } else {
               backgroundColor = Theme.of(context).scaffoldBackgroundColor;
             }
-
             return Container(color: backgroundColor, child: child);
           },
           home: const AppInitializer(),
@@ -114,7 +115,6 @@ class MyApp extends StatelessWidget {
 
 class AppInitializer extends StatefulWidget {
   const AppInitializer({super.key});
-
   @override
   State<AppInitializer> createState() => _AppInitializerState();
 }

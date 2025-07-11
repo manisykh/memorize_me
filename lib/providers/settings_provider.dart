@@ -30,7 +30,7 @@ class SettingsNotifier extends ChangeNotifier {
   AppSettings _settings = AppSettings();
   AppSettings get settings => _settings;
 
-  void resetWordCountToMax(List<dynamic> words) {
+  void resetWordCountToMax(List<Word> words) {
     final newMaxCount = words.isNotEmpty ? words.length : 1;
     if (_settings.wordCount > newMaxCount) {
       _settings = _settings.copyWith(wordCount: newMaxCount);

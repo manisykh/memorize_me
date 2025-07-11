@@ -1,6 +1,8 @@
+// lib/providers/word_list_provider.dart (수정된 전체 코드)
+
 import 'package:flutter/material.dart';
 import '../models/word_model.dart';
-import '../providers/ai_settings_provider.dart'; // AI 설정을 가져오기 위해 추가
+import '../providers/ai_settings_provider.dart';
 import '../services/ai_service.dart';
 import '../services/database_service.dart';
 
@@ -17,6 +19,14 @@ class WordListNotifier extends ChangeNotifier {
     _activeDbFileName = dbFileName;
     _words = await _databaseService.getAllWords(dbFileName);
     notifyListeners();
+  }
+
+  // ▼▼▼ [추가] DB에서 단어 목록을 다시 불러와 상태를 갱신하는 메서드 ▼▼▼
+  Future<void> refreshWords() async {
+    if (_activeDbFileName != null) {
+      // 현재 활성화된 DB 파일 이름으로 단어 목록을 다시 로드합니다.
+      await loadWords(_activeDbFileName!);
+    }
   }
 
   void clearWords() {
@@ -43,7 +53,6 @@ class WordListNotifier extends ChangeNotifier {
     await loadWords(_activeDbFileName!);
   }
 
-  // ▼▼▼ [수정] AiSettingsProvider를 인자로 받아 모델 이름을 전달하도록 변경 ▼▼▼
   Future<void> generateAndUpdateAllSentences(
     AiService aiService,
     AiSettingsProvider aiSettings,
@@ -56,7 +65,6 @@ class WordListNotifier extends ChangeNotifier {
 
     final wordStrings = wordsToUpdate.map((w) => w.word).toList();
 
-    // 현재 설정된 모델 이름을 함께 전달합니다.
     final sentenceMap = await aiService.generateSentencesForWords(
       wordStrings,
       aiSettings.selectedModel,
@@ -64,12 +72,7 @@ class WordListNotifier extends ChangeNotifier {
 
     for (final word in wordsToUpdate) {
       if (sentenceMap.containsKey(word.word)) {
-        final updatedWord = Word(
-          id: word.id,
-          word: word.word,
-          meaning: word.meaning,
-          exampleSentence: sentenceMap[word.word],
-        );
+        final updatedWord = word.copyWith(exampleSentence: sentenceMap[word.word]);
         await _databaseService.updateWord(_activeDbFileName!, updatedWord);
       }
     }

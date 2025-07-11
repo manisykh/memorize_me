@@ -1,14 +1,19 @@
+// lib/screens/ai_quiz_setup_screen.dart (오버플로우 해결 코드)
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/ai_quiz_model.dart';
 import '../models/word_model.dart';
+import '../models/wordbook_model.dart';
 import '../providers/ai_settings_provider.dart';
 import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/ai_service.dart';
+import '../services/mode_state_service.dart';
 import '../widgets/glassmorphic_card.dart';
+import '../widgets/wordbook_selection_button.dart';
 import 'ai_quiz_player_screen.dart';
 import 'app_settings_screen.dart';
 
@@ -20,7 +25,10 @@ class AiQuizSetupScreen extends StatefulWidget {
 }
 
 class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
+  Wordbook? _selectedWordbook;
+  List<Word> _words = [];
   final Set<int> _selectedWordIds = {};
+
   String _selectedQuizType = '종합';
   double _difficulty = 2.0;
   double _questionCount = 10.0;
@@ -29,45 +37,85 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   bool _includeExplanation = false;
   bool _isGeneratingSentences = false;
 
-  void _onSelectAll(List<Word> allWords) {
-    setState(() => _selectedWordIds.addAll(allWords.map((w) => w.id!)));
+  @override
+  void initState() {
+    super.initState();
+    _loadLastUsedWordbook();
   }
 
-  void _onDeselectAll() {
-    setState(() => _selectedWordIds.clear());
+  Future<void> _loadLastUsedWordbook() async {
+    final modeStateService = context.read<ModeStateService>();
+    final wordbookManager = context.read<WordbookManager>();
+
+    final lastUsedId = await modeStateService.getLastUsedWordbookId(LearningMode.aiQuiz);
+    Wordbook? lastUsedWordbook;
+    if (lastUsedId != null) {
+      lastUsedWordbook = wordbookManager.getWordbookById(lastUsedId);
+    }
+    lastUsedWordbook ??= wordbookManager.wordbooks.firstOrNull;
+
+    if (lastUsedWordbook != null) {
+      await _onWordbookSelected(lastUsedWordbook);
+    }
   }
+
+  Future<void> _onWordbookSelected(Wordbook wordbook) async {
+    setState(() {
+      _isLoading = true;
+      _selectedWordbook = wordbook;
+      _words.clear();
+      _selectedWordIds.clear();
+    });
+
+    final words = await context.read<WordbookManager>().getAllWordsFrom(wordbook);
+    if (mounted) {
+      setState(() {
+        _words = words;
+        _isLoading = false;
+      });
+    }
+
+    final modeStateService = context.read<ModeStateService>();
+    await modeStateService.setLastUsedWordbookId(LearningMode.aiQuiz, wordbook.id!);
+  }
+
+  void _onSelectAll() => setState(() => _selectedWordIds.addAll(_words.map((w) => w.id!)));
+  void _onDeselectAll() => setState(() => _selectedWordIds.clear());
 
   Future<void> _handleApiError(dynamic e) async {
-    if (e is CustomApiException && e.code == 'api_key_missing') {
-      if (!mounted) return;
-      await showCupertinoDialog(
-        context: context,
-        builder:
-            (dialogContext) => CupertinoAlertDialog(
-              title: const Text('API 키 필요'),
-              content: Text(e.message),
-              actions: [
-                CupertinoDialogAction(
-                  child: const Text('취소'),
-                  onPressed: () => Navigator.pop(dialogContext),
-                ),
-                CupertinoDialogAction(
-                  isDefaultAction: true,
-                  child: const Text('설정으로 이동'),
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                    Navigator.of(
-                      context,
-                    ).push(MaterialPageRoute(builder: (_) => const AppSettingsScreen()));
-                  },
-                ),
-              ],
-            ),
-      );
-      setState(() => _errorMessage = null);
-    } else {
-      setState(() => _errorMessage = e.toString());
+    if (!mounted) return;
+    String message = e.toString();
+    if (e is CustomApiException) {
+      message = e.message;
+      if (e.code == 'api_key_missing') {
+        await showCupertinoDialog(
+          context: context,
+          builder:
+              (dialogContext) => CupertinoAlertDialog(
+                title: const Text('API 키 필요'),
+                content: Text(e.message),
+                actions: [
+                  CupertinoDialogAction(
+                    child: const Text('취소'),
+                    onPressed: () => Navigator.pop(dialogContext),
+                  ),
+                  CupertinoDialogAction(
+                    isDefaultAction: true,
+                    child: const Text('설정으로 이동'),
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                      Navigator.of(
+                        context,
+                      ).push(MaterialPageRoute(builder: (_) => const AppSettingsScreen()));
+                    },
+                  ),
+                ],
+              ),
+        );
+        return;
+      }
     }
+    setState(() => _errorMessage = message);
   }
 
   Future<void> _generateQuiz() async {
@@ -79,11 +127,11 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       _isLoading = true;
       _errorMessage = null;
     });
+
     try {
       final aiService = context.read<AiService>();
       final aiSettings = context.read<AiSettingsProvider>();
-      final allWords = context.read<WordListNotifier>().words;
-      final selectedWords = allWords.where((word) => _selectedWordIds.contains(word.id)).toList();
+      final selectedWords = _words.where((word) => _selectedWordIds.contains(word.id)).toList();
       final difficultyText = ['쉬움', '보통', '어려움'][_difficulty.round() - 1];
 
       final quizResponse = await aiService.generateQuiz(
@@ -148,8 +196,6 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final words = context.watch<WordListNotifier>().words;
-    final activeWordbook = context.watch<WordbookManager>().activeWordbook;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -160,16 +206,14 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ▼▼▼ [수정] 단어장 선택 버튼을 '현재 단어장'을 표시하는 텍스트로 변경 ▼▼▼
-              Text(
-                '현재 단어장: ${activeWordbook?.name ?? '선택되지 않음'}',
-                style: theme.textTheme.titleMedium,
+              WordbookSelectionButton(
+                selectedWordbook: _selectedWordbook,
+                onWordbookSelected: _onWordbookSelected,
+                wordCount: _words.length,
               ),
-              const SizedBox(height: 4),
-              Text('단어장을 변경하려면 \'내 단어장\' 메뉴를 이용해주세요.', style: theme.textTheme.bodySmall),
               const SizedBox(height: 24),
 
-              Text('AI 예문 일괄 생성(플래시카드 학습)', style: theme.textTheme.titleLarge),
+              Text('AI 예문 일괄 생성', style: theme.textTheme.titleLarge),
               const SizedBox(height: 10),
               GlassmorphicCard(
                 padding: const EdgeInsets.all(16),
@@ -177,7 +221,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '현재 단어장에 예문이 없는 모든 단어에 대해 AI가 예문을 생성하고 저장합니다.',
+                      '선택된 단어장에 예문이 없는 모든 단어에 대해 AI가 예문을 생성합니다.',
                       style: theme.textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 16),
@@ -194,7 +238,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                                 : const Icon(Icons.auto_awesome_rounded),
                         label: Text(_isGeneratingSentences ? '예문 생성 중...' : '일괄 생성 시작'),
                         onPressed:
-                            _isGeneratingSentences || activeWordbook == null
+                            _isGeneratingSentences || _selectedWordbook == null
                                 ? null
                                 : _generateAllSentences,
                       ),
@@ -207,38 +251,43 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
               Text('AI 퀴즈 생성', style: theme.textTheme.titleLarge),
               const SizedBox(height: 16),
 
-              Text('문제에 포함될 단어 선택', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              // ▼▼▼ [수정] Row를 Wrap으로 변경하여 오버플로우를 방지합니다. ▼▼▼
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                runSpacing: 4.0, // 줄바꿈 시 상하 간격
                 children: [
                   Text(
-                    '선택된 단어: ${_selectedWordIds.length} / ${words.length}',
-                    style: theme.textTheme.bodyMedium,
+                    '문제에 포함될 단어 선택 (${_selectedWordIds.length} / ${_words.length})',
+                    style: theme.textTheme.titleMedium,
                   ),
                   Row(
+                    mainAxisSize: MainAxisSize.min, // 버튼들이 차지하는 공간을 최소화
                     children: [
-                      TextButton(onPressed: () => _onSelectAll(words), child: const Text('전체 선택')),
+                      TextButton(onPressed: _onSelectAll, child: const Text('전체 선택')),
                       TextButton(onPressed: _onDeselectAll, child: const Text('전체 해제')),
                     ],
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
               GlassmorphicCard(
                 padding: const EdgeInsets.all(0),
                 child: SizedBox(
                   height: 200,
                   child:
-                      activeWordbook == null
+                      _selectedWordbook == null
                           ? Center(
-                            child: Text("단어장을 먼저 선택해주세요.", style: theme.textTheme.bodyMedium),
+                            child: Text("먼저 학습할 단어장을 선택해주세요.", style: theme.textTheme.bodyMedium),
                           )
-                          : words.isEmpty
+                          : _isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : _words.isEmpty
                           ? Center(child: Text("단어장에 단어가 없습니다.", style: theme.textTheme.bodyMedium))
                           : ListView.builder(
-                            itemCount: words.length,
+                            itemCount: _words.length,
                             itemBuilder: (context, index) {
-                              final word = words[index];
+                              final word = _words[index];
                               return CheckboxListTile(
                                 title: Text(word.word),
                                 subtitle: Text(word.meaning),
@@ -246,10 +295,11 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                                 onChanged: (bool? value) {
                                   if (word.id == null) return;
                                   setState(() {
-                                    if (value == true)
+                                    if (value == true) {
                                       _selectedWordIds.add(word.id!);
-                                    else
+                                    } else {
                                       _selectedWordIds.remove(word.id!);
+                                    }
                                   });
                                 },
                               );
@@ -286,6 +336,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                     ),
                   ),
                 ),
+
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -298,7 +349,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                           )
                           : const Icon(Icons.auto_awesome),
                   label: Text(_isLoading ? '문제 생성 중...' : 'AI 퀴즈 생성하기'),
-                  onPressed: _isLoading || activeWordbook == null ? null : _generateQuiz,
+                  onPressed: _isLoading || _selectedWordbook == null ? null : _generateQuiz,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
@@ -317,25 +368,11 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       children: [
         Text('문제 유형', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: RawChip(
-            label: const Text('종합'),
-            selected: _selectedQuizType == '종합',
-            onSelected: (isSelected) {
-              if (isSelected) setState(() => _selectedQuizType = '종합');
-            },
-            showCheckmark: false,
-            padding: const EdgeInsets.symmetric(vertical: 10),
-          ),
-        ),
-        const SizedBox(height: 8),
         Wrap(
           spacing: 8.0,
           runSpacing: 4.0,
-          alignment: WrapAlignment.center,
           children:
-              ['어휘', '문법', '독해', '듣기'].map((type) {
+              ['종합', '어휘', '문법', '독해', '듣기'].map((type) {
                 return ChoiceChip(
                   label: Text(type),
                   selected: _selectedQuizType == type,

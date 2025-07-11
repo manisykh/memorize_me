@@ -1,9 +1,15 @@
+// lib/providers/wordbook_manager.dart (수정된 전체 코드)
+
 import 'dart:io';
+// ▼▼▼ [추가] 'min' 함수를 사용하기 위해 dart:math를 import 합니다. ▼▼▼
+import 'dart:math';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
+import 'package:googleapis/sheets/v4.dart' as sheets;
 
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
@@ -18,6 +24,7 @@ class WordbookManager extends ChangeNotifier {
 
   List<Wordbook> _wordbooks = [];
   List<Wordbook> get wordbooks => _wordbooks;
+
   Wordbook? _activeWordbook;
   Wordbook? get activeWordbook => _activeWordbook;
 
@@ -43,6 +50,14 @@ class WordbookManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  Wordbook? getWordbookById(int id) {
+    try {
+      return _wordbooks.firstWhere((wb) => wb.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+
   Future<void> loadIncorrectWordbookNames() async {
     _incorrectWordbookNames = await _dbService.getIncorrectWordbookNames();
     notifyListeners();
@@ -64,12 +79,9 @@ class WordbookManager extends ChangeNotifier {
     _setLoading(false);
   }
 
-  // ▼▼▼ [수정] WordListNotifier의 변경된 방식에 맞게 로직 수정 ▼▼▼
   Future<void> setActiveWordbook(Wordbook? wordbook) async {
     _activeWordbook = wordbook;
-
     if (wordbook != null) {
-      // WordListNotifier에게 어떤 DB 파일에서 단어를 로드할지 알려줍니다.
       await _wordListNotifier.loadWords(wordbook.dbFileName);
     } else {
       _wordListNotifier.clearWords();
@@ -198,32 +210,23 @@ class WordbookManager extends ChangeNotifier {
     _setLoading(false);
   }
 
-  // ▼▼▼ [수정] 디버깅 로그를 추가한 병합 함수 ▼▼▼
   Future<void> mergeWordbooks(Set<int> wordbookIds, String newName, BuildContext context) async {
     _setLoading(true);
-    debugPrint("======== 단어장 병합 시작 ========");
     try {
       final List<Word> mergedWords = [];
       final Set<String> uniqueWordTexts = {};
 
       final List<Wordbook> booksToMerge =
           _wordbooks.where((wb) => wordbookIds.contains(wb.id)).toList();
-      debugPrint("병합 대상 단어장: ${booksToMerge.map((e) => e.name).toList()}");
 
       for (final book in booksToMerge) {
-        debugPrint("-> '${book.name}' 단어장 처리 시작...");
         final wordsFromDb = await _dbService.getAllWords(book.dbFileName);
-        debugPrint("   '${book.name}'에서 ${wordsFromDb.length}개의 단어를 불러왔습니다.");
-
         for (var word in wordsFromDb) {
           if (uniqueWordTexts.add(word.word.trim().toLowerCase())) {
             mergedWords.add(word);
           }
         }
-        debugPrint("   처리 후, 통합된 단어 수: ${mergedWords.length}");
       }
-
-      debugPrint("--- 최종 통합된 단어 수: ${mergedWords.length} ---");
 
       final dbFileName = 'wordbook_${DateTime.now().millisecondsSinceEpoch}.db';
       final newWordbook = Wordbook(
@@ -233,9 +236,7 @@ class WordbookManager extends ChangeNotifier {
       );
       final savedWordbook = await _dbService.addWordbook(newWordbook);
 
-      debugPrint("새로운 단어장 '$newName' 생성 완료. 이제 단어를 저장합니다...");
       await _dbService.addWordsInBatch(savedWordbook.dbFileName, mergedWords);
-      debugPrint("'$newName'에 ${mergedWords.length}개의 단어 저장 완료.");
 
       if (context.mounted) {
         final deleteOriginals = await showCupertinoDialog<bool>(
@@ -260,27 +261,99 @@ class WordbookManager extends ChangeNotifier {
         );
 
         if (deleteOriginals == true) {
-          debugPrint("원본 단어장 삭제 시작...");
           for (final bookToDelete in booksToMerge) {
             await deleteWordbook(bookToDelete);
           }
-          debugPrint("원본 단어장 삭제 완료.");
         }
-
         await _loadWordbooks();
         await setActiveWordbook(savedWordbook);
-
         Navigator.of(context).pop();
       }
     } catch (e) {
       debugPrint("Error merging wordbooks: $e");
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("병합 중 오류 발생: $e")));
-      }
     } finally {
       _setLoading(false);
-      debugPrint("======== 단어장 병합 종료 ========");
     }
+  }
+
+  Future<void> createMultipleWordbooksFromSheets(
+    List<sheets.Sheet> selectedSheets,
+    String spreadsheetId,
+  ) async {
+    _setLoading(true);
+    try {
+      for (final sheet in selectedSheets) {
+        final sheetName = sheet.properties?.title;
+        if (sheetName == null || sheetName.isEmpty) continue;
+
+        // 기존의 단일 생성 로직을 재사용합니다.
+        final dbFileName =
+            'wordbook_${DateTime.now().millisecondsSinceEpoch}_${sheet.properties?.sheetId}.db';
+        final newWordbook = Wordbook(
+          name: sheetName, // 시트 이름을 단어장 이름으로 사용
+          spreadsheetId: spreadsheetId,
+          sheetName: sheetName,
+          dbFileName: dbFileName,
+          source: WordbookSource.googleSheet,
+        );
+
+        final savedWordbook = await _dbService.addWordbook(newWordbook);
+        final words = await _sheetsService.getWordsFromSheet(spreadsheetId, sheetName);
+        if (words != null) {
+          await _dbService.addWordsInBatch(savedWordbook.dbFileName, words);
+        }
+      }
+      // 모든 작업이 끝난 후 단어장 목록을 새로고침합니다.
+      await _loadWordbooks();
+    } catch (e) {
+      debugPrint("Error creating multiple wordbooks from sheets: $e");
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> updateWord(Word word) async {
+    if (activeWordbook == null) return;
+    await _dbService.updateWord(activeWordbook!.dbFileName, word);
+    await _wordListNotifier.refreshWords();
+  }
+
+  Future<List<Word>> getAllWordsFrom(Wordbook wordbook) async {
+    // DatabaseService를 통해 필터링 없이 모든 단어를 가져옵니다.
+    return await _dbService.getAllWords(wordbook.dbFileName);
+  }
+
+  Future<List<Word>> getWordsForSrsSession() async {
+    if (activeWordbook == null) return [];
+
+    final allWords = await _dbService.getAllWords(activeWordbook!.dbFileName);
+    final todayString = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    return allWords.where((word) {
+      return word.nextReviewDate == null || word.nextReviewDate!.compareTo(todayString) <= 0;
+    }).toList();
+  }
+
+  Future<void> updateWordSrsStatus(Word word, bool knowsIt, Wordbook wordbook) async {
+    // ▼▼▼ [수정] 전역 activeWordbook 대신, 인자로 받은 특정 wordbook을 사용합니다. ▼▼▼
+
+    final List<int> srsIntervals = [1, 3, 7, 15, 30, 60, 120];
+    int newSrsLevel;
+    String nextReviewDate;
+    final today = DateTime.now();
+
+    if (knowsIt) {
+      newSrsLevel = word.srsLevel + 1;
+      final interval = srsIntervals[min(newSrsLevel - 1, srsIntervals.length - 1)];
+      nextReviewDate = DateFormat('yyyy-MM-dd').format(today.add(Duration(days: interval)));
+    } else {
+      newSrsLevel = 1;
+      nextReviewDate = DateFormat('yyyy-MM-dd').format(today.add(const Duration(days: 1)));
+    }
+
+    final updatedWord = word.copyWith(srsLevel: newSrsLevel, nextReviewDate: nextReviewDate);
+    // ▼▼▼ [수정] 인자로 받은 wordbook의 DB 파일에 정확히 업데이트합니다. ▼▼▼
+    await _dbService.updateWord(wordbook.dbFileName, updatedWord);
   }
 
   void _setLoading(bool loading) {
