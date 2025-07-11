@@ -18,6 +18,7 @@ import '../widgets/glassmorphic_card.dart';
 import '../widgets/wordbook_selection_button.dart';
 import 'quiz_helpers.dart';
 import '../services/mode_state_service.dart';
+import 'package:file_picker/file_picker.dart';
 
 enum QuizMode { none, legacy, spelling, reviewSpelling, exportSheet }
 
@@ -160,9 +161,23 @@ class _QuizScreenState extends State<QuizScreen> {
   Future<void> _handleExport({required String type, required bool share, String? title}) async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-    final settings = context.read<SettingsNotifier>().settings;
-    final service = context.read<TestSheetService>();
+
     try {
+      final settings = context.read<SettingsNotifier>().settings;
+      final service = context.read<TestSheetService>();
+      String? savePath;
+
+      // 저장하기 옵션일 경우, 사용자에게 폴더 선택을 요청
+      if (!share) {
+        savePath = await FilePicker.platform.getDirectoryPath();
+        if (savePath == null) {
+          // 사용자가 폴더 선택을 취소한 경우
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
+
+      // 서비스 호출
       if (type == 'pdf') {
         final pdfTitle = title ?? '단어 시험지';
         await service.exportPdf(
@@ -170,9 +185,21 @@ class _QuizScreenState extends State<QuizScreen> {
           settings: settings,
           title: pdfTitle,
           share: share,
+          savePath: savePath, // 선택된 저장 경로 전달
         );
       } else {
-        await service.exportExcel(_words, settings, share: share);
+        await service.exportExcel(
+          _words,
+          settings,
+          share: share,
+          savePath: savePath, // 선택된 저장 경로 전달
+        );
+      }
+
+      if (!share && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('파일이 성공적으로 저장되었습니다.\n경로: $savePath')));
       }
     } catch (e) {
       if (mounted) {
@@ -425,11 +452,15 @@ class _QuizScreenState extends State<QuizScreen> {
     final settings = settingsNotifier.settings;
     final double minValue = _words.isEmpty ? 1.0 : 1.0;
     final double maxValue = _words.isEmpty ? 1.0 : _words.length.toDouble();
+
+    // ▼▼▼ [수정] testTypeMap에 "문장 완성" 추가 ▼▼▼
     final testTypeMap = {
       SelfTestType.random: '랜덤',
       SelfTestType.wordToMeaning: '단어 → 뜻',
       SelfTestType.meaningToWord: '뜻 → 단어',
+      SelfTestType.sentenceCompletion: '문장 완성',
     };
+
     final exportOptionMap = {
       ExportOption.both: '시험지와 답안지 모두',
       ExportOption.testOnly: '시험지만',
@@ -439,7 +470,7 @@ class _QuizScreenState extends State<QuizScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0),
+          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -456,10 +487,7 @@ class _QuizScreenState extends State<QuizScreen> {
                       value: settings.wordCount.toDouble().clamp(minValue, maxValue),
                       min: minValue,
                       max: maxValue,
-                      divisions:
-                          _words.isEmpty
-                              ? 1
-                              : (maxValue > minValue ? (maxValue - minValue).toInt() : 1),
+                      divisions: _words.isEmpty ? 1 : (maxValue - minValue).toInt().clamp(1, 100),
                       onChanged: (value) => settingsNotifier.setWordCount(value.toInt()),
                     ),
                   ),
@@ -468,6 +496,35 @@ class _QuizScreenState extends State<QuizScreen> {
             ],
           ),
         ),
+
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('폰트 크기', style: theme.textTheme.bodyLarge),
+              Row(
+                children: [
+                  Text(
+                    '${settings.fontSize.toInt()}',
+                    style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(
+                    width: 150,
+                    child: Slider(
+                      value: settings.fontSize,
+                      min: 8.0,
+                      max: 20.0,
+                      divisions: 12,
+                      onChanged: (value) => settingsNotifier.setFontSize(value),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
         const Divider(indent: 16, endIndent: 16),
         ListTile(
           title: Text('시험 유형', style: theme.textTheme.bodyLarge),
@@ -493,6 +550,7 @@ class _QuizScreenState extends State<QuizScreen> {
       SelfTestType.random: '랜덤',
       SelfTestType.wordToMeaning: '단어 → 뜻',
       SelfTestType.meaningToWord: '뜻 → 단어',
+      SelfTestType.sentenceCompletion: '문장 완성',
     };
     showModalBottomSheet(
       context: context,

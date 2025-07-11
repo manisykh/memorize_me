@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:excel/excel.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -17,23 +17,27 @@ import '../providers/settings_provider.dart';
 enum PdfExportType { questionsOnly, withAnswers }
 
 class TestSheetService {
-  // --- 1. 기존 단어장 기반 시험지 생성 기능 ---
+  // --- 단어장 기반 시험지 생성 ---
 
   String _getQuestionText(Word word, SelfTestType type) {
-    if (type == SelfTestType.wordToMeaning) {
-      return word.word;
-    }
-    if (type == SelfTestType.meaningToWord) {
-      return word.meaning;
+    if (type == SelfTestType.wordToMeaning) return word.word;
+    if (type == SelfTestType.meaningToWord) return word.meaning;
+    if (type == SelfTestType.sentenceCompletion) {
+      if (word.exampleSentence == null || word.exampleSentence!.isEmpty) return word.meaning;
+      return word.exampleSentence!.replaceAll(RegExp(word.word, caseSensitive: false), '_________');
     }
     return '';
   }
 
   String _getAnswerText(Word word, SelfTestType type) {
-    return (type == SelfTestType.wordToMeaning) ? word.meaning : word.word;
+    if (type == SelfTestType.wordToMeaning) return word.meaning;
+    if (type == SelfTestType.meaningToWord) return word.word;
+    if (type == SelfTestType.sentenceCompletion) return word.word;
+    return '';
   }
 
-  List<Map<String, String>> _prepareTestData(List<Word> allWords, AppSettings settings) {
+  // ▼▼▼ [수정] 문제 데이터에 유형(type) 정보도 함께 저장하도록 변경 ▼▼▼
+  List<Map<String, dynamic>> _prepareTestData(List<Word> allWords, AppSettings settings) {
     if (allWords.isEmpty) return [];
 
     final sourceCopy = List<Word>.from(allWords);
@@ -47,15 +51,27 @@ class TestSheetService {
       sessionWords.add(sourceCopy.removeAt(randomIndex));
     }
 
-    List<Map<String, String>> testData = [];
+    List<Map<String, dynamic>> testData = [];
     for (final word in sessionWords) {
       SelfTestType currentType = settings.testType;
+
       if (currentType == SelfTestType.random) {
-        currentType = SelfTestType.values[random.nextInt(2)];
+        final availableTypes = [SelfTestType.wordToMeaning, SelfTestType.meaningToWord];
+        if (word.exampleSentence != null && word.exampleSentence!.isNotEmpty) {
+          availableTypes.add(SelfTestType.sentenceCompletion);
+        }
+        currentType = availableTypes[random.nextInt(availableTypes.length)];
       }
+
+      if (currentType == SelfTestType.sentenceCompletion &&
+          (word.exampleSentence == null || word.exampleSentence!.isEmpty)) {
+        currentType = SelfTestType.meaningToWord;
+      }
+
       testData.add({
         'question': _getQuestionText(word, currentType),
         'answer': _getAnswerText(word, currentType),
+        'type': currentType, // 문제 유형 정보 추가
       });
     }
     return testData;
@@ -66,6 +82,7 @@ class TestSheetService {
     required AppSettings settings,
     required String title,
     required bool share,
+    String? savePath,
   }) async {
     final testData = _prepareTestData(allWords, settings);
     if (testData.isEmpty) throw Exception("시험지를 생성할 단어가 없습니다.");
@@ -73,7 +90,9 @@ class TestSheetService {
     final font = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Regular.ttf"));
     final boldFont = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Bold.ttf"));
 
-    final baseFileName = title.replaceAll(' ', '_');
+    final baseFileName = title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+
+    final double fontSize = settings.fontSize;
 
     if (settings.exportOption == ExportOption.both) {
       final questionsBytes = await _generateSingleWordTestPdf(
@@ -82,6 +101,7 @@ class TestSheetService {
         font,
         boldFont,
         isAnswerSheet: false,
+        fontSize: fontSize,
       );
       final answersBytes = await _generateSingleWordTestPdf(
         '$title - 정답',
@@ -89,15 +109,22 @@ class TestSheetService {
         font,
         boldFont,
         isAnswerSheet: true,
+        fontSize: fontSize,
       );
       final questionFileName = '$baseFileName.pdf';
       final answerFileName = '${baseFileName}_answers.pdf';
 
       if (share) {
-        await shareFiles([questionFileName, answerFileName], [questionsBytes, answersBytes], title);
+        await _shareFiles(
+          [questionFileName, answerFileName],
+          [questionsBytes, answersBytes],
+          title,
+        );
       } else {
-        await saveFile(questionFileName, questionsBytes);
-        await saveFile(answerFileName, answersBytes);
+        assert(savePath != null, 'Save path must be provided when not sharing.');
+        await _saveFileToPath('$savePath/$questionFileName', questionsBytes);
+        await _saveFileToPath('$savePath/$answerFileName', answersBytes);
+        OpenFilex.open('$savePath/$questionFileName');
       }
     } else {
       final isAnswerOnly = settings.exportOption == ExportOption.answersOnly;
@@ -108,23 +135,48 @@ class TestSheetService {
         font,
         boldFont,
         isAnswerSheet: isAnswerOnly,
+        fontSize: fontSize,
       );
       final fileName = '$baseFileName.pdf';
 
       if (share) {
-        await shareFile(fileName, bytes, title);
+        await _shareFile(fileName, bytes, title);
       } else {
-        await saveFile(fileName, bytes);
+        assert(savePath != null, 'Save path must be provided when not sharing.');
+        final fullPath = '$savePath/$fileName';
+        await _saveFileToPath(fullPath, bytes);
+        OpenFilex.open(fullPath);
+      }
+    }
+  }
+
+  Future<void> exportExcel(
+    List<Word> allWords,
+    AppSettings settings, {
+    required bool share,
+    String? savePath,
+  }) async {
+    final bytes = _generateExcelBytes(allWords, settings);
+    if (bytes != null) {
+      const fileName = 'word_test.xlsx';
+      if (share) {
+        await _shareFile(fileName, bytes, '단어 시험지');
+      } else {
+        assert(savePath != null, 'Save path must be provided when not sharing.');
+        final fullPath = '$savePath/$fileName';
+        await _saveFileToPath(fullPath, bytes);
+        OpenFilex.open(fullPath);
       }
     }
   }
 
   Future<Uint8List> _generateSingleWordTestPdf(
     String docTitle,
-    List<Map<String, String>> testData,
+    List<Map<String, dynamic>> testData,
     pw.Font font,
     pw.Font boldFont, {
     required bool isAnswerSheet,
+    required double fontSize,
   }) async {
     final pdfDoc = pw.Document();
     final date = DateFormat('yyyy년 MM월 dd일').format(DateTime.now());
@@ -142,9 +194,9 @@ class TestSheetService {
                 children: [
                   pw.Text(
                     docTitle,
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 20),
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: fontSize + 6),
                   ),
-                  if (!isAnswerSheet) pw.Text(date, style: const pw.TextStyle(fontSize: 12)),
+                  if (!isAnswerSheet) pw.Text(date, style: pw.TextStyle(fontSize: fontSize - 2)),
                 ],
               ),
             ),
@@ -152,13 +204,14 @@ class TestSheetService {
           if (isAnswerSheet) {
             return [
               pw.TableHelper.fromTextArray(
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: fontSize),
+                cellStyle: pw.TextStyle(fontSize: fontSize),
                 headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
                 cellAlignment: pw.Alignment.centerLeft,
                 data: <List<String>>[
                   <String>['번호', '정답'],
                   ...testData.asMap().entries.map(
-                    (entry) => ['${entry.key + 1}', entry.value['answer']!],
+                    (entry) => ['${entry.key + 1}', entry.value['answer']! as String],
                   ),
                 ],
               ),
@@ -169,14 +222,25 @@ class TestSheetService {
                 itemCount: testData.length,
                 separatorBuilder: (context, index) => pw.SizedBox(height: 8),
                 itemBuilder: (context, index) {
+                  // ▼▼▼ [수정] 문제 유형에 따라 다른 위젯을 생성 ▼▼▼
+                  final questionData = testData[index];
+                  final type = questionData['type'] as SelfTestType;
+                  final questionText = questionData['question'] as String;
+
+                  final questionContent =
+                      type == SelfTestType.sentenceCompletion
+                          ? questionText // 문장 완성형은 밑줄 없이 문제만 표시
+                          : '$questionText  →  _________________________'; // 나머지는 기존 방식
+
                   return pw.Row(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Container(width: 35, child: pw.Text('${index + 1}.')),
+                      pw.Container(
+                        width: 35,
+                        child: pw.Text('${index + 1}.', style: pw.TextStyle(fontSize: fontSize)),
+                      ),
                       pw.Expanded(
-                        child: pw.Text(
-                          '${testData[index]['question']}  →  _________________________',
-                        ),
+                        child: pw.Text(questionContent, style: pw.TextStyle(fontSize: fontSize)),
                       ),
                     ],
                   );
@@ -188,17 +252,6 @@ class TestSheetService {
       ),
     );
     return pdfDoc.save();
-  }
-
-  Future<void> exportExcel(List<Word> allWords, AppSettings settings, {required bool share}) async {
-    final bytes = _generateExcelBytes(allWords, settings);
-    if (bytes != null) {
-      if (share) {
-        await shareFile('word_test.xlsx', bytes, '단어 시험지');
-      } else {
-        await saveFile('word_test.xlsx', bytes);
-      }
-    }
   }
 
   List<int>? _generateExcelBytes(List<Word> allWords, AppSettings settings) {
@@ -214,7 +267,10 @@ class TestSheetService {
             headerStyle;
       }
       for (int i = 0; i < testData.length; i++) {
-        testSheet.appendRow([IntCellValue(i + 1), TextCellValue(testData[i]['question']!)]);
+        testSheet.appendRow([
+          IntCellValue(i + 1),
+          TextCellValue(testData[i]['question']! as String),
+        ]);
       }
       testSheet.setColumnWidth(0, 5);
       testSheet.setColumnWidth(1, 40);
@@ -228,7 +284,10 @@ class TestSheetService {
             headerStyle;
       }
       for (int i = 0; i < testData.length; i++) {
-        answerSheet.appendRow([IntCellValue(i + 1), TextCellValue(testData[i]['answer']!)]);
+        answerSheet.appendRow([
+          IntCellValue(i + 1),
+          TextCellValue(testData[i]['answer']! as String),
+        ]);
       }
       answerSheet.setColumnWidth(0, 5);
       answerSheet.setColumnWidth(1, 40);
@@ -238,8 +297,7 @@ class TestSheetService {
     return excel.save();
   }
 
-  // --- 2. AI 퀴즈용 PDF 생성 기능 ---
-
+  // --- AI 퀴즈용 PDF 생성 기능 (기존과 동일) ---
   Future<void> exportAiQuizAsPdf({
     required List<AiQuestion> questions,
     required String title,
@@ -268,10 +326,16 @@ class TestSheetService {
       final answerFileName = '${title.replaceAll(' ', '_')}_answers.pdf';
 
       if (share) {
-        await shareFiles([questionFileName, answerFileName], [questionsBytes, answersBytes], title);
+        await _shareFiles(
+          [questionFileName, answerFileName],
+          [questionsBytes, answersBytes],
+          title,
+        );
       } else {
-        await saveFile(questionFileName, questionsBytes);
-        await saveFile(answerFileName, answersBytes);
+        final directory = await getApplicationDocumentsDirectory();
+        await _saveFileToPath('${directory.path}/$questionFileName', questionsBytes);
+        await _saveFileToPath('${directory.path}/$answerFileName', answersBytes);
+        OpenFilex.open('${directory.path}/$questionFileName');
       }
     } else {
       final questionsBytes = await _generateSingleAiPdf(
@@ -283,9 +347,12 @@ class TestSheetService {
       );
       final fileName = '${title.replaceAll(' ', '_')}.pdf';
       if (share) {
-        await shareFile(fileName, questionsBytes, title);
+        await _shareFile(fileName, questionsBytes, title);
       } else {
-        await saveFile(fileName, questionsBytes);
+        final directory = await getApplicationDocumentsDirectory();
+        final fullPath = '${directory.path}/$fileName';
+        await _saveFileToPath(fullPath, questionsBytes);
+        OpenFilex.open(fullPath);
       }
     }
   }
@@ -396,7 +463,6 @@ class TestSheetService {
             children: [
               if (q.script != null)
                 pw.Text('듣기 지문: ${q.script!}', style: const pw.TextStyle(color: PdfColors.grey600)),
-
               if (q.question != null) ...[
                 pw.SizedBox(height: 8),
                 pw.Text(
@@ -404,7 +470,6 @@ class TestSheetService {
                   style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                 ),
               ],
-
               if (q.options != null) ...[
                 pw.SizedBox(height: 8),
                 pw.Column(
@@ -439,7 +504,6 @@ class TestSheetService {
                     style: const pw.TextStyle(color: PdfColors.blueGrey, fontSize: 9),
                   ),
                 ),
-
               if (!isAnswerSheet && q.question != null)
                 pw.Container(
                   padding: const pw.EdgeInsets.only(top: 8),
@@ -452,17 +516,18 @@ class TestSheetService {
     );
   }
 
-  // --- 3. 범용 파일 처리 기능 ---
+  // --- 범용 파일 처리 기능 ---
 
-  Future<void> saveFile(String fileName, List<int> bytes) async {
-    final directory = await getApplicationDocumentsDirectory();
-    final path = '${directory.path}/$fileName';
-    final file = File(path);
+  Future<void> _saveFileToPath(String fullPath, List<int> bytes) async {
+    final file = File(fullPath);
     await file.writeAsBytes(bytes);
-    await OpenFilex.open(path);
   }
 
-  Future<void> shareFiles(List<String> fileNames, List<Uint8List> bytesList, String subject) async {
+  Future<void> _shareFiles(
+    List<String> fileNames,
+    List<Uint8List> bytesList,
+    String subject,
+  ) async {
     final directory = await getTemporaryDirectory();
     final xFiles = <XFile>[];
     for (int i = 0; i < fileNames.length; i++) {
@@ -474,7 +539,7 @@ class TestSheetService {
     await Share.shareXFiles(xFiles, text: subject);
   }
 
-  Future<void> shareFile(String fileName, List<int> bytes, String subject) async {
-    await shareFiles([fileName], [Uint8List.fromList(bytes)], subject);
+  Future<void> _shareFile(String fileName, List<int> bytes, String subject) async {
+    await _shareFiles([fileName], [Uint8List.fromList(bytes)], subject);
   }
 }

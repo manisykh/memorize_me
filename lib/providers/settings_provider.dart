@@ -1,29 +1,37 @@
+// lib/providers/settings_provider.dart
+
 import 'package:flutter/foundation.dart';
 import '../models/word_model.dart';
 
-// 시험지 생성에 사용되는 시험 유형
-enum SelfTestType { wordToMeaning, meaningToWord, random }
+// ▼▼▼ [수정] sentenceCompletion 추가 ▼▼▼
+enum SelfTestType { wordToMeaning, meaningToWord, sentenceCompletion, random }
 
-// 시험지 내보내기 옵션
 enum ExportOption { testOnly, answersOnly, both }
 
 class AppSettings {
   final int wordCount;
   final SelfTestType testType;
   final ExportOption exportOption;
+  final double fontSize;
 
   AppSettings({
     this.wordCount = 20,
     this.testType = SelfTestType.random,
     this.exportOption = ExportOption.both,
+    this.fontSize = 12.0,
   });
 
-  AppSettings copyWith({int? wordCount, SelfTestType? testType, ExportOption? exportOption}) =>
-      AppSettings(
-        wordCount: wordCount ?? this.wordCount,
-        testType: testType ?? this.testType,
-        exportOption: exportOption ?? this.exportOption,
-      );
+  AppSettings copyWith({
+    int? wordCount,
+    SelfTestType? testType,
+    ExportOption? exportOption,
+    double? fontSize,
+  }) => AppSettings(
+    wordCount: wordCount ?? this.wordCount,
+    testType: testType ?? this.testType,
+    exportOption: exportOption ?? this.exportOption,
+    fontSize: fontSize ?? this.fontSize,
+  );
 }
 
 class SettingsNotifier extends ChangeNotifier {
@@ -50,6 +58,11 @@ class SettingsNotifier extends ChangeNotifier {
 
   void setExportOption(ExportOption option) {
     _settings = _settings.copyWith(exportOption: option);
+    notifyListeners();
+  }
+
+  void setFontSize(double size) {
+    _settings = _settings.copyWith(fontSize: size);
     notifyListeners();
   }
 }
