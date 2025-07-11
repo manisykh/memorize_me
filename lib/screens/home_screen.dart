@@ -1,16 +1,17 @@
-// lib/screens/home_screen.dart (메뉴 추가된 코드)
+// lib/screens/home_screen.dart
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/word_list_provider.dart';
+import '../providers/wordbook_manager.dart';
 import '../widgets/learning_mode_card.dart';
 import 'ai_quiz_setup_screen.dart';
 import 'app_settings_screen.dart';
 import 'flashcard_screen.dart';
 import 'quiz_screen.dart';
-import 'srs_status_screen.dart'; // ▼▼▼ [추가] 새로 만든 화면 import
+import 'srs_status_screen.dart';
 import 'wordbook_management_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -18,12 +19,16 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ▼▼▼ [수정] Provider.of 대신 context.watch를 사용하여 변경사항을 즉시 감지합니다. ▼▼▼
+    final wordbookManager = context.watch<WordbookManager>();
     final wordCount = context.watch<WordListNotifier>().words.length;
+    final reviewWords = wordbookManager.getWordsForReview();
+    final bool canStartReviewQuiz = reviewWords.isNotEmpty;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Memorize me with Juho'),
+        title: const Text('Memorize Me with Juho'),
         automaticallyImplyLeading: false,
         actions: [
           IconButton(
@@ -52,7 +57,6 @@ class HomeScreen extends StatelessWidget {
                   ).push(MaterialPageRoute(builder: (_) => const WordbookManagementScreen())),
             ),
             const SizedBox(height: 16),
-            // ▼▼▼ [추가] SRS 현황 보기 메뉴 카드 ▼▼▼
             LearningModeCard(
               heroTag: 'srs-status-hero',
               title: 'SRS 학습 현황',
@@ -84,6 +88,25 @@ class HomeScreen extends StatelessWidget {
                   () => Navigator.of(
                     context,
                   ).push(MaterialPageRoute(builder: (_) => const QuizScreen())),
+            ),
+            const SizedBox(height: 16),
+            // ▼▼▼ [수정] 오답/복습 퀴즈 버튼 로직 ▼▼▼
+            Opacity(
+              opacity: canStartReviewQuiz ? 1.0 : 0.5,
+              child: LearningModeCard(
+                heroTag: 'review_quiz_hero',
+                title: '오답/복습 퀴즈',
+                subtitle: canStartReviewQuiz ? '${reviewWords.length}개 단어 복습하기' : '복습할 단어가 없습니다',
+                icon: CupertinoIcons.repeat,
+                onTap:
+                    canStartReviewQuiz
+                        ? () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const QuizScreen(initialMode: QuizMode.reviewSpelling),
+                          ),
+                        )
+                        : null, // 비활성화
+              ),
             ),
             const SizedBox(height: 16),
             LearningModeCard(

@@ -1,4 +1,4 @@
-// lib/screens/flashcard_screen.dart (세션 종료 문제 해결 코드)
+// lib/screens/flashcard_screen.dart
 
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
@@ -6,12 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flip_card/flip_card.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
-import 'package:intl/intl.dart';
 
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 import '../providers/flashcard_settings_provider.dart';
 import '../providers/wordbook_manager.dart';
+import '../services/srs_service.dart';
 import '../services/tts_service.dart';
 import '../widgets/glassmorphic_card.dart';
 import '../widgets/wordbook_selection_button.dart';
@@ -30,166 +30,138 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   int _currentCardIndex = 0;
   bool _sessionActive = false;
   late final TtsService _ttsService;
-  List<String> _incorrectWordbookNames = [];
+
+  // ▼▼▼ [수정] Provider를 저장할 변수 선언 및 SRS 관련 변수 추가 ▼▼▼
+  late WordbookManager _wordbookManager;
+  final SrsService _srsService = SrsService();
+  final List<Word> _updatedWordsInSession = [];
 
   @override
   void initState() {
     super.initState();
+    // context가 활성화된 initState에서 Provider 인스턴스를 미리 저장
     _ttsService = context.read<TtsService>();
+    _wordbookManager = context.read<WordbookManager>();
 
-    final manager = context.read<WordbookManager>();
-    _incorrectWordbookNames = manager.incorrectWordbookNames;
-    if (manager.activeWordbook != null) {
-      _loadWordsForWordbook(manager.activeWordbook!);
+    if (_wordbookManager.activeWordbook != null) {
+      _loadWordsForWordbook(_wordbookManager.activeWordbook!);
     }
   }
 
   @override
   void dispose() {
+    _saveUpdatedSrsData(); // 화면 종료 시 최종 저장
     _swiperController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadWordsForWordbook(Wordbook wordbook, {bool srsOnly = false}) async {
+  Future<void> _loadWordsForWordbook(Wordbook wordbook) async {
     setState(() {
       _selectedWordbook = wordbook;
       _sessionWords = [];
       _currentCardIndex = 0;
     });
 
-    final manager = context.read<WordbookManager>();
-    final words =
-        srsOnly ? await manager.getWordsForSrsSession() : await manager.getAllWordsFrom(wordbook);
+    // WordbookManager를 통해 단어 로드
+    final words = await _wordbookManager.getAllWordsFrom(wordbook);
 
     if (mounted) {
-      setState(() {
-        _sessionWords = words;
-        if (words.isNotEmpty) _sessionWords.shuffle();
-      });
+      setState(() => _sessionWords = words);
     }
   }
 
-  Future<void> _startSrsSession() async {
-    if (_selectedWordbook == null) {
-      _showSnackbar('먼저 학습할 단어장을 선택해주세요.');
-      return;
-    }
-    await _loadWordsForWordbook(_selectedWordbook!, srsOnly: true);
-    if (!mounted) return;
-    if (_sessionWords.isEmpty) {
-      _showSnackbar('오늘 복습할 단어가 없습니다!');
-      return;
-    }
-    setState(() => _sessionActive = true);
-  }
+  // dispose에서도 호출될 수 있도록 context.read를 사용하지 않음
+  Future<void> _saveUpdatedSrsData() async {
+    if (_updatedWordsInSession.isEmpty || _selectedWordbook == null) return;
 
-  void _showIncorrectWordbookList() {
-    if (_incorrectWordbookNames.isEmpty) {
-      _showSnackbar('생성된 오답노트가 없습니다.');
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder:
-          (ctx) => Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: GlassmorphicCard(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text('오답노트 선택', style: Theme.of(ctx).textTheme.titleLarge),
-                  ),
-                  ..._incorrectWordbookNames.map((name) {
-                    return ListTile(
-                      title: Text(name),
-                      onTap: () async {
-                        Navigator.pop(ctx);
-                        final words = await context.read<WordbookManager>().getIncorrectWords(name);
-                        if (!mounted) return;
-                        if (words.isEmpty) {
-                          _showSnackbar('이 오답노트에는 단어가 없습니다.');
-                          return;
-                        }
-                        setState(() {
-                          _sessionWords = words..shuffle();
-                          _selectedWordbook = null;
-                          _sessionActive = true;
-                        });
-                      },
-                    );
-                  }),
-                ],
-              ),
-            ),
-          ),
+    // initState에서 저장해둔 _wordbookManager 변수 사용
+    await _wordbookManager.updateWordsSrsData(
+      _selectedWordbook!.dbFileName,
+      _updatedWordsInSession,
     );
+    _updatedWordsInSession.clear();
   }
 
   bool _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) {
-    setState(() {
-      _currentCardIndex = currentIndex ?? 0;
-    });
     if (previousIndex >= _sessionWords.length) return false;
 
-    // ▼▼▼ [수정] 오답노트 학습 시에는 SRS 업데이트를 건너뛰고, 일반 단어장 학습 시에만 업데이트합니다. ▼▼▼
-    if (_selectedWordbook != null) {
-      final word = _sessionWords[previousIndex];
-      final knowsIt = direction == CardSwiperDirection.right;
-      context.read<WordbookManager>().updateWordSrsStatus(word, knowsIt, _selectedWordbook!);
-    }
+    final word = _sessionWords[previousIndex];
+    final difficulty =
+        direction == CardSwiperDirection.right ? SrsDifficulty.good : SrsDifficulty.again;
+
+    final updatedWord = _srsService.updateWordSrs(
+      word: word,
+      source: SrsUpdateSource.flashcard,
+      difficulty: difficulty,
+    );
+
+    _updatedWordsInSession.removeWhere((w) => w.id == updatedWord.id);
+    _updatedWordsInSession.add(updatedWord);
+
+    setState(() => _currentCardIndex = currentIndex ?? 0);
     return true;
   }
 
-  void _startSession() {
+  void _startSession({required bool srsOnly}) {
     if (_selectedWordbook == null) {
       _showSnackbar('학습할 단어장을 선택해주세요.');
       return;
     }
-    _loadWordsForWordbook(_selectedWordbook!, srsOnly: false).then((_) {
-      if (!mounted) return;
-      if (_sessionWords.isNotEmpty) {
-        setState(() => _sessionActive = true);
-      } else {
-        _showSnackbar('단어장에 학습할 단어가 없습니다.');
+
+    List<Word> wordsForSession;
+    if (srsOnly) {
+      wordsForSession = _wordbookManager.getWordsForReview();
+      if (wordsForSession.isEmpty) {
+        _showSnackbar('오늘 복습할 단어가 없습니다!');
+        return;
       }
+    } else {
+      wordsForSession = _sessionWords;
+      if (wordsForSession.isEmpty) {
+        _showSnackbar('단어장에 학습할 단어가 없습니다.');
+        return;
+      }
+    }
+
+    setState(() {
+      _sessionWords = List.from(wordsForSession)..shuffle();
+      _sessionActive = true;
+      _updatedWordsInSession.clear();
     });
   }
 
-  // ▼▼▼ [추가] 세션 종료 시 호출될 다이얼로그 함수 ▼▼▼
   void _onSessionEnd() {
-    showCupertinoDialog(
-      context: context,
-      builder:
-          (dialogContext) => CupertinoAlertDialog(
-            title: const Text('학습 완료!'),
-            content: const Text('모든 카드를 학습했습니다.'),
-            actions: [
-              CupertinoDialogAction(
-                child: const Text('종료'),
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  // 학습 설정 화면으로 돌아가기
-                  setState(() => _sessionActive = false);
-                },
-              ),
-              CupertinoDialogAction(
-                isDefaultAction: true,
-                child: const Text('다시 학습'),
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  // 현재 단어장과 설정으로 세션 다시 시작
-                  if (_selectedWordbook != null) {
-                    _loadWordsForWordbook(_selectedWordbook!);
-                  }
-                },
-              ),
-            ],
-          ),
-    );
+    _saveUpdatedSrsData().then((_) {
+      showCupertinoDialog(
+        context: context,
+        builder:
+            (dialogContext) => CupertinoAlertDialog(
+              title: const Text('학습 완료!'),
+              content: const Text('모든 카드를 학습했습니다.'),
+              actions: [
+                CupertinoDialogAction(
+                  child: const Text('종료'),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    setState(() => _sessionActive = false);
+                  },
+                ),
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  child: const Text('다시 학습'),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    setState(() {
+                      _sessionWords.shuffle();
+                      _swiperController.moveTo(0);
+                      _updatedWordsInSession.clear();
+                    });
+                  },
+                ),
+              ],
+            ),
+      );
+    });
   }
 
   void _showSnackbar(String message) {
@@ -200,7 +172,15 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return _sessionActive ? _buildFlashcardSession() : _buildSetupScreen();
+    return WillPopScope(
+      onWillPop: () async {
+        if (_sessionActive) {
+          await _saveUpdatedSrsData();
+        }
+        return true;
+      },
+      child: _sessionActive ? _buildFlashcardSession() : _buildSetupScreen(),
+    );
   }
 
   Widget _buildSetupScreen() {
@@ -217,7 +197,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
           children: [
             WordbookSelectionButton(
               selectedWordbook: _selectedWordbook,
-              onWordbookSelected: (wordbook) => _loadWordsForWordbook(wordbook, srsOnly: false),
+              onWordbookSelected: _loadWordsForWordbook,
               wordCount: _sessionWords.length,
             ),
             const SizedBox(height: 24),
@@ -245,7 +225,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
             const Spacer(),
             ElevatedButton(
               style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-              onPressed: _startSession,
+              onPressed: () => _startSession(srsOnly: false),
               child: const Text('전체 단어 학습'),
             ),
             const SizedBox(height: 12),
@@ -255,11 +235,9 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                 backgroundColor: theme.colorScheme.secondary,
                 foregroundColor: theme.colorScheme.onSecondary,
               ),
-              onPressed: _startSrsSession,
+              onPressed: () => _startSession(srsOnly: true),
               child: const Text('SRS 학습 (오늘의 복습)'),
             ),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _showIncorrectWordbookList, child: const Text('오답노트로 학습하기')),
           ],
         ),
       ),
@@ -289,7 +267,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                         controller: _swiperController,
                         cardsCount: _sessionWords.length,
                         onSwipe: _onSwipe,
-                        onEnd: _onSessionEnd, // ▼▼▼ [수정] 스와이프가 끝나면 _onSessionEnd 함수를 호출합니다. ▼▼▼
+                        onEnd: _onSessionEnd,
                         padding: const EdgeInsets.all(24.0),
                         allowedSwipeDirection: AllowedSwipeDirection.symmetric(horizontal: true),
                         cardBuilder: (context, index, percentThresholdX, percentThresholdY) {

@@ -147,12 +147,13 @@ class DatabaseService {
   }
 
   // ▼▼▼ [수정] 버전 번호를 3으로 올리고, onUpgrade 로직을 강화합니다. ▼▼▼
+  // ▼▼▼ [수정] 버전 번호를 4로 올리고, onUpgrade 로직을 강화합니다. ▼▼▼
   Future<Database> _openWordDB(String dbFileName) async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, dbFileName);
     return await openDatabase(
       path,
-      version: 3, // 버전을 3으로 올립니다.
+      version: 4, // 버전을 4로 올립니다.
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE words(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,39 +161,37 @@ class DatabaseService {
             meaning TEXT NOT NULL,
             exampleSentence TEXT,
             srsLevel INTEGER NOT NULL DEFAULT 0,
-            nextReviewDate TEXT
+            nextReviewDate TEXT,
+            incorrectCount INTEGER NOT NULL DEFAULT 0,
+            correctStreak INTEGER NOT NULL DEFAULT 0
           )''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         // 각 버전별로 순차적 업그레이드를 실행합니다.
-        if (oldVersion < 2) {
-          try {
-            await db.execute('ALTER TABLE words ADD COLUMN srsLevel INTEGER NOT NULL DEFAULT 0');
-            await db.execute('ALTER TABLE words ADD COLUMN nextReviewDate TEXT');
-          } catch (e) {
-            debugPrint("Error upgrading to v2: $e");
-          }
-        }
-        if (oldVersion < 3) {
-          // 버전 3에서 추가적으로 필요한 스키마 변경이 있다면 여기에 추가합니다.
-          // 현재는 v2와 동일한 구조이므로, 혹시 모를 누락을 방지하기 위해 한번 더 실행합니다.
-          try {
-            // srsLevel 컬럼이 없는 경우에만 추가
-            var cursor = await db.rawQuery("PRAGMA table_info(words)");
-            bool hasSrsLevel = cursor.any((col) => col['name'] == 'srsLevel');
-            if (!hasSrsLevel) {
-              await db.execute('ALTER TABLE words ADD COLUMN srsLevel INTEGER NOT NULL DEFAULT 0');
-            }
-            bool hasNextReviewDate = cursor.any((col) => col['name'] == 'nextReviewDate');
-            if (!hasNextReviewDate) {
-              await db.execute('ALTER TABLE words ADD COLUMN nextReviewDate TEXT');
-            }
-          } catch (e) {
-            debugPrint("Error upgrading to v3: $e");
-          }
+        for (var v = oldVersion + 1; v <= newVersion; v++) {
+          await _upgradeWordDB(db, v);
         }
       },
     );
+  }
+
+  // ▼▼▼ [추가] 버전별 업그레이드 로직 분리 ▼▼▼
+  Future<void> _upgradeWordDB(Database db, int version) async {
+    try {
+      if (version == 2) {
+        await db.execute('ALTER TABLE words ADD COLUMN srsLevel INTEGER NOT NULL DEFAULT 0');
+        await db.execute('ALTER TABLE words ADD COLUMN nextReviewDate TEXT');
+      }
+      if (version == 3) {
+        // v3 변경사항이 있었다면 여기에 추가
+      }
+      if (version == 4) {
+        await db.execute('ALTER TABLE words ADD COLUMN incorrectCount INTEGER NOT NULL DEFAULT 0');
+        await db.execute('ALTER TABLE words ADD COLUMN correctStreak INTEGER NOT NULL DEFAULT 0');
+      }
+    } catch (e) {
+      debugPrint("Error upgrading WordDB to v$version: $e. It might already exist.");
+    }
   }
 
   Future<List<Word>> getAllWords(String dbFileName) async {
@@ -207,6 +206,19 @@ class DatabaseService {
 
     final params = {'dbFileName': dbFileName, 'token': token};
     return compute(_getAllWordsInBackground, params);
+  }
+
+  Future<void> updateWordSrsBatch(String dbFileName, List<Word> words) async {
+    if (words.isEmpty) return;
+    final db = await _openWordDB(dbFileName);
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final word in words) {
+        batch.update('words', word.toMap(), where: 'id = ?', whereArgs: [word.id]);
+      }
+      await batch.commit(noResult: true);
+    });
+    await db.close();
   }
 
   Future<void> addWord(String dbFileName, Word word) async {

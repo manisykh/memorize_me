@@ -7,7 +7,7 @@ class LearningModeCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final String heroTag; // Hero 애니메이션을 위한 태그
 
   const LearningModeCard({

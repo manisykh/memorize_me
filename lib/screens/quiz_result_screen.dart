@@ -32,8 +32,8 @@ class QuizResultScreen extends StatelessWidget {
                 itemCount: results.where((r) => !r.isCorrect).length,
                 itemBuilder: (context, index) {
                   final wrongResult = results.where((r) => !r.isCorrect).toList()[index];
-                  final question = wrongResult.item.word.meaning;
-                  final correctAnswer = wrongResult.item.word.word;
+                  final question = wrongResult.word.meaning;
+                  final correctAnswer = wrongResult.word.word;
 
                   return Card(
                     color: theme.colorScheme.errorContainer,
