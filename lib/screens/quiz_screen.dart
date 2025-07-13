@@ -1,6 +1,5 @@
-// lib/screens/quiz_screen.dart
-
 import 'dart:math';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -18,11 +17,16 @@ import '../widgets/glassmorphic_card.dart';
 import '../widgets/wordbook_selection_button.dart';
 import 'quiz_helpers.dart';
 import '../services/mode_state_service.dart';
-import 'package:file_picker/file_picker.dart';
 
-enum QuizMode { none, legacy, spelling, reviewSpelling, exportSheet }
+enum QuizMode { none, multipleChoice, spelling, reviewSpelling, exportSheet }
 
 enum SpellingAnswerState { none, correct, incorrect, showAnswer }
+
+class McqQuizResult {
+  final Word questionWord;
+  final bool isCorrect;
+  McqQuizResult({required this.questionWord, required this.isCorrect});
+}
 
 class SpellingQuizResult {
   final Word word;
@@ -51,7 +55,6 @@ class _QuizScreenState extends State<QuizScreen> {
   List<Word> _reviewWords = [];
   bool _isLoading = false;
   bool _isScreenLoading = true;
-
   late QuizMode _currentMode;
   late final TextEditingController _pdfTitleController;
 
@@ -70,16 +73,13 @@ class _QuizScreenState extends State<QuizScreen> {
   Future<void> _initializeData() async {
     final wordbookManager = context.read<WordbookManager>();
     final modeStateService = context.read<ModeStateService>();
-
     final lastUsedId = await modeStateService.getLastUsedWordbookId(LearningMode.quiz);
     Wordbook? initialWordbook = wordbookManager.getWordbookById(lastUsedId ?? -1);
     initialWordbook ??= wordbookManager.activeWordbook;
     initialWordbook ??= wordbookManager.wordbooks.firstOrNull;
-
     if (initialWordbook != null) {
       await _onWordbookSelected(initialWordbook);
     }
-
     if (mounted) {
       setState(() {
         _isScreenLoading = false;
@@ -95,10 +95,8 @@ class _QuizScreenState extends State<QuizScreen> {
 
   Future<void> _onWordbookSelected(Wordbook wordbook) async {
     setState(() => _isLoading = true);
-
     final wordbookManager = context.read<WordbookManager>();
     await wordbookManager.setActiveWordbook(wordbook);
-
     if (mounted) {
       final wordListNotifier = context.read<WordListNotifier>();
       setState(() {
@@ -108,7 +106,6 @@ class _QuizScreenState extends State<QuizScreen> {
         _isLoading = false;
       });
     }
-
     final modeStateService = context.read<ModeStateService>();
     await modeStateService.setLastUsedWordbookId(LearningMode.quiz, wordbook.id!);
   }
@@ -120,7 +117,7 @@ class _QuizScreenState extends State<QuizScreen> {
       ).showSnackBar(const SnackBar(content: Text('먼저 학습할 단어장을 선택해주세요.')));
       return;
     }
-    if (newMode != QuizMode.none && newMode != QuizMode.exportSheet && _words.isEmpty) {
+    if ((newMode == QuizMode.spelling || newMode == QuizMode.multipleChoice) && _words.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('선택된 단어장에 단어가 없습니다.')));
@@ -129,7 +126,6 @@ class _QuizScreenState extends State<QuizScreen> {
     setState(() => _currentMode = newMode);
   }
 
-  // 시험지 내보내기 관련 함수들... (이전과 동일)
   Future<void> _showWordTestPdfExportDialog({required bool share}) async {
     _pdfTitleController.text =
         '${_selectedWordbook?.name ?? "단어"} 시험지 - ${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
@@ -161,23 +157,17 @@ class _QuizScreenState extends State<QuizScreen> {
   Future<void> _handleExport({required String type, required bool share, String? title}) async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-
     try {
       final settings = context.read<SettingsNotifier>().settings;
       final service = context.read<TestSheetService>();
       String? savePath;
-
-      // 저장하기 옵션일 경우, 사용자에게 폴더 선택을 요청
       if (!share) {
         savePath = await FilePicker.platform.getDirectoryPath();
         if (savePath == null) {
-          // 사용자가 폴더 선택을 취소한 경우
           setState(() => _isLoading = false);
           return;
         }
       }
-
-      // 서비스 호출
       if (type == 'pdf') {
         final pdfTitle = title ?? '단어 시험지';
         await service.exportPdf(
@@ -185,17 +175,11 @@ class _QuizScreenState extends State<QuizScreen> {
           settings: settings,
           title: pdfTitle,
           share: share,
-          savePath: savePath, // 선택된 저장 경로 전달
+          savePath: savePath,
         );
       } else {
-        await service.exportExcel(
-          _words,
-          settings,
-          share: share,
-          savePath: savePath, // 선택된 저장 경로 전달
-        );
+        await service.exportExcel(_words, settings, share: share, savePath: savePath);
       }
-
       if (!share && mounted) {
         ScaffoldMessenger.of(
           context,
@@ -286,13 +270,10 @@ class _QuizScreenState extends State<QuizScreen> {
         body: const Center(child: CircularProgressIndicator()),
       );
     }
-
     final theme = Theme.of(context);
-
     if (_selectedWordbook != null) {
       _reviewWords = context.watch<WordbookManager>().getWordsForReview();
     }
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -310,8 +291,10 @@ class _QuizScreenState extends State<QuizScreen> {
         child: switch (_currentMode) {
           QuizMode.none => _buildModeSelectionUI(theme),
           QuizMode.exportSheet => _buildExportSheetView(),
-          QuizMode.legacy => _LegacyQuizView(
+          QuizMode.multipleChoice => _MultipleChoiceQuizView(
+            key: ValueKey('mcq_${_selectedWordbook?.id}'),
             words: _words,
+            selectedWordbook: _selectedWordbook!,
             onFinish: () => _changeMode(QuizMode.none),
           ),
           QuizMode.spelling =>
@@ -343,8 +326,8 @@ class _QuizScreenState extends State<QuizScreen> {
         return '셀프 테스트';
       case QuizMode.exportSheet:
         return '시험지 생성';
-      case QuizMode.legacy:
-        return '기존 퀴즈 - ${_selectedWordbook?.name}';
+      case QuizMode.multipleChoice:
+        return '객관식 퀴즈 - ${_selectedWordbook?.name}';
       case QuizMode.spelling:
         return '스펠링 퀴즈 - ${_selectedWordbook?.name}';
       case QuizMode.reviewSpelling:
@@ -355,6 +338,7 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   Widget _buildModeSelectionUI(ThemeData theme) {
+    final canStartMcq = _words.length >= 4;
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       children: [
@@ -365,11 +349,18 @@ class _QuizScreenState extends State<QuizScreen> {
           wordCount: _words.length,
         ),
         const SizedBox(height: 32),
-        _buildModeCard('기존 퀴즈 (단어/뜻)', () => _changeMode(QuizMode.legacy), theme),
+        Opacity(
+          opacity: canStartMcq ? 1.0 : 0.5,
+          child: _buildModeCard(
+            '객관식 퀴즈',
+            canStartMcq ? () => _changeMode(QuizMode.multipleChoice) : null,
+            theme,
+            tooltip: canStartMcq ? null : '단어가 4개 이상 필요합니다.',
+          ),
+        ),
         const SizedBox(height: 20),
         _buildModeCard('전체 스펠링 퀴즈', () => _changeMode(QuizMode.spelling), theme),
         const SizedBox(height: 20),
-
         Opacity(
           opacity: _reviewWords.isNotEmpty && _selectedWordbook != null ? 1.0 : 0.5,
           child: _buildModeCard(
@@ -380,7 +371,6 @@ class _QuizScreenState extends State<QuizScreen> {
             theme,
           ),
         ),
-
         const SizedBox(height: 20),
         _buildModeCard(
           '시험지 생성/내보내기',
@@ -401,9 +391,10 @@ class _QuizScreenState extends State<QuizScreen> {
     String title,
     VoidCallback? onTap,
     ThemeData theme, {
+    String? tooltip,
     bool isWebDisabled = false,
   }) {
-    return Center(
+    final card = Center(
       child: GlassmorphicCard(
         onTap: onTap,
         child: SizedBox(
@@ -421,6 +412,10 @@ class _QuizScreenState extends State<QuizScreen> {
         ),
       ),
     );
+    if (tooltip != null) {
+      return Tooltip(message: tooltip, child: card);
+    }
+    return card;
   }
 
   Widget _buildExportSheetView() {
@@ -452,21 +447,17 @@ class _QuizScreenState extends State<QuizScreen> {
     final settings = settingsNotifier.settings;
     final double minValue = _words.isEmpty ? 1.0 : 1.0;
     final double maxValue = _words.isEmpty ? 1.0 : _words.length.toDouble();
-
-    // ▼▼▼ [수정] testTypeMap에 "문장 완성" 추가 ▼▼▼
     final testTypeMap = {
       SelfTestType.random: '랜덤',
       SelfTestType.wordToMeaning: '단어 → 뜻',
       SelfTestType.meaningToWord: '뜻 → 단어',
       SelfTestType.sentenceCompletion: '문장 완성',
     };
-
     final exportOptionMap = {
       ExportOption.both: '시험지와 답안지 모두',
       ExportOption.testOnly: '시험지만',
       ExportOption.answersOnly: '답안지만',
     };
-
     return Column(
       children: [
         Padding(
@@ -496,7 +487,6 @@ class _QuizScreenState extends State<QuizScreen> {
             ],
           ),
         ),
-
         Padding(
           padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 0),
           child: Row(
@@ -524,7 +514,6 @@ class _QuizScreenState extends State<QuizScreen> {
             ],
           ),
         ),
-
         const Divider(indent: 16, endIndent: 16),
         ListTile(
           title: Text('시험 유형', style: theme.textTheme.bodyLarge),
@@ -610,160 +599,345 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 }
 
-class _LegacyQuizView extends StatefulWidget {
+class _MultipleChoiceQuizView extends StatefulWidget {
   final List<Word> words;
+  final Wordbook selectedWordbook;
   final VoidCallback onFinish;
-  const _LegacyQuizView({required this.words, required this.onFinish});
+
+  const _MultipleChoiceQuizView({
+    super.key,
+    required this.words,
+    required this.selectedWordbook,
+    required this.onFinish,
+  });
+
   @override
-  State<_LegacyQuizView> createState() => _LegacyQuizViewState();
+  State<_MultipleChoiceQuizView> createState() => _MultipleChoiceQuizViewState();
 }
 
-class _LegacyQuizViewState extends State<_LegacyQuizView> {
-  List<QuizItem> _sessionItems = [];
+class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView> {
+  late List<Word> _sessionWords;
   int _currentIndex = 0;
-  bool _answerShown = false;
+  List<Word> _currentOptions = [];
+  Word? _selectedOption;
+  bool _isAnswered = false;
+
+  final SrsService _srsService = SrsService();
+  late final WordbookManager _wordbookManager;
+  final List<McqQuizResult> _results = [];
 
   @override
   void initState() {
     super.initState();
+    _wordbookManager = context.read<WordbookManager>();
     _startSession();
   }
 
   void _startSession() {
-    final allWords = widget.words;
     final settings = context.read<SettingsNotifier>().settings;
-    if (allWords.isEmpty) {
-      widget.onFinish();
-      return;
-    }
-
-    final wordCount = settings.wordCount.clamp(1, allWords.length);
-    final sourceCopy = List<Word>.from(allWords)..shuffle();
-    final sessionWords = sourceCopy.take(wordCount).toList();
-
+    final wordCount = settings.wordCount.clamp(4, widget.words.length);
     setState(() {
-      _sessionItems =
-          sessionWords.map((word) {
-            SelfTestType type = settings.testType;
-            if (type == SelfTestType.random) {
-              type = SelfTestType.values[Random().nextInt(2)];
-            }
-            return QuizItem(word: word, questionType: type);
-          }).toList();
+      _results.clear();
+      _currentIndex = 0;
+      _sessionWords = (List<Word>.from(widget.words)..shuffle()).take(wordCount).toList();
+      _prepareQuestion();
     });
   }
 
-  void _handleAction() {
-    if (_answerShown) {
-      _nextQuestion();
-    } else {
-      setState(() => _answerShown = true);
-    }
+  void _prepareQuestion() {
+    final currentWord = _sessionWords[_currentIndex];
+    final otherWords = List<Word>.from(widget.words)..removeWhere((w) => w.id == currentWord.id);
+    otherWords.shuffle();
+    _currentOptions = [currentWord, ...otherWords.take(3)]..shuffle();
+    _selectedOption = null;
+    _isAnswered = false;
+  }
+
+  void _onOptionSelected(Word option) {
+    if (_isAnswered) return;
+    final currentWord = _sessionWords[_currentIndex];
+    final isCorrect = option.id == currentWord.id;
+    final updatedWord = _srsService.updateWordSrs(
+      word: currentWord,
+      source: SrsUpdateSource.flashcard,
+      difficulty: isCorrect ? SrsDifficulty.good : SrsDifficulty.again,
+    );
+    _wordbookManager.updateWordsSrsData(widget.selectedWordbook.dbFileName, [updatedWord]);
+    setState(() {
+      _selectedOption = option;
+      _isAnswered = true;
+      _results.add(McqQuizResult(questionWord: currentWord, isCorrect: isCorrect));
+    });
   }
 
   void _nextQuestion() {
-    if (_currentIndex < _sessionItems.length - 1) {
+    if (_currentIndex < _sessionWords.length - 1) {
       setState(() {
         _currentIndex++;
-        _answerShown = false;
+        _prepareQuestion();
       });
     } else {
-      _showQuizEndDialog();
+      _showResults();
     }
   }
 
-  void _showQuizEndDialog() {
-    showCupertinoDialog(
-      context: context,
-      builder:
-          (dialogContext) => CupertinoAlertDialog(
-            title: const Text('퀴즈 종료!'),
-            content: const Text('모든 문제를 다 풀었습니다.'),
-            actions: [
-              CupertinoDialogAction(
-                isDefaultAction: true,
-                child: const Text('확인'),
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  widget.onFinish();
-                },
-              ),
-            ],
-          ),
+  void _showResults() {
+    Navigator.of(context).push(
+      // pushReplacement 대신 push 사용
+      MaterialPageRoute(
+        builder:
+            (_) => _McqQuizResultScreen(
+              results: _results,
+              onRestart: () {
+                // 결과 화면을 먼저 닫고, 그 다음에 퀴즈를 재시작
+                Navigator.of(context).pop();
+                _startSession();
+              },
+              onFinish: () {
+                // 결과 화면을 먼저 닫고, 그 다음에 퀴즈 모드를 종료
+                Navigator.of(context).pop();
+                widget.onFinish();
+              },
+            ),
+      ),
     );
+  }
+
+  Color _getOptionColor(Word option, Word correctAnswer, BuildContext context) {
+    if (!_isAnswered) {
+      return Theme.of(context).cardColor.withOpacity(0.5);
+    }
+    if (option.id == correctAnswer.id) {
+      return Colors.green.withOpacity(0.3);
+    }
+    if (option.id == _selectedOption?.id) {
+      return Colors.red.withOpacity(0.3);
+    }
+    return Theme.of(context).cardColor.withOpacity(0.5);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (_sessionItems.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+    if (_sessionWords.isEmpty) {
+      return const Center(child: Text("퀴즈를 생성할 단어가 부족합니다."));
     }
-
-    final quizItem = _sessionItems[_currentIndex];
-    final String questionText = getQuestionText(quizItem.word, quizItem.questionType);
-    final String answerText = getAnswerText(quizItem.word, quizItem.questionType);
-
-    return Column(
-      children: [
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '퀴즈 (${_currentIndex + 1}/${_sessionItems.length})',
-                  style: theme.textTheme.bodyMedium,
+    final currentWord = _sessionWords[_currentIndex];
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          Text(
+            '퀴즈 (${_currentIndex + 1}/${_sessionWords.length})',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            flex: 2,
+            child: GlassmorphicCard(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Text(
+                    currentWord.word,
+                    style: theme.textTheme.displaySmall,
+                    textAlign: TextAlign.center,
+                  ),
                 ),
-                const SizedBox(height: 20),
-                Expanded(
-                  child: GlassmorphicCard(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        Text(
-                          questionText,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.headlineSmall,
-                        ),
-                        Divider(color: theme.textTheme.bodyLarge!.color!.withOpacity(0.2)),
-                        AnimatedOpacity(
-                          opacity: _answerShown ? 1.0 : 0.0,
-                          duration: const Duration(milliseconds: 300),
-                          child: Text(
-                            _answerShown ? answerText : "",
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            flex: 3,
+            child: Column(
+              children:
+                  _currentOptions.map((option) {
+                    return Expanded(
+                      child: Card(
+                        color: _getOptionColor(option, currentWord, context),
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        child: InkWell(
+                          onTap: () => _onOptionSelected(option),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                              child: Text(
+                                option.meaning,
+                                style: theme.textTheme.titleMedium,
+                                textAlign: TextAlign.center,
+                              ),
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+                      ),
+                    );
+                  }).toList(),
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: SizedBox(
+          const SizedBox(height: 16),
+          SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: _handleAction,
-              child: Text(_answerShown ? '다음 문제' : '정답 확인'),
+              onPressed: _isAnswered ? _nextQuestion : null,
+              child: const Text('다음 문제'),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-// ▼▼▼ [수정] 스펠링 퀴즈 UI가 복원된 전체 클래스 코드 ▼▼▼
+class _McqQuizResultScreen extends StatelessWidget {
+  final List<McqQuizResult> results;
+  final VoidCallback onRestart;
+  final VoidCallback onFinish;
+
+  const _McqQuizResultScreen({
+    required this.results,
+    required this.onRestart,
+    required this.onFinish,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final totalQuestions = results.length;
+    final correctAnswers = results.where((r) => r.isCorrect).length;
+    final incorrectAnswers = totalQuestions - correctAnswers;
+    final accuracyRate = totalQuestions > 0 ? (correctAnswers / totalQuestions * 100).round() : 0;
+    return Scaffold(
+      appBar: AppBar(title: const Text('퀴즈 결과'), backgroundColor: Colors.transparent, elevation: 0),
+      backgroundColor: Colors.transparent,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GlassmorphicCard(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '통계',
+                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 15),
+                    _buildStatRow('전체 문제', '$totalQuestions개', theme),
+                    _buildStatRow('정답', '$correctAnswers개', theme),
+                    _buildStatRow('오답', '$incorrectAnswers개', theme),
+                    Divider(color: theme.textTheme.bodyLarge?.color?.withOpacity(0.2)),
+                    _buildStatRow('정답율', '$accuracyRate%', theme, isHighlight: true),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            GlassmorphicCard(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '상세 결과',
+                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 15),
+                    ...results.map((result) => _buildResultItem(result, theme)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: onRestart,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                    child: const Text('다시 시작'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: onFinish,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                    child: const Text('완료'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatRow(String label, String value, ThemeData theme, {bool isHighlight = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: theme.textTheme.bodyMedium),
+          Text(
+            value,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: isHighlight ? theme.primaryColor : theme.textTheme.bodyLarge?.color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultItem(McqQuizResult result, ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: (result.isCorrect ? Colors.green : Colors.red).withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            result.isCorrect ? Icons.check_circle_outline : Icons.cancel_outlined,
+            color: result.isCorrect ? Colors.green : Colors.red,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  result.questionWord.word,
+                  style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                Text(result.questionWord.meaning, style: theme.textTheme.bodyMedium),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SpellingQuizView extends StatefulWidget {
   final List<Word> words;
   final Wordbook selectedWordbook;
@@ -780,22 +954,17 @@ class _SpellingQuizView extends StatefulWidget {
   State<_SpellingQuizView> createState() => _SpellingQuizPageState();
 }
 
-// lib/screens/quiz_screen.dart 의 _SpellingQuizPageState 클래스 전체
-
 class _SpellingQuizPageState extends State<_SpellingQuizView>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
-
   late final AnimationController _blinkController;
   late WordbookManager _wordbookManager;
   final SrsService _srsService = SrsService();
-
   List<Word> _sessionWords = [];
   int _currentIndex = 0;
   bool _isRetryAttempt = false;
   SpellingAnswerState _answerState = SpellingAnswerState.none;
-
   final List<SpellingQuizResult> _results = [];
 
   @override
@@ -808,19 +977,13 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
     _initializeSession();
   }
 
-  // ▼▼▼ [수정] dispose 메서드 로직 변경 ▼▼▼
   @override
   void dispose() {
-    // 1. Ticker를 사용하는 컨트롤러를 포함한 모든 리소스를 먼저 동기적으로 해제합니다.
     _blinkController.dispose();
     _textController.dispose();
     _focusNode.dispose();
     WidgetsBinding.instance.removeObserver(this);
-
-    // 2. 비동기 작업은 호출만 하고 기다리지 않습니다. (위젯은 이미 사라지는 중)
     _saveIncorrectWordsOnExit();
-
-    // 3. 모든 리소스 해제 후 마지막에 super.dispose()를 호출합니다.
     super.dispose();
   }
 
@@ -849,10 +1012,8 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
 
   void _checkAnswer() {
     if (_answerState != SpellingAnswerState.none) return;
-
     final userInput = _textController.text.trim().toLowerCase();
     final correctAnswer = _sessionWords[_currentIndex].word.toLowerCase();
-
     setState(() {
       if (userInput == correctAnswer) {
         _answerState = SpellingAnswerState.correct;
@@ -903,13 +1064,11 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
   Future<void> _saveIncorrectWordsOnExit() async {
     final incorrectWords =
         _results.where((r) => !r.isCorrectOnFirstTry).map((r) => r.word).toList();
-
     if (incorrectWords.isNotEmpty) {
       final wordsToUpdate =
           incorrectWords.map((word) {
             return _srsService.updateWordSrs(word: word, source: SrsUpdateSource.spellingQuiz);
           }).toList();
-
       await _wordbookManager.updateWordsSrsData(widget.selectedWordbook.dbFileName, wordsToUpdate);
     }
   }
@@ -917,14 +1076,12 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
   void _showResults() {
     _saveIncorrectWordsOnExit().then((_) {
       if (mounted) {
-        // ▼▼▼ [수정] pushReplacement를 push로 변경 ▼▼▼
-        Navigator.of(context).push(
+        Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder:
                 (_) => _SpellingQuizResultScreen(
                   results: _results,
                   onRestart: () {
-                    // ▼▼▼ [수정] 결과 화면을 먼저 닫고, 그 다음에 퀴즈 상태를 리셋 ▼▼▼
                     Navigator.of(context).pop();
                     setState(() {
                       _currentIndex = 0;
@@ -935,11 +1092,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
                     });
                     _initializeSession();
                   },
-                  onFinish: () {
-                    // ▼▼▼ [수정] 결과 화면을 먼저 닫고, 그 다음에 onFinish 콜백을 호출 ▼▼▼
-                    Navigator.of(context).pop();
-                    widget.onFinish();
-                  },
+                  onFinish: widget.onFinish,
                 ),
           ),
         );
@@ -952,13 +1105,10 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
     if (_sessionWords.isEmpty) {
       return const Center(child: Text("퀴즈할 단어가 없습니다."));
     }
-
     final theme = Theme.of(context);
     final currentWord = _sessionWords[_currentIndex];
-
     return WillPopScope(
       onWillPop: () async {
-        // 뒤로가기 버튼을 누를 때도 오답 저장
         await _saveIncorrectWordsOnExit();
         return true;
       },
@@ -1021,25 +1171,19 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
         final char = index < userInput.length ? userInput[index] : '';
         final bool shouldBlink =
             index == userInput.length && _answerState == SpellingAnswerState.none;
-
         return Container(
           width: 30,
           height: 40,
-          // ▼▼▼ [수정] 깜빡이는 위치에서는 기본 밑줄을 그리지 않도록 수정 ▼▼▼
           decoration: BoxDecoration(
             border: Border(
               bottom:
-                  shouldBlink
-                      ? BorderSide
-                          .none // 깜빡일 때는 기본 밑줄 없음
-                      : BorderSide(color: theme.dividerColor, width: 2),
+                  shouldBlink ? BorderSide.none : BorderSide(color: theme.dividerColor, width: 2),
             ),
           ),
           child: Stack(
             alignment: Alignment.center,
             children: [
               Text(char, style: theme.textTheme.titleLarge?.copyWith(color: getTextColor())),
-              // ▼▼▼ [수정] 깜빡이는 밑줄을 Positioned를 이용해 정확한 위치에 그림 ▼▼▼
               if (shouldBlink)
                 Positioned(
                   bottom: 0,
@@ -1047,10 +1191,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
                   right: 0,
                   child: FadeTransition(
                     opacity: _blinkController,
-                    child: Container(
-                      height: 2,
-                      color: theme.primaryColor, // 깜빡이는 밑줄 색상
-                    ),
+                    child: Container(height: 2, color: theme.primaryColor),
                   ),
                 ),
             ],
@@ -1116,7 +1257,6 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
         ],
       );
     } else {
-      // showAnswer
       return SizedBox(
         width: double.infinity,
         height: 50,
@@ -1155,7 +1295,6 @@ class _SpellingQuizResultScreen extends StatelessWidget {
     final incorrect = totalQuestions - firstTryCorrect - retryCorrect - skipped;
     final accuracyRate =
         totalQuestions > 0 ? ((firstTryCorrect + retryCorrect) / totalQuestions * 100).round() : 0;
-
     return Scaffold(
       appBar: AppBar(title: const Text('퀴즈 결과'), backgroundColor: Colors.transparent, elevation: 0),
       backgroundColor: Colors.transparent,
@@ -1194,7 +1333,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '결과',
+                      '상세 결과',
                       style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 15),
