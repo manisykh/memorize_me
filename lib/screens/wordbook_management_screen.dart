@@ -5,12 +5,41 @@ import 'package:provider/provider.dart';
 import '../models/wordbook_model.dart';
 import '../providers/wordbook_manager.dart';
 import '../widgets/glassmorphic_card.dart';
-import 'manage_words_screen.dart'; // MergeWordbooksScreen과 분리
-import 'merge_wordbooks_screen.dart'; // ManageWordsScreen과 분리
+import 'manage_words_screen.dart';
+import 'merge_wordbooks_screen.dart';
 import 'select_spreadsheet_screen.dart';
 
-class WordbookManagementScreen extends StatelessWidget {
+class WordbookManagementScreen extends StatefulWidget {
   const WordbookManagementScreen({super.key});
+
+  @override
+  State<WordbookManagementScreen> createState() => _WordbookManagementScreenState();
+}
+
+class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
+  Wordbook? _selectedForEditing;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedForEditing = context.read<WordbookManager>().activeWordbook;
+  }
+
+  Widget _buildToolCard({
+    required BuildContext context,
+    required Widget icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    return GlassmorphicCard(
+      padding: const EdgeInsets.all(14),
+      onTap: onTap,
+      child: Column(
+        children: [icon, const SizedBox(height: 8), Text(label, style: theme.textTheme.bodySmall)],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,42 +57,34 @@ class WordbookManagementScreen extends StatelessWidget {
             children: [
               Text('단어장 도구', style: theme.textTheme.titleLarge),
               const SizedBox(height: 10),
+
+              // ▼▼▼ [수정] 2x2 배열로 레이아웃 변경 ▼▼▼
               Column(
                 children: [
                   Row(
                     children: [
                       Expanded(
-                        child: GlassmorphicCard(
-                          padding: const EdgeInsets.all(14),
+                        child: _buildToolCard(
+                          context: context,
+                          icon: Image.asset(
+                            'assets/icons/google_sheet_icon.png',
+                            height: 24,
+                            width: 24,
+                          ),
+                          label: 'Google 시트',
                           onTap:
                               () => Navigator.of(context).push(
                                 MaterialPageRoute(builder: (_) => const SelectSpreadsheetScreen()),
                               ),
-                          child: Column(
-                            children: [
-                              Image.asset(
-                                'assets/icons/google_sheet_icon.png',
-                                height: 24,
-                                width: 24,
-                              ),
-                              const SizedBox(height: 8),
-                              Text('Google 시트', style: theme.textTheme.bodySmall),
-                            ],
-                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: GlassmorphicCard(
-                          padding: const EdgeInsets.all(14),
+                        child: _buildToolCard(
+                          context: context,
+                          icon: const Icon(CupertinoIcons.folder_open),
+                          label: '로컬 파일',
                           onTap: () => manager.createNewWordbookFromCsv(context),
-                          child: Column(
-                            children: [
-                              const Icon(CupertinoIcons.folder_open),
-                              const SizedBox(height: 8),
-                              Text('로컬 파일', style: theme.textTheme.bodySmall),
-                            ],
-                          ),
                         ),
                       ),
                     ],
@@ -72,36 +93,35 @@ class WordbookManagementScreen extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: GlassmorphicCard(
-                          padding: const EdgeInsets.all(14),
-                          onTap:
-                              () => Navigator.of(context).push(
-                                MaterialPageRoute(builder: (_) => const MergeWordbooksScreen()),
-                              ),
-                          child: Column(
-                            children: [
-                              const Icon(Icons.merge_type),
-                              const SizedBox(height: 8),
-                              Text('단어장 병합', style: theme.textTheme.bodySmall),
-                            ],
-                          ),
+                        child: _buildToolCard(
+                          context: context,
+                          icon: const Icon(CupertinoIcons.pencil_ellipsis_rectangle),
+                          label: '단어 편집',
+                          onTap: () {
+                            if (_selectedForEditing != null) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ManageWordsScreen(wordbook: _selectedForEditing!),
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('편집할 단어장을 목록에서 선택해주세요.')),
+                              );
+                            }
+                          },
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: GlassmorphicCard(
-                          padding: const EdgeInsets.all(14),
+                        child: _buildToolCard(
+                          context: context,
+                          icon: const Icon(Icons.merge_type),
+                          label: '단어장 병합',
                           onTap:
-                              () => Navigator.of(
-                                context,
-                              ).push(MaterialPageRoute(builder: (_) => const ManageWordsScreen())),
-                          child: Column(
-                            children: [
-                              const Icon(CupertinoIcons.pencil_ellipsis_rectangle),
-                              const SizedBox(height: 8),
-                              Text('단어 편집', style: theme.textTheme.bodySmall),
-                            ],
-                          ),
+                              () => Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => const MergeWordbooksScreen()),
+                              ),
                         ),
                       ),
                     ],
@@ -109,7 +129,7 @@ class WordbookManagementScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 24),
-              Text('단어장 목록', style: theme.textTheme.titleLarge),
+              Text('단어장 목록 (탭하여 편집 대상으로 선택)', style: theme.textTheme.titleLarge),
               const SizedBox(height: 10),
               if (manager.wordbooks.isEmpty)
                 const Padding(
@@ -123,12 +143,16 @@ class WordbookManagementScreen extends StatelessWidget {
                   itemCount: manager.wordbooks.length,
                   itemBuilder: (context, index) {
                     final wordbook = manager.wordbooks[index];
-                    final isActive = manager.activeWordbook?.id == wordbook.id;
+                    final isSelectedForEditing = _selectedForEditing?.id == wordbook.id;
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4.0),
                       child: GlassmorphicCard(
-                        isActive: isActive,
-                        onTap: () => manager.setActiveWordbook(wordbook),
+                        isActive: isSelectedForEditing,
+                        onTap: () {
+                          setState(() {
+                            _selectedForEditing = wordbook;
+                          });
+                        },
                         padding: const EdgeInsets.only(left: 16, right: 8),
                         child: ListTile(
                           contentPadding: EdgeInsets.zero,
@@ -136,7 +160,8 @@ class WordbookManagementScreen extends StatelessWidget {
                           title: Text(
                             wordbook.name,
                             style: theme.textTheme.bodyLarge?.copyWith(
-                              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                              fontWeight:
+                                  isSelectedForEditing ? FontWeight.bold : FontWeight.normal,
                             ),
                           ),
                           trailing: IconButton(

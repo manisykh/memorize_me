@@ -1,5 +1,3 @@
-// lib/screens/select_sheet_screen.dart (수정된 전체 코드)
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
@@ -20,7 +18,6 @@ class SelectSheetScreen extends StatefulWidget {
 
 class _SelectSheetScreenState extends State<SelectSheetScreen> {
   late Future<List<sheets.Sheet>> _sheetsFuture;
-  // ▼▼▼ [추가] 여러 시트를 선택하기 위한 Set ▼▼▼
   final Set<sheets.Sheet> _selectedSheets = {};
   bool _isLoading = false;
 
@@ -30,7 +27,6 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
     _sheetsFuture = context.read<SheetsService>().getSheetInfo(widget.spreadsheetId);
   }
 
-  // ▼▼▼ [추가] 선택된 시트들을 단어장으로 가져오는 함수 ▼▼▼
   Future<void> _importSelectedSheets() async {
     if (_selectedSheets.isEmpty) {
       ScaffoldMessenger.of(
@@ -48,15 +44,15 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('${_selectedSheets.length}개의 단어장을 가져왔습니다.')));
-      // 성공적으로 가져온 후, true 값을 반환하며 현재 화면을 닫습니다.
       Navigator.of(context).pop(true);
     }
-
-    setState(() => _isLoading = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    // 버튼의 활성화 여부를 결정하는 변수
+    final canImport = !_isLoading && _selectedSheets.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
         title: Text('"${widget.spreadsheetName}"'),
@@ -70,6 +66,26 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
             ),
           ),
         ),
+        // ▼▼▼ [수정] AppBar의 actions에 '가져오기' 버튼 추가 ▼▼▼
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Center(
+              child: FilledButton.icon(
+                icon:
+                    _isLoading
+                        ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                        : const Icon(Icons.download, size: 18),
+                label: Text(_isLoading ? '가져오는 중...' : '${_selectedSheets.length}개 가져오기'),
+                onPressed: canImport ? _importSelectedSheets : null, // 조건에 따라 버튼 비활성화
+              ),
+            ),
+          ),
+        ],
       ),
       body: FutureBuilder<List<sheets.Sheet>>(
         future: _sheetsFuture,
@@ -85,7 +101,6 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
           }
 
           final sheets = snapshot.data!;
-          // ▼▼▼ [수정] ListTile을 CheckboxListTile로 변경 ▼▼▼
           return ListView.builder(
             itemCount: sheets.length,
             itemBuilder: (context, index) {
@@ -97,33 +112,26 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
                 secondary: const Icon(CupertinoIcons.doc_plaintext),
                 title: Text(sheetTitle),
                 value: isSelected,
-                onChanged: (bool? value) {
-                  setState(() {
-                    if (value == true) {
-                      _selectedSheets.add(sheet);
-                    } else {
-                      _selectedSheets.remove(sheet);
-                    }
-                  });
-                },
+                onChanged:
+                    _isLoading
+                        ? null
+                        : (bool? value) {
+                          // 로딩 중에는 체크박스도 비활성화
+                          setState(() {
+                            if (value == true) {
+                              _selectedSheets.add(sheet);
+                            } else {
+                              _selectedSheets.remove(sheet);
+                            }
+                          });
+                        },
               );
             },
           );
         },
       ),
-      // ▼▼▼ [추가] 선택한 시트들을 가져오는 FAB(플로팅 액션 버튼) ▼▼▼
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _isLoading ? null : _importSelectedSheets,
-        label: _isLoading ? const Text('가져오는 중...') : Text('${_selectedSheets.length}개 시트 가져오기'),
-        icon:
-            _isLoading
-                ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(color: Colors.white),
-                )
-                : const Icon(Icons.download),
-      ),
+      // ▼▼▼ [제거] 기존 플로팅 액션 버튼 제거 ▼▼▼
+      // floatingActionButton: ...
     );
   }
 }

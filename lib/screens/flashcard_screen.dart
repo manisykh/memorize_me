@@ -31,7 +31,6 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   bool _sessionActive = false;
   late final TtsService _ttsService;
 
-  // ▼▼▼ [수정] Provider를 저장할 변수 선언 및 SRS 관련 변수 추가 ▼▼▼
   late WordbookManager _wordbookManager;
   final SrsService _srsService = SrsService();
   final List<Word> _updatedWordsInSession = [];
@@ -39,12 +38,13 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   @override
   void initState() {
     super.initState();
-    // context가 활성화된 initState에서 Provider 인스턴스를 미리 저장
     _ttsService = context.read<TtsService>();
     _wordbookManager = context.read<WordbookManager>();
 
-    if (_wordbookManager.activeWordbook != null) {
-      _loadWordsForWordbook(_wordbookManager.activeWordbook!);
+    // 앱의 현재 활성 단어장으로 로컬 상태를 초기화
+    final initialWordbook = _wordbookManager.activeWordbook;
+    if (initialWordbook != null) {
+      _onWordbookSelected(initialWordbook);
     }
   }
 
@@ -55,26 +55,23 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     super.dispose();
   }
 
-  Future<void> _loadWordsForWordbook(Wordbook wordbook) async {
-    setState(() {
-      _selectedWordbook = wordbook;
-      _sessionWords = [];
-      _currentCardIndex = 0;
-    });
+  Future<void> _onWordbookSelected(Wordbook wordbook) async {
+    // 1. 전역 활성 단어장 설정 (다른 화면과의 동기화를 위해)
+    await _wordbookManager.setActiveWordbook(wordbook);
 
-    // WordbookManager를 통해 단어 로드
-    final words = await _wordbookManager.getAllWordsFrom(wordbook);
-
+    // 2. 현재 화면의 상태 업데이트
     if (mounted) {
-      setState(() => _sessionWords = words);
+      final words = await _wordbookManager.getAllWordsFrom(wordbook);
+      setState(() {
+        _selectedWordbook = wordbook;
+        _sessionWords = words;
+      });
     }
   }
 
-  // dispose에서도 호출될 수 있도록 context.read를 사용하지 않음
   Future<void> _saveUpdatedSrsData() async {
     if (_updatedWordsInSession.isEmpty || _selectedWordbook == null) return;
 
-    // initState에서 저장해둔 _wordbookManager 변수 사용
     await _wordbookManager.updateWordsSrsData(
       _selectedWordbook!.dbFileName,
       _updatedWordsInSession,
@@ -197,8 +194,8 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
           children: [
             WordbookSelectionButton(
               selectedWordbook: _selectedWordbook,
-              onWordbookSelected: _loadWordsForWordbook,
-              wordCount: _sessionWords.length,
+              onWordbookSelected: _onWordbookSelected,
+              wordCount: _selectedWordbook != null ? _sessionWords.length : 0,
             ),
             const SizedBox(height: 24),
             Text('학습 설정', style: theme.textTheme.titleLarge),

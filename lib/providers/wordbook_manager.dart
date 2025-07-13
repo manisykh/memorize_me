@@ -1,5 +1,3 @@
-// lib/providers/wordbook_manager.dart
-
 import 'dart:io';
 import 'dart:math';
 import 'package:csv/csv.dart';
@@ -67,16 +65,13 @@ class WordbookManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ▼▼▼ [추가] 복습이 필요한 단어 목록을 반환하는 함수 ▼▼▼
   List<Word> getWordsForReview() {
     if (_activeWordbook == null) return [];
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
     return _wordListNotifier.words.where((word) {
-      // srsLevel이 0이거나 1이면 학습 대상
       if (word.srsLevel <= 1) return true;
-      // nextReviewDate가 오늘이거나 과거이면 학습 대상
       if (word.nextReviewDate != null) {
         try {
           final reviewDate = DateTime.parse(word.nextReviewDate!);
@@ -89,23 +84,32 @@ class WordbookManager extends ChangeNotifier {
     }).toList();
   }
 
-  // ▼▼▼ [추가] 여러 단어의 SRS 정보를 DB에 일괄 업데이트하는 함수 ▼▼▼
   Future<void> updateWordsSrsData(String dbFileName, List<Word> words) async {
     await _dbService.updateWordSrsBatch(dbFileName, words);
     if (_activeWordbook?.dbFileName == dbFileName) {
       await _wordListNotifier.refreshWords();
-      notifyListeners(); // WordbookManager 상태 변경 알림
+      notifyListeners();
     }
-  }
-
-  Future<void> updateWord(Word word) async {
-    if (activeWordbook == null) return;
-    await _dbService.updateWord(activeWordbook!.dbFileName, word);
-    await _wordListNotifier.refreshWords();
   }
 
   Future<List<Word>> getAllWordsFrom(Wordbook wordbook) async {
     return await _dbService.getAllWords(wordbook.dbFileName);
+  }
+
+  // ▼▼▼ [추가] 특정 단어장의 단어 여러 개를 업데이트하는 메서드 ▼▼▼
+  Future<void> updateWordsInWordbook(Wordbook wordbook, List<Word> words) async {
+    await _dbService.updateWordSrsBatch(wordbook.dbFileName, words);
+    if (_activeWordbook?.id == wordbook.id) {
+      await _wordListNotifier.refreshWords();
+    }
+  }
+
+  // ▼▼▼ [추가] 특정 단어장에서 특정 단어를 삭제하는 메서드 ▼▼▼
+  Future<void> deleteWordFrom(Wordbook wordbook, int wordId) async {
+    await _dbService.deleteWord(wordbook.dbFileName, wordId);
+    if (_activeWordbook?.id == wordbook.id) {
+      await _wordListNotifier.refreshWords();
+    }
   }
 
   void _setLoading(bool loading) {

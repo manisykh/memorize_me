@@ -1,11 +1,18 @@
+// lib/screens/add_edit_word_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/word_model.dart';
-import '../providers/word_list_provider.dart';
+import '../models/wordbook_model.dart';
+import '../providers/wordbook_manager.dart';
+import '../services/database_service.dart';
 
 class AddEditWordScreen extends StatefulWidget {
+  final Wordbook wordbook; // ▼▼▼ [수정] 단어장 정보를 받기 위한 파라미터
   final Word? word;
-  const AddEditWordScreen({super.key, this.word});
+
+  const AddEditWordScreen({super.key, required this.wordbook, this.word});
+
   @override
   State<AddEditWordScreen> createState() => _AddEditWordScreenState();
 }
@@ -32,21 +39,34 @@ class _AddEditWordScreenState extends State<AddEditWordScreen> {
     super.dispose();
   }
 
-  void _saveWord() {
+  Future<void> _saveWord() async {
     if (_formKey.currentState!.validate()) {
-      final notifier = context.read<WordListNotifier>();
+      // ▼▼▼ [수정] WordListNotifier 대신 WordbookManager 사용 ▼▼▼
+      final manager = context.read<WordbookManager>();
+
       final newWord = Word(
         id: widget.word?.id,
         word: _wordController.text,
         meaning: _meaningController.text,
         exampleSentence: _exampleController.text,
+        // 기존 단어의 SRS 정보는 유지
+        srsLevel: widget.word?.srsLevel ?? 0,
+        nextReviewDate: widget.word?.nextReviewDate,
+        correctStreak: widget.word?.correctStreak ?? 0,
+        incorrectCount: widget.word?.incorrectCount ?? 0,
       );
+
       if (widget.word == null) {
-        notifier.addWord(newWord);
+        // DB에 직접 추가 (Manager에 추가 메서드를 만들어도 됨)
+        await context.read<DatabaseService>().addWord(widget.wordbook.dbFileName, newWord);
       } else {
-        notifier.updateWord(newWord);
+        await manager.updateWordsInWordbook(widget.wordbook, [newWord]);
       }
-      Navigator.of(context).pop();
+
+      // 변경사항이 있었음을 이전 화면에 알림
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
     }
   }
 

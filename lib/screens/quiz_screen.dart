@@ -917,12 +917,14 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
   void _showResults() {
     _saveIncorrectWordsOnExit().then((_) {
       if (mounted) {
-        Navigator.of(context).pushReplacement(
+        // ▼▼▼ [수정] pushReplacement를 push로 변경 ▼▼▼
+        Navigator.of(context).push(
           MaterialPageRoute(
             builder:
                 (_) => _SpellingQuizResultScreen(
                   results: _results,
                   onRestart: () {
+                    // ▼▼▼ [수정] 결과 화면을 먼저 닫고, 그 다음에 퀴즈 상태를 리셋 ▼▼▼
                     Navigator.of(context).pop();
                     setState(() {
                       _currentIndex = 0;
@@ -933,7 +935,11 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
                     });
                     _initializeSession();
                   },
-                  onFinish: widget.onFinish,
+                  onFinish: () {
+                    // ▼▼▼ [수정] 결과 화면을 먼저 닫고, 그 다음에 onFinish 콜백을 호출 ▼▼▼
+                    Navigator.of(context).pop();
+                    widget.onFinish();
+                  },
                 ),
           ),
         );

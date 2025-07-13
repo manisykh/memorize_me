@@ -40,23 +40,12 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   @override
   void initState() {
     super.initState();
-    _loadLastUsedWordbook();
-  }
-
-  Future<void> _loadLastUsedWordbook() async {
-    final modeStateService = context.read<ModeStateService>();
-    final wordbookManager = context.read<WordbookManager>();
-
-    final lastUsedId = await modeStateService.getLastUsedWordbookId(LearningMode.aiQuiz);
-    Wordbook? lastUsedWordbook;
-    if (lastUsedId != null) {
-      lastUsedWordbook = wordbookManager.getWordbookById(lastUsedId);
-    }
-    lastUsedWordbook ??= wordbookManager.wordbooks.firstOrNull;
-
-    if (lastUsedWordbook != null) {
-      await _onWordbookSelected(lastUsedWordbook);
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final initialWordbook = context.read<WordbookManager>().activeWordbook;
+      if (initialWordbook != null) {
+        _onWordbookSelected(initialWordbook);
+      }
+    });
   }
 
   Future<void> _onWordbookSelected(Wordbook wordbook) async {
@@ -67,7 +56,10 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       _selectedWordIds.clear();
     });
 
-    final words = await context.read<WordbookManager>().getAllWordsFrom(wordbook);
+    final wordbookManager = context.read<WordbookManager>();
+    await wordbookManager.setActiveWordbook(wordbook);
+
+    final words = await wordbookManager.getAllWordsFrom(wordbook);
     if (mounted) {
       setState(() {
         _words = words;
@@ -163,12 +155,13 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   }
 
   Future<void> _generateAllSentences() async {
-    final wordListNotifier = context.read<WordListNotifier>();
-    final aiSettings = context.read<AiSettingsProvider>();
+    // WordListNotifier는 현재 활성 단어장 기준이므로, 이 화면의 단어장과 다를 수 있음.
+    // 따라서 WordbookManager를 통해 직접 업데이트 요청
+    final wordbookManager = context.read<WordbookManager>();
+    if (_selectedWordbook == null) return;
+
     final wordsToUpdate =
-        wordListNotifier.words
-            .where((w) => w.exampleSentence == null || w.exampleSentence!.isEmpty)
-            .toList();
+        _words.where((w) => w.exampleSentence == null || w.exampleSentence!.isEmpty).toList();
 
     if (wordsToUpdate.isEmpty) {
       ScaffoldMessenger.of(
@@ -178,11 +171,34 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     }
     setState(() => _isGeneratingSentences = true);
     try {
-      await wordListNotifier.generateAndUpdateAllSentences(context.read<AiService>(), aiSettings);
+      final aiService = context.read<AiService>();
+      final aiSettings = context.read<AiSettingsProvider>();
+
+      final wordStrings = wordsToUpdate.map((w) => w.word).toList();
+      final sentenceMap = await aiService.generateSentencesForWords(
+        wordStrings,
+        aiSettings.selectedModel,
+      );
+
+      final updatedWords = <Word>[];
+      for (final word in wordsToUpdate) {
+        if (sentenceMap.containsKey(word.word)) {
+          updatedWords.add(word.copyWith(exampleSentence: sentenceMap[word.word]));
+        }
+      }
+
+      await wordbookManager.updateWordsInWordbook(_selectedWordbook!, updatedWords);
+
+      // 화면의 단어 목록도 갱신
+      final newWords = await wordbookManager.getAllWordsFrom(_selectedWordbook!);
+
       if (mounted) {
+        setState(() {
+          _words = newWords;
+        });
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('${wordsToUpdate.length}개 단어의 예문 생성이 완료되었습니다.')));
+        ).showSnackBar(SnackBar(content: Text('${updatedWords.length}개 단어의 예문 생성이 완료되었습니다.')));
       }
     } catch (e) {
       await _handleApiError(e);
@@ -212,7 +228,6 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                 wordCount: _words.length,
               ),
               const SizedBox(height: 24),
-
               Text('AI 예문 일괄 생성', style: theme.textTheme.titleLarge),
               const SizedBox(height: 10),
               GlassmorphicCard(
@@ -247,22 +262,19 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-
               Text('AI 퀴즈 생성', style: theme.textTheme.titleLarge),
               const SizedBox(height: 16),
-
-              // ▼▼▼ [수정] Row를 Wrap으로 변경하여 오버플로우를 방지합니다. ▼▼▼
               Wrap(
                 alignment: WrapAlignment.spaceBetween,
                 crossAxisAlignment: WrapCrossAlignment.center,
-                runSpacing: 4.0, // 줄바꿈 시 상하 간격
+                runSpacing: 4.0,
                 children: [
                   Text(
                     '문제에 포함될 단어 선택 (${_selectedWordIds.length} / ${_words.length})',
                     style: theme.textTheme.titleMedium,
                   ),
                   Row(
-                    mainAxisSize: MainAxisSize.min, // 버튼들이 차지하는 공간을 최소화
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       TextButton(onPressed: _onSelectAll, child: const Text('전체 선택')),
                       TextButton(onPressed: _onDeselectAll, child: const Text('전체 해제')),
@@ -308,7 +320,6 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-
               GlassmorphicCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
@@ -325,7 +336,6 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-
               if (_errorMessage != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16.0),
@@ -336,7 +346,6 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                     ),
                   ),
                 ),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
