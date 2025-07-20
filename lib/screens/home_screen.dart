@@ -13,6 +13,7 @@ import 'flashcard_screen.dart';
 import 'quiz_screen.dart';
 import 'srs_status_screen.dart';
 import 'wordbook_management_screen.dart';
+import 'ai_grammar_quiz_setup_screen.dart'; // ▼▼▼ [추가] ▼▼▼
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -118,6 +119,17 @@ class HomeScreen extends StatelessWidget {
                   () => Navigator.of(
                     context,
                   ).push(MaterialPageRoute(builder: (_) => const AiQuizSetupScreen())),
+            ),
+            const SizedBox(height: 16),
+            LearningModeCard(
+              heroTag: 'ai-grammar-quiz-hero',
+              title: 'AI 문법 퀴즈',
+              subtitle: '수준별, 챕터별 맞춤 문법 문제 생성',
+              icon: CupertinoIcons.pen,
+              onTap:
+                  () => Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => const AiGrammarQuizSetupScreen())),
             ),
           ],
         ),

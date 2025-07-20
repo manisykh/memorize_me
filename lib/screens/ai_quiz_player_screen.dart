@@ -1,16 +1,10 @@
-// lib/screens/ai_quiz_player_screen.dart (진단 메시지 모두 수정한 Full Code)
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-
-// ▼▼▼ [수정] 사용하지 않는 import 삭제 ▼▼▼
-// import 'package:provider/provider.dart';
-// import '../models/word_model.dart';
+import 'package:provider/provider.dart';
 
 import '../models/ai_quiz_model.dart';
 import '../services/test_sheet_service.dart';
 import '../services/tts_service.dart';
-import 'package:provider/provider.dart';
 
 class AiQuizPlayerScreen extends StatefulWidget {
   final AiQuizResponse quizResponse;
@@ -27,7 +21,6 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
   final ScrollController _scrollController = ScrollController();
   late final TtsService _ttsService;
 
-  // ▼▼▼ [수정] PDF 내보내기 기능에서 사용되므로 변수 유지 ▼▼▼
   bool _isExporting = false;
   PdfExportType _selectedPdfType = PdfExportType.withAnswers;
   late final TextEditingController _pdfTitleController;
@@ -91,7 +84,6 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     );
   }
 
-  // ▼▼▼ [수정] PDF 내보내기 함수 복원 및 사용 ▼▼▼
   Future<void> _showPdfExportDialog() async {
     PdfExportType tempSelectedType = _selectedPdfType;
     await showDialog(
@@ -169,7 +161,6 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
       appBar: AppBar(
         title: const Text('AI 생성 퀴즈'),
         actions: [
-          // ▼▼▼ [수정] PDF 내보내기 버튼 로직 연결 ▼▼▼
           IconButton(
             icon:
                 _isExporting
@@ -227,7 +218,6 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
             final localIndex = entry.key;
             final subQuestion = entry.value;
             final globalQuestionIndex = questionStartIndex + localIndex;
-            // ▼▼▼ [수정] Dead null-aware expression 수정 ▼▼▼
             return Padding(
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -244,7 +234,6 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 16),
-                  // ▼▼▼ [수정] options가 non-nullable이므로 불필요한 null-aware 연산자 제거 ▼▼▼
                   ...subQuestion.options.map(
                     (option) => _buildOptionTile(
                       optionText: option,
@@ -305,6 +294,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     );
   }
 
+  // ▼▼▼ [수정] 이 메서드만 수정하면 됩니다. ▼▼▼
   Widget _buildScript(String script) {
     return Container(
       width: double.infinity,
@@ -316,25 +306,18 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
             icon: const Icon(Icons.volume_up_rounded),
             onPressed: () => _ttsService.speakDialogue(script),
             color: Theme.of(context).primaryColor,
+            tooltip: '듣기 지문 재생',
           ),
-          if (_isSubmitted)
-            Expanded(
-              child: Text(
-                script.replaceAll(RegExp(r'\[.*?\]'), ' '),
-                style: Theme.of(context).textTheme.bodyMedium,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            )
-          else
-            Expanded(
-              child: Text(
-                '지문을 들어보세요.',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).hintColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              // 정답 제출 후(_isSubmitted == true)에만 스크립트 표시
+              _isSubmitted ? script.replaceAll(RegExp(r'\[.*?\]'), ' ') : '버튼을 눌러 듣기 지문을 재생하세요.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: _isSubmitted ? null : Theme.of(context).hintColor,
               ),
             ),
+          ),
         ],
       ),
     );
@@ -348,11 +331,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
   }) {
     final theme = Theme.of(context);
     final userAnswer = _userAnswers[questionIndex];
-
     Color? backgroundColor;
     Color borderColor = theme.dividerColor.withOpacity(0.5);
     bool isSelected = (userAnswer == optionText);
-
     if (_isSubmitted) {
       if (optionText == correctAnswer) {
         backgroundColor = Colors.green.shade50;
@@ -365,7 +346,6 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
       backgroundColor = theme.primaryColor.withOpacity(0.1);
       borderColor = theme.primaryColor;
     }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

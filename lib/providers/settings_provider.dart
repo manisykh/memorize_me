@@ -1,34 +1,33 @@
-// lib/providers/settings_provider.dart
-
 import 'package:flutter/foundation.dart';
 import '../models/word_model.dart';
 
-// ▼▼▼ [수정] sentenceCompletion 추가 ▼▼▼
-enum SelfTestType { wordToMeaning, meaningToWord, sentenceCompletion, random }
+// 'random'을 제거하고, 사용자가 직접 여러 유형을 선택하게 합니다.
+enum SelfTestType { wordToMeaning, meaningToWord, sentenceCompletion }
 
 enum ExportOption { testOnly, answersOnly, both }
 
 class AppSettings {
   final int wordCount;
-  final SelfTestType testType;
+  final Set<SelfTestType> testTypes; // 단일 선택에서 Set(집합)을 이용한 복수 선택으로 변경
   final ExportOption exportOption;
   final double fontSize;
 
   AppSettings({
     this.wordCount = 20,
-    this.testType = SelfTestType.random,
+    // 기본값으로 두 가지 유형을 포함하는 Set으로 설정
+    this.testTypes = const {SelfTestType.wordToMeaning, SelfTestType.meaningToWord},
     this.exportOption = ExportOption.both,
     this.fontSize = 12.0,
   });
 
   AppSettings copyWith({
     int? wordCount,
-    SelfTestType? testType,
+    Set<SelfTestType>? testTypes,
     ExportOption? exportOption,
     double? fontSize,
   }) => AppSettings(
     wordCount: wordCount ?? this.wordCount,
-    testType: testType ?? this.testType,
+    testTypes: testTypes ?? this.testTypes,
     exportOption: exportOption ?? this.exportOption,
     fontSize: fontSize ?? this.fontSize,
   );
@@ -51,8 +50,9 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setTestType(SelfTestType type) {
-    _settings = _settings.copyWith(testType: type);
+  // setTestType을 updateTestTypes로 변경하여 복수 선택을 처리
+  void updateTestTypes(Set<SelfTestType> types) {
+    _settings = _settings.copyWith(testTypes: types);
     notifyListeners();
   }
 

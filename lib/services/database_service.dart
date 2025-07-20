@@ -1,5 +1,3 @@
-// lib/services/database_service.dart (수정된 코드)
-
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -13,20 +11,16 @@ Future<List<Word>> _getAllWordsInBackground(Map<String, dynamic> params) async {
   final String dbFileName = params['dbFileName'];
   final RootIsolateToken rootIsolateToken = params['token'];
   BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
-
   Directory documentsDirectory = await getApplicationDocumentsDirectory();
   String path = p.join(documentsDirectory.path, dbFileName);
-
   final db = await openDatabase(path);
   final List<Map<String, dynamic>> maps = await db.query('words', orderBy: 'id DESC');
   await db.close();
-
   return List.generate(maps.length, (i) => Word.fromMap(maps[i]));
 }
 
 class DatabaseService {
   Database? _metaDb;
-
   final Map<String, Database> _openedWordDbs = {};
 
   Future<Database> get _metaDatabase async {
@@ -69,8 +63,7 @@ class DatabaseService {
             'ALTER TABLE incorrect_words ADD COLUMN wordbookName TEXT DEFAULT "오답노트"',
           );
         } catch (e) {
-          // ignore: avoid_print
-          print("Error adding column: $e");
+          debugPrint("Error adding column: $e");
         }
         break;
     }
@@ -95,7 +88,6 @@ class DatabaseService {
   Future<void> deleteWordbook(int id, String dbFileName) async {
     final db = await _metaDatabase;
     await db.delete('wordbooks', where: 'id = ?', whereArgs: [id]);
-
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, dbFileName);
     final file = File(path);
@@ -146,14 +138,12 @@ class DatabaseService {
     await db.delete('incorrect_words', where: 'wordbookName = ?', whereArgs: [wordbookName]);
   }
 
-  // ▼▼▼ [수정] 버전 번호를 3으로 올리고, onUpgrade 로직을 강화합니다. ▼▼▼
-  // ▼▼▼ [수정] 버전 번호를 4로 올리고, onUpgrade 로직을 강화합니다. ▼▼▼
   Future<Database> _openWordDB(String dbFileName) async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, dbFileName);
     return await openDatabase(
       path,
-      version: 4, // 버전을 4로 올립니다.
+      version: 4,
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE words(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,7 +157,6 @@ class DatabaseService {
           )''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // 각 버전별로 순차적 업그레이드를 실행합니다.
         for (var v = oldVersion + 1; v <= newVersion; v++) {
           await _upgradeWordDB(db, v);
         }
@@ -175,15 +164,11 @@ class DatabaseService {
     );
   }
 
-  // ▼▼▼ [추가] 버전별 업그레이드 로직 분리 ▼▼▼
   Future<void> _upgradeWordDB(Database db, int version) async {
     try {
       if (version == 2) {
         await db.execute('ALTER TABLE words ADD COLUMN srsLevel INTEGER NOT NULL DEFAULT 0');
         await db.execute('ALTER TABLE words ADD COLUMN nextReviewDate TEXT');
-      }
-      if (version == 3) {
-        // v3 변경사항이 있었다면 여기에 추가
       }
       if (version == 4) {
         await db.execute('ALTER TABLE words ADD COLUMN incorrectCount INTEGER NOT NULL DEFAULT 0');
@@ -197,28 +182,13 @@ class DatabaseService {
   Future<List<Word>> getAllWords(String dbFileName) async {
     final token = RootIsolateToken.instance;
     if (token == null) {
-      // This is a fallback for older Flutter versions, might not be necessary.
       return _getAllWordsInBackground({
         'dbFileName': dbFileName,
         'token': RootIsolateToken.instance,
       });
     }
-
     final params = {'dbFileName': dbFileName, 'token': token};
     return compute(_getAllWordsInBackground, params);
-  }
-
-  Future<void> updateWordSrsBatch(String dbFileName, List<Word> words) async {
-    if (words.isEmpty) return;
-    final db = await _openWordDB(dbFileName);
-    await db.transaction((txn) async {
-      final batch = txn.batch();
-      for (final word in words) {
-        batch.update('words', word.toMap(), where: 'id = ?', whereArgs: [word.id]);
-      }
-      await batch.commit(noResult: true);
-    });
-    await db.close();
   }
 
   Future<void> addWord(String dbFileName, Word word) async {
@@ -242,8 +212,20 @@ class DatabaseService {
 
   Future<void> updateWord(String dbFileName, Word word) async {
     final db = await _openWordDB(dbFileName);
-    // toMap()은 모든 필드를 포함하므로, DB 스키마가 일치해야 합니다.
     await db.update('words', word.toMap(), where: 'id = ?', whereArgs: [word.id]);
+    await db.close();
+  }
+
+  Future<void> updateWordSrsBatch(String dbFileName, List<Word> words) async {
+    if (words.isEmpty) return;
+    final db = await _openWordDB(dbFileName);
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final word in words) {
+        batch.update('words', word.toMap(), where: 'id = ?', whereArgs: [word.id]);
+      }
+      await batch.commit(noResult: true);
+    });
     await db.close();
   }
 
@@ -257,5 +239,19 @@ class DatabaseService {
     final db = await _openWordDB(dbFileName);
     await db.delete('words');
     await db.close();
+  }
+
+  Future<List<Word>> searchWordsInWordbook(String dbFileName, String query) async {
+    if (query.isEmpty) return [];
+
+    final db = await _openWordDB(dbFileName);
+    final List<Map<String, dynamic>> maps = await db.query(
+      'words',
+      where: 'word LIKE ? OR meaning LIKE ?',
+      whereArgs: ['%$query%', '%$query%'],
+    );
+    await db.close();
+
+    return List.generate(maps.length, (i) => Word.fromMap(maps[i]));
   }
 }

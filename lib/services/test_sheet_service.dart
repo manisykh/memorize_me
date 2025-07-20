@@ -36,7 +36,6 @@ class TestSheetService {
     return '';
   }
 
-  // ▼▼▼ [수정] 문제 데이터에 유형(type) 정보도 함께 저장하도록 변경 ▼▼▼
   List<Map<String, dynamic>> _prepareTestData(List<Word> allWords, AppSettings settings) {
     if (allWords.isEmpty) return [];
 
@@ -53,25 +52,23 @@ class TestSheetService {
 
     List<Map<String, dynamic>> testData = [];
     for (final word in sessionWords) {
-      SelfTestType currentType = settings.testType;
+      final availableTypes = List<SelfTestType>.from(settings.testTypes);
 
-      if (currentType == SelfTestType.random) {
-        final availableTypes = [SelfTestType.wordToMeaning, SelfTestType.meaningToWord];
-        if (word.exampleSentence != null && word.exampleSentence!.isNotEmpty) {
-          availableTypes.add(SelfTestType.sentenceCompletion);
-        }
-        currentType = availableTypes[random.nextInt(availableTypes.length)];
-      }
-
-      if (currentType == SelfTestType.sentenceCompletion &&
+      if (availableTypes.contains(SelfTestType.sentenceCompletion) &&
           (word.exampleSentence == null || word.exampleSentence!.isEmpty)) {
-        currentType = SelfTestType.meaningToWord;
+        availableTypes.remove(SelfTestType.sentenceCompletion);
       }
+
+      if (availableTypes.isEmpty) {
+        availableTypes.add(SelfTestType.meaningToWord);
+      }
+
+      final currentType = availableTypes[random.nextInt(availableTypes.length)];
 
       testData.add({
         'question': _getQuestionText(word, currentType),
         'answer': _getAnswerText(word, currentType),
-        'type': currentType, // 문제 유형 정보 추가
+        'type': currentType,
       });
     }
     return testData;
@@ -222,15 +219,14 @@ class TestSheetService {
                 itemCount: testData.length,
                 separatorBuilder: (context, index) => pw.SizedBox(height: 8),
                 itemBuilder: (context, index) {
-                  // ▼▼▼ [수정] 문제 유형에 따라 다른 위젯을 생성 ▼▼▼
                   final questionData = testData[index];
                   final type = questionData['type'] as SelfTestType;
                   final questionText = questionData['question'] as String;
 
                   final questionContent =
                       type == SelfTestType.sentenceCompletion
-                          ? questionText // 문장 완성형은 밑줄 없이 문제만 표시
-                          : '$questionText  →  _________________________'; // 나머지는 기존 방식
+                          ? questionText
+                          : '$questionText  →  _________________________';
 
                   return pw.Row(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -297,7 +293,6 @@ class TestSheetService {
     return excel.save();
   }
 
-  // --- AI 퀴즈용 PDF 생성 기능 (기존과 동일) ---
   Future<void> exportAiQuizAsPdf({
     required List<AiQuestion> questions,
     required String title,
@@ -389,7 +384,6 @@ class TestSheetService {
       separatorBuilder: (context, index) => pw.Divider(height: 20, color: PdfColors.grey400),
       itemBuilder: (context, index) {
         final q = questions[index];
-
         if (q.type == 'reading_section') {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -515,8 +509,6 @@ class TestSheetService {
       },
     );
   }
-
-  // --- 범용 파일 처리 기능 ---
 
   Future<void> _saveFileToPath(String fullPath, List<int> bytes) async {
     final file = File(fullPath);

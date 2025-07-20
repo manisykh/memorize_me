@@ -1,12 +1,10 @@
 import 'dart:io';
-import 'dart:math';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:path/path.dart' as p;
 import 'package:googleapis/sheets/v4.dart' as sheets;
+import 'package:path/path.dart' as p;
 
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
@@ -69,7 +67,6 @@ class WordbookManager extends ChangeNotifier {
     if (_activeWordbook == null) return [];
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-
     return _wordListNotifier.words.where((word) {
       if (word.srsLevel <= 1) return true;
       if (word.nextReviewDate != null) {
@@ -96,7 +93,6 @@ class WordbookManager extends ChangeNotifier {
     return await _dbService.getAllWords(wordbook.dbFileName);
   }
 
-  // ▼▼▼ [추가] 특정 단어장의 단어 여러 개를 업데이트하는 메서드 ▼▼▼
   Future<void> updateWordsInWordbook(Wordbook wordbook, List<Word> words) async {
     await _dbService.updateWordSrsBatch(wordbook.dbFileName, words);
     if (_activeWordbook?.id == wordbook.id) {
@@ -104,7 +100,6 @@ class WordbookManager extends ChangeNotifier {
     }
   }
 
-  // ▼▼▼ [추가] 특정 단어장에서 특정 단어를 삭제하는 메서드 ▼▼▼
   Future<void> deleteWordFrom(Wordbook wordbook, int wordId) async {
     await _dbService.deleteWord(wordbook.dbFileName, wordId);
     if (_activeWordbook?.id == wordbook.id) {
@@ -112,14 +107,20 @@ class WordbookManager extends ChangeNotifier {
     }
   }
 
-  void _setLoading(bool loading) {
-    if (_isLoading != loading) {
-      _isLoading = loading;
-      Future.microtask(() => notifyListeners());
+  Future<Map<Wordbook, List<Word>>> searchAllWordbooks(String query) async {
+    if (query.trim().isEmpty) return {};
+    _setLoading(true);
+    final Map<Wordbook, List<Word>> searchResults = {};
+    for (final wordbook in _wordbooks) {
+      final foundWords = await _dbService.searchWordsInWordbook(wordbook.dbFileName, query);
+      if (foundWords.isNotEmpty) {
+        searchResults[wordbook] = foundWords;
+      }
     }
+    _setLoading(false);
+    return searchResults;
   }
 
-  // ... (단어장 생성, 삭제, 병합 등 다른 함수들은 기존과 동일하게 유지)
   Future<void> createNewWordbookFromCsv(BuildContext context) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -217,10 +218,8 @@ class WordbookManager extends ChangeNotifier {
     try {
       final List<Word> mergedWords = [];
       final Set<String> uniqueWordTexts = {};
-
       final List<Wordbook> booksToMerge =
           _wordbooks.where((wb) => wordbookIds.contains(wb.id)).toList();
-
       for (final book in booksToMerge) {
         final wordsFromDb = await _dbService.getAllWords(book.dbFileName);
         for (var word in wordsFromDb) {
@@ -229,7 +228,6 @@ class WordbookManager extends ChangeNotifier {
           }
         }
       }
-
       final dbFileName = 'wordbook_${DateTime.now().millisecondsSinceEpoch}.db';
       final newWordbook = Wordbook(
         name: newName,
@@ -237,9 +235,7 @@ class WordbookManager extends ChangeNotifier {
         source: WordbookSource.localCsv,
       );
       final savedWordbook = await _dbService.addWordbook(newWordbook);
-
       await _dbService.addWordsInBatch(savedWordbook.dbFileName, mergedWords);
-
       if (context.mounted) {
         final deleteOriginals = await showCupertinoDialog<bool>(
           context: context,
@@ -261,7 +257,6 @@ class WordbookManager extends ChangeNotifier {
             );
           },
         );
-
         if (deleteOriginals == true) {
           for (final bookToDelete in booksToMerge) {
             await deleteWordbook(bookToDelete);
@@ -287,30 +282,33 @@ class WordbookManager extends ChangeNotifier {
       for (final sheet in selectedSheets) {
         final sheetName = sheet.properties?.title;
         if (sheetName == null || sheetName.isEmpty) continue;
-
-        // 기존의 단일 생성 로직을 재사용합니다.
         final dbFileName =
             'wordbook_${DateTime.now().millisecondsSinceEpoch}_${sheet.properties?.sheetId}.db';
         final newWordbook = Wordbook(
-          name: sheetName, // 시트 이름을 단어장 이름으로 사용
+          name: sheetName,
           spreadsheetId: spreadsheetId,
           sheetName: sheetName,
           dbFileName: dbFileName,
           source: WordbookSource.googleSheet,
         );
-
         final savedWordbook = await _dbService.addWordbook(newWordbook);
         final words = await _sheetsService.getWordsFromSheet(spreadsheetId, sheetName);
         if (words != null) {
           await _dbService.addWordsInBatch(savedWordbook.dbFileName, words);
         }
       }
-      // 모든 작업이 끝난 후 단어장 목록을 새로고침합니다.
       await _loadWordbooks();
     } catch (e) {
       debugPrint("Error creating multiple wordbooks from sheets: $e");
     } finally {
       _setLoading(false);
+    }
+  }
+
+  void _setLoading(bool loading) {
+    if (_isLoading != loading) {
+      _isLoading = loading;
+      Future.microtask(() => notifyListeners());
     }
   }
 }

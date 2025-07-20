@@ -1,5 +1,3 @@
-// lib/providers/word_list_provider.dart (수정된 전체 코드)
-
 import 'package:flutter/material.dart';
 import '../models/word_model.dart';
 import '../providers/ai_settings_provider.dart';
@@ -21,10 +19,8 @@ class WordListNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ▼▼▼ [추가] DB에서 단어 목록을 다시 불러와 상태를 갱신하는 메서드 ▼▼▼
   Future<void> refreshWords() async {
     if (_activeDbFileName != null) {
-      // 현재 활성화된 DB 파일 이름으로 단어 목록을 다시 로드합니다.
       await loadWords(_activeDbFileName!);
     }
   }
@@ -63,10 +59,9 @@ class WordListNotifier extends ChangeNotifier {
         _words.where((w) => w.exampleSentence == null || w.exampleSentence!.isEmpty).toList();
     if (wordsToUpdate.isEmpty) return;
 
-    final wordStrings = wordsToUpdate.map((w) => w.word).toList();
-
+    // Word 객체 리스트(wordsToUpdate)를 직접 전달하도록 수정
     final sentenceMap = await aiService.generateSentencesForWords(
-      wordStrings,
+      wordsToUpdate,
       aiSettings.selectedModel,
     );
 

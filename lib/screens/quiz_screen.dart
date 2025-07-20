@@ -448,7 +448,6 @@ class _QuizScreenState extends State<QuizScreen> {
     final double minValue = _words.isEmpty ? 1.0 : 1.0;
     final double maxValue = _words.isEmpty ? 1.0 : _words.length.toDouble();
     final testTypeMap = {
-      SelfTestType.random: '랜덤',
       SelfTestType.wordToMeaning: '단어 → 뜻',
       SelfTestType.meaningToWord: '뜻 → 단어',
       SelfTestType.sentenceCompletion: '문장 완성',
@@ -517,8 +516,16 @@ class _QuizScreenState extends State<QuizScreen> {
         const Divider(indent: 16, endIndent: 16),
         ListTile(
           title: Text('시험 유형', style: theme.textTheme.bodyLarge),
-          trailing: Text(testTypeMap[settings.testType]!, style: theme.textTheme.bodyMedium),
-          onTap: () => _showTestTypePicker(context),
+          trailing: SizedBox(
+            width: 150,
+            child: Text(
+              settings.testTypes.map((type) => testTypeMap[type]!).join(', '),
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          onTap: () => _showTestTypePicker(context, testTypeMap),
         ),
         const Divider(indent: 16, endIndent: 16),
         ListTile(
@@ -533,36 +540,62 @@ class _QuizScreenState extends State<QuizScreen> {
     );
   }
 
-  void _showTestTypePicker(BuildContext context) {
+  void _showTestTypePicker(BuildContext context, Map<SelfTestType, String> testTypeMap) {
     final settingsNotifier = context.read<SettingsNotifier>();
-    final testTypeMap = {
-      SelfTestType.random: '랜덤',
-      SelfTestType.wordToMeaning: '단어 → 뜻',
-      SelfTestType.meaningToWord: '뜻 → 단어',
-      SelfTestType.sentenceCompletion: '문장 완성',
-    };
+    final tempSelectedTypes = Set<SelfTestType>.from(settingsNotifier.settings.testTypes);
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder:
-          (ctx) => Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: GlassmorphicCard(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children:
-                    testTypeMap.entries.map((entry) {
-                      return ListTile(
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: GlassmorphicCard(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text('시험 유형 선택 (복수 가능)', style: Theme.of(ctx).textTheme.titleLarge),
+                    ),
+                    ...testTypeMap.entries.map((entry) {
+                      return CheckboxListTile(
                         title: Text(entry.value, style: Theme.of(ctx).textTheme.bodyLarge),
-                        onTap: () {
-                          settingsNotifier.setTestType(entry.key);
-                          Navigator.pop(ctx);
+                        value: tempSelectedTypes.contains(entry.key),
+                        onChanged: (bool? isSelected) {
+                          setModalState(() {
+                            if (isSelected == true) {
+                              tempSelectedTypes.add(entry.key);
+                            } else {
+                              if (tempSelectedTypes.length > 1) {
+                                tempSelectedTypes.remove(entry.key);
+                              }
+                            }
+                          });
                         },
                       );
-                    }).toList(),
+                    }),
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          child: const Text('적용'),
+                          onPressed: () {
+                            settingsNotifier.updateTestTypes(tempSelectedTypes);
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -621,7 +654,6 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView> {
   List<Word> _currentOptions = [];
   Word? _selectedOption;
   bool _isAnswered = false;
-
   final SrsService _srsService = SrsService();
   late final WordbookManager _wordbookManager;
   final List<McqQuizResult> _results = [];
@@ -682,22 +714,16 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView> {
   }
 
   void _showResults() {
-    Navigator.of(context).push(
-      // pushReplacement 대신 push 사용
+    Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder:
             (_) => _McqQuizResultScreen(
               results: _results,
               onRestart: () {
-                // 결과 화면을 먼저 닫고, 그 다음에 퀴즈를 재시작
                 Navigator.of(context).pop();
                 _startSession();
               },
-              onFinish: () {
-                // 결과 화면을 먼저 닫고, 그 다음에 퀴즈 모드를 종료
-                Navigator.of(context).pop();
-                widget.onFinish();
-              },
+              onFinish: widget.onFinish,
             ),
       ),
     );
@@ -1076,7 +1102,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
   void _showResults() {
     _saveIncorrectWordsOnExit().then((_) {
       if (mounted) {
-        Navigator.of(context).pushReplacement(
+        Navigator.of(context).push(
           MaterialPageRoute(
             builder:
                 (_) => _SpellingQuizResultScreen(
@@ -1092,7 +1118,10 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
                     });
                     _initializeSession();
                   },
-                  onFinish: widget.onFinish,
+                  onFinish: () {
+                    Navigator.of(context).pop();
+                    widget.onFinish();
+                  },
                 ),
           ),
         );

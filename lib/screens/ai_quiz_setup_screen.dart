@@ -1,5 +1,3 @@
-// lib/screens/ai_quiz_setup_screen.dart (오버플로우 해결 코드)
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,7 +6,6 @@ import '../models/ai_quiz_model.dart';
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 import '../providers/ai_settings_provider.dart';
-import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/ai_service.dart';
 import '../services/mode_state_service.dart';
@@ -36,6 +33,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   String? _errorMessage;
   bool _includeExplanation = false;
   bool _isGeneratingSentences = false;
+  String _questionLanguage = 'English';
 
   @override
   void initState() {
@@ -123,8 +121,12 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     try {
       final aiService = context.read<AiService>();
       final aiSettings = context.read<AiSettingsProvider>();
-      final selectedWords = _words.where((word) => _selectedWordIds.contains(word.id)).toList();
-      final difficultyText = ['쉬움', '보통', '어려움'][_difficulty.round() - 1];
+
+      List<Word> selectedWords =
+          _words.where((word) => _selectedWordIds.contains(word.id)).toList();
+      selectedWords.shuffle();
+
+      final difficultyText = ['쉬움', '보통', '어려움'][(_difficulty.round() - 1).clamp(0, 2)];
 
       final quizResponse = await aiService.generateQuiz(
         provider: aiSettings.selectedProvider,
@@ -134,6 +136,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         difficulty: difficultyText,
         questionCount: _questionCount.round(),
         includeExplanation: _includeExplanation,
+        questionLanguage: _questionLanguage,
       );
 
       if (mounted) {
@@ -155,8 +158,6 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   }
 
   Future<void> _generateAllSentences() async {
-    // WordListNotifier는 현재 활성 단어장 기준이므로, 이 화면의 단어장과 다를 수 있음.
-    // 따라서 WordbookManager를 통해 직접 업데이트 요청
     final wordbookManager = context.read<WordbookManager>();
     if (_selectedWordbook == null) return;
 
@@ -174,9 +175,8 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       final aiService = context.read<AiService>();
       final aiSettings = context.read<AiSettingsProvider>();
 
-      final wordStrings = wordsToUpdate.map((w) => w.word).toList();
       final sentenceMap = await aiService.generateSentencesForWords(
-        wordStrings,
+        wordsToUpdate,
         aiSettings.selectedModel,
       );
 
@@ -189,7 +189,6 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
 
       await wordbookManager.updateWordsInWordbook(_selectedWordbook!, updatedWords);
 
-      // 화면의 단어 목록도 갱신
       final newWords = await wordbookManager.getAllWordsFrom(_selectedWordbook!);
 
       if (mounted) {
@@ -215,7 +214,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(title: const Text('AI 학습'), automaticallyImplyLeading: true),
+      appBar: AppBar(title: const Text('AI 단어 퀴즈 설정'), automaticallyImplyLeading: true),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -322,15 +321,14 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
               const SizedBox(height: 24),
               GlassmorphicCard(
                 child: Padding(
-                  padding: const EdgeInsets.all(12.0),
+                  padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
+                      _buildLanguageSelector(),
+                      const Divider(height: 24),
                       _buildQuizTypeSelector(),
                       const Divider(height: 24),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                        child: _buildDifficultyAndCountSection(),
-                      ),
+                      _buildDifficultyAndCountSection(),
                     ],
                   ),
                 ),
@@ -371,6 +369,31 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     );
   }
 
+  Widget _buildLanguageSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('문제 출제 언어', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: CupertinoSlidingSegmentedControl<String>(
+            groupValue: _questionLanguage,
+            children: const {
+              'English': Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('영어')),
+              'Korean': Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('한국어')),
+            },
+            onValueChanged: (value) {
+              if (value != null) {
+                setState(() => _questionLanguage = value);
+              }
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildQuizTypeSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -399,8 +422,6 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('난이도 및 문제 수', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 10),
         _buildSlider(
           label: '난이도',
           value: _difficulty,
@@ -408,7 +429,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           max: 3,
           divisions: 2,
           onChanged: (val) => setState(() => _difficulty = val),
-          valueLabel: ['쉬움', '보통', '어려움'][_difficulty.round() - 1],
+          valueLabel: ['쉬움', '보통', '어려움'][(_difficulty.round() - 1).clamp(0, 2)],
         ),
         const SizedBox(height: 10),
         _buildSlider(
