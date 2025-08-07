@@ -1,3 +1,5 @@
+// lib/screens/ai_quiz_setup_screen.dart
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -27,7 +29,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   final Set<int> _selectedWordIds = {};
 
   String _selectedQuizType = '종합';
-  double _difficulty = 2.0;
+  double _difficulty = 3.0;
   double _questionCount = 10.0;
   bool _isLoading = false;
   String? _errorMessage;
@@ -121,12 +123,13 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     try {
       final aiService = context.read<AiService>();
       final aiSettings = context.read<AiSettingsProvider>();
-
       List<Word> selectedWords =
           _words.where((word) => _selectedWordIds.contains(word.id)).toList();
       selectedWords.shuffle();
 
-      final difficultyText = ['쉬움', '보통', '어려움'][(_difficulty.round() - 1).clamp(0, 2)];
+      final difficultyLabels = ['기초', '기본', '중급', '중고급', '고급', '최상급', '전문가'];
+      final difficultyIndex = (_difficulty.round() - 1).clamp(0, 6);
+      final difficultyText = difficultyLabels[difficultyIndex];
 
       final quizResponse = await aiService.generateQuiz(
         provider: aiSettings.selectedProvider,
@@ -157,6 +160,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     }
   }
 
+  // ▼▼▼ [수정] 전체 메서드 수정
   Future<void> _generateAllSentences() async {
     final wordbookManager = context.read<WordbookManager>();
     if (_selectedWordbook == null) return;
@@ -183,12 +187,17 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       final updatedWords = <Word>[];
       for (final word in wordsToUpdate) {
         if (sentenceMap.containsKey(word.word)) {
-          updatedWords.add(word.copyWith(exampleSentence: sentenceMap[word.word]));
+          final sentenceData = sentenceMap[word.word]!;
+          updatedWords.add(
+            word.copyWith(
+              exampleSentence: sentenceData['sentence'],
+              exampleSentenceTranslation: sentenceData['translation'],
+            ),
+          );
         }
       }
 
       await wordbookManager.updateWordsInWordbook(_selectedWordbook!, updatedWords);
-
       final newWords = await wordbookManager.getAllWordsFrom(_selectedWordbook!);
 
       if (mounted) {
@@ -235,7 +244,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '선택된 단어장에 예문이 없는 모든 단어에 대해 AI가 예문을 생성합니다.',
+                      '선택된 단어장에 예문이 없는 모든 단어에 대해 AI가 예문과 번역을 생성합니다.',
                       style: theme.textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 16),
@@ -370,6 +379,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   }
 
   Widget _buildLanguageSelector() {
+    // ... (기존과 동일)
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -395,6 +405,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   }
 
   Widget _buildQuizTypeSelector() {
+    // ... (기존과 동일)
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -419,6 +430,10 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   }
 
   Widget _buildDifficultyAndCountSection() {
+    // ... (기존과 동일)
+    final difficultyLabels = ['기초', '기본', '중급', '중고급', '고급', '최상급', '전문가'];
+    final difficultyIndex = (_difficulty.round() - 1).clamp(0, 6);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -426,10 +441,10 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           label: '난이도',
           value: _difficulty,
           min: 1,
-          max: 3,
-          divisions: 2,
+          max: 7,
+          divisions: 6,
           onChanged: (val) => setState(() => _difficulty = val),
-          valueLabel: ['쉬움', '보통', '어려움'][(_difficulty.round() - 1).clamp(0, 2)],
+          valueLabel: difficultyLabels[difficultyIndex],
         ),
         const SizedBox(height: 10),
         _buildSlider(
@@ -462,6 +477,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     required ValueChanged<double> onChanged,
     required String valueLabel,
   }) {
+    // ... (기존과 동일)
     return Row(
       children: [
         Text(label, style: Theme.of(context).textTheme.bodyLarge),

@@ -23,9 +23,19 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   double _questionCount = 10.0;
   bool _isLoading = false;
   String? _errorMessage;
-  double _difficulty = 2.0;
+  double _difficulty = 3.0;
   bool _includeExplanation = false;
   String _questionLanguage = 'English';
+
+  Map<String, List<GrammarChapter>> _getGroupedChapters() {
+    if (_selectedCategoryIndex == null) return {};
+    final chapters = grammarCurriculum[_selectedCategoryIndex!].chapters;
+    final Map<String, List<GrammarChapter>> groupedChapters = {};
+    for (final chapter in chapters) {
+      (groupedChapters[chapter.description] ??= []).add(chapter);
+    }
+    return groupedChapters;
+  }
 
   Future<void> _generateQuiz() async {
     if (_selectedCategoryIndex == null || _selectedChapters.isEmpty) {
@@ -44,7 +54,10 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       final selectedCategory = grammarCurriculum[_selectedCategoryIndex!];
       final aiService = context.read<AiService>();
       final aiSettings = context.read<AiSettingsProvider>();
-      final difficultyText = ['쉬움', '보통', '어려움'][_difficulty.round() - 1];
+
+      final difficultyLabels = ['기초', '기본', '중급', '중고급', '고급', '최상급', '전문가'];
+      final difficultyIndex = (_difficulty.round() - 1).clamp(0, 6);
+      final difficultyText = difficultyLabels[difficultyIndex];
 
       final AiQuizResponse? quizResponse = await aiService.generateGrammarQuiz(
         provider: aiSettings.selectedProvider,
@@ -108,6 +121,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final groupedChapters = _getGroupedChapters();
+    final groupKeys = groupedChapters.keys.toList();
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('AI 문법 퀴즈 설정')),
@@ -140,27 +156,34 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
               Text('2. 학습 챕터 선택 (다중 선택 가능)', style: theme.textTheme.titleLarge),
               const SizedBox(height: 10),
               GlassmorphicCard(
-                padding: const EdgeInsets.all(8),
-                child: Wrap(
-                  spacing: 8.0,
-                  runSpacing: 4.0,
-                  children:
-                      grammarCurriculum[_selectedCategoryIndex!].chapters.map((chapter) {
-                        final isSelected = _selectedChapters.contains(chapter);
-                        return FilterChip(
-                          label: Text(chapter.title, style: theme.textTheme.bodySmall),
-                          selected: isSelected,
-                          onSelected: (selected) {
-                            setState(() {
-                              if (selected) {
-                                _selectedChapters.add(chapter);
-                              } else {
-                                _selectedChapters.remove(chapter);
-                              }
-                            });
-                          },
-                        );
-                      }).toList(),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: groupKeys.length,
+                  itemBuilder: (context, index) {
+                    final groupTitle = groupKeys[index];
+                    final chaptersInGroup = groupedChapters[groupTitle]!;
+                    return ExpansionTile(
+                      title: Text(groupTitle, style: theme.textTheme.titleMedium),
+                      children:
+                          chaptersInGroup.map((chapter) {
+                            return CheckboxListTile(
+                              title: Text(chapter.title, style: theme.textTheme.bodyMedium),
+                              value: _selectedChapters.contains(chapter),
+                              onChanged: (selected) {
+                                setState(() {
+                                  if (selected == true) {
+                                    _selectedChapters.add(chapter);
+                                  } else {
+                                    _selectedChapters.remove(chapter);
+                                  }
+                                });
+                              },
+                            );
+                          }).toList(),
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 24),
@@ -176,9 +199,11 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                       label: '난이도',
                       value: _difficulty,
                       min: 1,
-                      max: 3,
-                      divisions: 2,
-                      valueLabel: ['쉬움', '보통', '어려움'][_difficulty.round() - 1],
+                      max: 7,
+                      divisions: 6,
+                      valueLabel:
+                          ['기초', '기본', '중급', '중고급', '고급', '최상급', '전문가'][(_difficulty.round() - 1)
+                              .clamp(0, 6)],
                       onChanged: (value) => setState(() => _difficulty = value),
                     ),
                     const SizedBox(height: 10),

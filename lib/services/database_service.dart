@@ -1,3 +1,5 @@
+// lib/services/database_service.dart
+
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -143,13 +145,14 @@ class DatabaseService {
     String path = p.join(documentsDirectory.path, dbFileName);
     return await openDatabase(
       path,
-      version: 4,
+      version: 5, // ▼▼▼ [수정] DB 버전 5로 변경
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE words(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             word TEXT NOT NULL,
             meaning TEXT NOT NULL,
             exampleSentence TEXT,
+            exampleSentenceTranslation TEXT, -- ▼▼▼ [추가]
             srsLevel INTEGER NOT NULL DEFAULT 0,
             nextReviewDate TEXT,
             incorrectCount INTEGER NOT NULL DEFAULT 0,
@@ -173,6 +176,10 @@ class DatabaseService {
       if (version == 4) {
         await db.execute('ALTER TABLE words ADD COLUMN incorrectCount INTEGER NOT NULL DEFAULT 0');
         await db.execute('ALTER TABLE words ADD COLUMN correctStreak INTEGER NOT NULL DEFAULT 0');
+      }
+      if (version == 5) {
+        // ▼▼▼ [추가] 버전 5에 대한 스키마 업그레이드
+        await db.execute('ALTER TABLE words ADD COLUMN exampleSentenceTranslation TEXT');
       }
     } catch (e) {
       debugPrint("Error upgrading WordDB to v$version: $e. It might already exist.");

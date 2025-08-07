@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
@@ -30,18 +31,37 @@ class WordbookManager extends ChangeNotifier {
 
   Future<void> loadInitialData() async {
     _setLoading(true);
+
+    // 1. 기기에서 마지막 활성 단어장 ID를 불러옵니다.
+    final prefs = await SharedPreferences.getInstance();
+    final lastActiveId = prefs.getInt('last_active_wordbook_id');
+
+    // 2. 전체 단어장 목록을 DB에서 로드합니다.
     await _loadWordbooks();
+
+    // 3. 저장된 ID가 있다면, 해당 단어장을 찾아 활성화합니다.
+    if (lastActiveId != null) {
+      final lastActiveWordbook = getWordbookById(lastActiveId);
+      if (lastActiveWordbook != null) {
+        // setActiveWordbook 내부에서 notifyListeners()가 호출됩니다.
+        await setActiveWordbook(lastActiveWordbook);
+      } else {
+        // 이전에 사용하던 단어장이 삭제된 경우, 첫 번째 단어장을 활성화합니다.
+        if (_wordbooks.isNotEmpty) {
+          await setActiveWordbook(_wordbooks.first);
+        }
+      }
+    } else if (_wordbooks.isNotEmpty && _activeWordbook == null) {
+      // 저장된 ID가 없고, 현재 활성 단어장도 없다면 첫 번째 단어장을 활성화합니다.
+      await setActiveWordbook(_wordbooks.first);
+    }
+
     _setLoading(false);
   }
 
   Future<void> _loadWordbooks() async {
     _wordbooks = await _dbService.getWordbooks();
-    if (_wordbooks.isNotEmpty && _activeWordbook == null) {
-      await setActiveWordbook(_wordbooks.first);
-    } else if (_wordbooks.isEmpty) {
-      _activeWordbook = null;
-      _wordListNotifier.clearWords();
-    }
+    // loadInitialData에서 setActiveWordbook을 관리하므로 여기서는 호출하지 않습니다.
     notifyListeners();
   }
 
@@ -60,6 +80,15 @@ class WordbookManager extends ChangeNotifier {
     } else {
       _wordListNotifier.clearWords();
     }
+
+    // 활성화된 단어장 ID를 기기에 저장합니다.
+    final prefs = await SharedPreferences.getInstance();
+    if (wordbook != null) {
+      await prefs.setInt('last_active_wordbook_id', wordbook.id!);
+    } else {
+      await prefs.remove('last_active_wordbook_id');
+    }
+
     notifyListeners();
   }
 

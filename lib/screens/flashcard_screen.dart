@@ -41,7 +41,6 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     _ttsService = context.read<TtsService>();
     _wordbookManager = context.read<WordbookManager>();
 
-    // 앱의 현재 활성 단어장으로 로컬 상태를 초기화
     final initialWordbook = _wordbookManager.activeWordbook;
     if (initialWordbook != null) {
       _onWordbookSelected(initialWordbook);
@@ -50,16 +49,14 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
   @override
   void dispose() {
-    _saveUpdatedSrsData(); // 화면 종료 시 최종 저장
+    _saveUpdatedSrsData();
     _swiperController.dispose();
     super.dispose();
   }
 
   Future<void> _onWordbookSelected(Wordbook wordbook) async {
-    // 1. 전역 활성 단어장 설정 (다른 화면과의 동기화를 위해)
     await _wordbookManager.setActiveWordbook(wordbook);
 
-    // 2. 현재 화면의 상태 업데이트
     if (mounted) {
       final words = await _wordbookManager.getAllWordsFrom(wordbook);
       setState(() {
@@ -359,9 +356,11 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     );
   }
 
+  // ▼▼▼ [수정] 전체 위젯 수정
   Widget _buildCardSide({required Word word, required bool isWordSide}) {
     String mainText = isWordSide ? word.word : word.meaning;
     String? exampleText = isWordSide ? word.exampleSentence : null;
+    String? translationText = !isWordSide ? word.exampleSentenceTranslation : null;
 
     return Column(
       children: [
@@ -385,6 +384,18 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                         style: Theme.of(
                           context,
                         ).textTheme.bodyLarge?.copyWith(fontStyle: FontStyle.italic),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  if (translationText != null && translationText.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 20.0),
+                      child: Text(
+                        '"$translationText"',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontStyle: FontStyle.italic,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ),

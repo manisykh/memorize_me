@@ -5,20 +5,22 @@ class Word {
   final String word;
   final String meaning;
   final String? exampleSentence;
+  final String? exampleSentenceTranslation; // ▼▼▼ [추가] 예문 번역 필드
   final int srsLevel;
   final String? nextReviewDate;
-  final int incorrectCount; // ▼▼▼ [추가] 오답 횟수
-  final int correctStreak; // ▼▼▼ [추가] 연속 정답 횟수
+  final int incorrectCount;
+  final int correctStreak;
 
   Word({
     this.id,
     required this.word,
     required this.meaning,
     this.exampleSentence,
+    this.exampleSentenceTranslation, // ▼▼▼ [추가]
     this.srsLevel = 0,
     this.nextReviewDate,
-    this.incorrectCount = 0, // ▼▼▼ [추가]
-    this.correctStreak = 0, // ▼▼▼ [추가]
+    this.incorrectCount = 0,
+    this.correctStreak = 0,
   });
 
   Map<String, dynamic> toMap() {
@@ -27,10 +29,11 @@ class Word {
       'word': word,
       'meaning': meaning,
       'exampleSentence': exampleSentence,
+      'exampleSentenceTranslation': exampleSentenceTranslation, // ▼▼▼ [추가]
       'srsLevel': srsLevel,
       'nextReviewDate': nextReviewDate,
-      'incorrectCount': incorrectCount, // ▼▼▼ [추가]
-      'correctStreak': correctStreak, // ▼▼▼ [추가]
+      'incorrectCount': incorrectCount,
+      'correctStreak': correctStreak,
     };
   }
 
@@ -46,10 +49,11 @@ class Word {
       word: map['word'],
       meaning: map['meaning'],
       exampleSentence: map['exampleSentence'],
+      exampleSentenceTranslation: map['exampleSentenceTranslation'], // ▼▼▼ [추가]
       srsLevel: map['srsLevel'] ?? 0,
       nextReviewDate: map['nextReviewDate'],
-      incorrectCount: map['incorrectCount'] ?? 0, // ▼▼▼ [추가]
-      correctStreak: map['correctStreak'] ?? 0, // ▼▼▼ [추가]
+      incorrectCount: map['incorrectCount'] ?? 0,
+      correctStreak: map['correctStreak'] ?? 0,
     );
   }
 
@@ -58,20 +62,23 @@ class Word {
     String? word,
     String? meaning,
     String? exampleSentence,
+    String? exampleSentenceTranslation, // ▼▼▼ [추가]
     int? srsLevel,
     String? nextReviewDate,
-    int? incorrectCount, // ▼▼▼ [추가]
-    int? correctStreak, // ▼▼▼ [추가]
+    int? incorrectCount,
+    int? correctStreak,
   }) {
     return Word(
       id: id ?? this.id,
       word: word ?? this.word,
       meaning: meaning ?? this.meaning,
       exampleSentence: exampleSentence ?? this.exampleSentence,
+      exampleSentenceTranslation:
+          exampleSentenceTranslation ?? this.exampleSentenceTranslation, // ▼▼▼ [추가]
       srsLevel: srsLevel ?? this.srsLevel,
       nextReviewDate: nextReviewDate ?? this.nextReviewDate,
-      incorrectCount: incorrectCount ?? this.incorrectCount, // ▼▼▼ [추가]
-      correctStreak: correctStreak ?? this.correctStreak, // ▼▼▼ [추가]
+      incorrectCount: incorrectCount ?? this.incorrectCount,
+      correctStreak: correctStreak ?? this.correctStreak,
     );
   }
 }

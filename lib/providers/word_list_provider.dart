@@ -1,3 +1,5 @@
+// lib/providers/word_list_provider.dart
+
 import 'package:flutter/material.dart';
 import '../models/word_model.dart';
 import '../providers/ai_settings_provider.dart';
@@ -59,7 +61,6 @@ class WordListNotifier extends ChangeNotifier {
         _words.where((w) => w.exampleSentence == null || w.exampleSentence!.isEmpty).toList();
     if (wordsToUpdate.isEmpty) return;
 
-    // Word 객체 리스트(wordsToUpdate)를 직접 전달하도록 수정
     final sentenceMap = await aiService.generateSentencesForWords(
       wordsToUpdate,
       aiSettings.selectedModel,
@@ -67,7 +68,11 @@ class WordListNotifier extends ChangeNotifier {
 
     for (final word in wordsToUpdate) {
       if (sentenceMap.containsKey(word.word)) {
-        final updatedWord = word.copyWith(exampleSentence: sentenceMap[word.word]);
+        final sentenceData = sentenceMap[word.word]!;
+        final updatedWord = word.copyWith(
+          exampleSentence: sentenceData['sentence'],
+          exampleSentenceTranslation: sentenceData['translation'],
+        );
         await _databaseService.updateWord(_activeDbFileName!, updatedWord);
       }
     }

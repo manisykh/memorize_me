@@ -1,3 +1,5 @@
+// lib/services/test_sheet_service.dart
+
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -17,14 +19,13 @@ import '../providers/settings_provider.dart';
 enum PdfExportType { questionsOnly, withAnswers }
 
 class TestSheetService {
-  // --- 단어장 기반 시험지 생성 ---
-
   String _getQuestionText(Word word, SelfTestType type) {
     if (type == SelfTestType.wordToMeaning) return word.word;
     if (type == SelfTestType.meaningToWord) return word.meaning;
     if (type == SelfTestType.sentenceCompletion) {
       if (word.exampleSentence == null || word.exampleSentence!.isEmpty) return word.meaning;
-      return word.exampleSentence!.replaceAll(RegExp(word.word, caseSensitive: false), '_________');
+      final pattern = RegExp(r'\b' + RegExp.escape(word.word) + r'\b', caseSensitive: false);
+      return word.exampleSentence!.replaceAll(pattern, '_________');
     }
     return '';
   }
@@ -55,7 +56,10 @@ class TestSheetService {
       final availableTypes = List<SelfTestType>.from(settings.testTypes);
 
       if (availableTypes.contains(SelfTestType.sentenceCompletion) &&
-          (word.exampleSentence == null || word.exampleSentence!.isEmpty)) {
+          (word.exampleSentence == null ||
+              word.exampleSentence!.isEmpty ||
+              word.exampleSentenceTranslation == null ||
+              word.exampleSentenceTranslation!.isEmpty)) {
         availableTypes.remove(SelfTestType.sentenceCompletion);
       }
 
@@ -69,6 +73,8 @@ class TestSheetService {
         'question': _getQuestionText(word, currentType),
         'answer': _getAnswerText(word, currentType),
         'type': currentType,
+        'translation':
+            currentType == SelfTestType.sentenceCompletion ? word.exampleSentenceTranslation : null,
       });
     }
     return testData;
@@ -88,7 +94,6 @@ class TestSheetService {
     final boldFont = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Bold.ttf"));
 
     final baseFileName = title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-
     final double fontSize = settings.fontSize;
 
     if (settings.exportOption == ExportOption.both) {
@@ -201,6 +206,7 @@ class TestSheetService {
           if (isAnswerSheet) {
             return [
               pw.TableHelper.fromTextArray(
+                columnWidths: {0: const pw.FixedColumnWidth(45), 1: const pw.FlexColumnWidth()},
                 headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: fontSize),
                 cellStyle: pw.TextStyle(fontSize: fontSize),
                 headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
@@ -222,21 +228,38 @@ class TestSheetService {
                   final questionData = testData[index];
                   final type = questionData['type'] as SelfTestType;
                   final questionText = questionData['question'] as String;
+                  final translation = questionData['translation'] as String?;
 
                   final questionContent =
                       type == SelfTestType.sentenceCompletion
                           ? questionText
                           : '$questionText  →  _________________________';
 
-                  return pw.Row(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  // ▼▼▼ [수정] pw.KeepTogether를 pw.Table로 대체
+                  return pw.Table(
+                    columnWidths: {0: const pw.FixedColumnWidth(45), 1: const pw.FlexColumnWidth()},
                     children: [
-                      pw.Container(
-                        width: 35,
-                        child: pw.Text('${index + 1}.', style: pw.TextStyle(fontSize: fontSize)),
-                      ),
-                      pw.Expanded(
-                        child: pw.Text(questionContent, style: pw.TextStyle(fontSize: fontSize)),
+                      pw.TableRow(
+                        children: [
+                          pw.Text('${index + 1}.', style: pw.TextStyle(fontSize: fontSize)),
+                          pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text(questionContent, style: pw.TextStyle(fontSize: fontSize)),
+                              if (translation != null && translation.isNotEmpty)
+                                pw.Padding(
+                                  padding: const pw.EdgeInsets.only(top: 4.0),
+                                  child: pw.Text(
+                                    '(해석: $translation)',
+                                    style: pw.TextStyle(
+                                      fontSize: fontSize - 2,
+                                      color: PdfColors.grey600,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
                       ),
                     ],
                   );
@@ -302,53 +325,82 @@ class TestSheetService {
     final font = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Regular.ttf"));
     final boldFont = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Bold.ttf"));
 
-    if (exportType == PdfExportType.withAnswers) {
-      final questionsBytes = await _generateSingleAiPdf(
-        title,
-        questions,
-        font,
-        boldFont,
-        isAnswerSheet: false,
-      );
-      final answersBytes = await _generateSingleAiPdf(
-        '$title - 정답',
-        questions,
-        font,
-        boldFont,
-        isAnswerSheet: true,
-      );
-      final questionFileName = '${title.replaceAll(' ', '_')}.pdf';
-      final answerFileName = '${title.replaceAll(' ', '_')}_answers.pdf';
+    const int questionsPerPdf = 40;
+    final List<List<AiQuestion>> questionChunks = [];
+    List<AiQuestion> currentChunk = [];
+    int currentChunkQuestionCount = 0;
 
-      if (share) {
-        await _shareFiles(
-          [questionFileName, answerFileName],
-          [questionsBytes, answersBytes],
-          title,
+    for (final question in questions) {
+      int questionBlockSize =
+          (question.type == 'reading_section' && question.questions != null)
+              ? question.questions!.length
+              : 1;
+
+      if (currentChunk.isNotEmpty &&
+          (currentChunkQuestionCount + questionBlockSize > questionsPerPdf)) {
+        questionChunks.add(currentChunk);
+        currentChunk = [];
+        currentChunkQuestionCount = 0;
+      }
+
+      currentChunk.add(question);
+      currentChunkQuestionCount += questionBlockSize;
+    }
+
+    if (currentChunk.isNotEmpty) {
+      questionChunks.add(currentChunk);
+    }
+
+    final totalParts = questionChunks.length;
+    final List<String> fileNames = [];
+    final List<Uint8List> fileBytes = [];
+
+    for (int i = 0; i < totalParts; i++) {
+      final chunk = questionChunks[i];
+      final partNumber = i + 1;
+      final docTitle = totalParts > 1 ? '$title ($partNumber/$totalParts)' : title;
+      final baseFileName = docTitle.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+
+      if (exportType == PdfExportType.withAnswers) {
+        final questionsBytes = await _generateSingleAiPdf(
+          docTitle,
+          chunk,
+          font,
+          boldFont,
+          isAnswerSheet: false,
         );
+        final answersBytes = await _generateSingleAiPdf(
+          '$docTitle - 정답',
+          chunk,
+          font,
+          boldFont,
+          isAnswerSheet: true,
+        );
+        fileNames.add('$baseFileName.pdf');
+        fileBytes.add(questionsBytes);
+        fileNames.add('${baseFileName}_answers.pdf');
+        fileBytes.add(answersBytes);
       } else {
-        final directory = await getApplicationDocumentsDirectory();
-        await _saveFileToPath('${directory.path}/$questionFileName', questionsBytes);
-        await _saveFileToPath('${directory.path}/$answerFileName', answersBytes);
-        OpenFilex.open('${directory.path}/$questionFileName');
+        final questionsBytes = await _generateSingleAiPdf(
+          docTitle,
+          chunk,
+          font,
+          boldFont,
+          isAnswerSheet: false,
+        );
+        fileNames.add('$baseFileName.pdf');
+        fileBytes.add(questionsBytes);
       }
+    }
+
+    if (share) {
+      await _shareFiles(fileNames, fileBytes, title);
     } else {
-      final questionsBytes = await _generateSingleAiPdf(
-        title,
-        questions,
-        font,
-        boldFont,
-        isAnswerSheet: false,
-      );
-      final fileName = '${title.replaceAll(' ', '_')}.pdf';
-      if (share) {
-        await _shareFile(fileName, questionsBytes, title);
-      } else {
-        final directory = await getApplicationDocumentsDirectory();
-        final fullPath = '${directory.path}/$fileName';
-        await _saveFileToPath(fullPath, questionsBytes);
-        OpenFilex.open(fullPath);
+      final directory = await getApplicationDocumentsDirectory();
+      for (int i = 0; i < fileNames.length; i++) {
+        await _saveFileToPath('${directory.path}/${fileNames[i]}', fileBytes[i]);
       }
+      OpenFilex.open('${directory.path}/${fileNames.first}');
     }
   }
 
@@ -371,109 +423,73 @@ class TestSheetService {
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 20),
               ),
             ),
-        build: (context) => [_buildAiQuizPage(questions, isAnswerSheet: isAnswerSheet)],
+        build: (context) {
+          final List<pw.Widget> widgets = [];
+          int questionCounter = 0;
+          for (final q in questions) {
+            // ▼▼▼ [수정] pw.KeepTogether를 pw.Table로 대체
+            widgets.add(
+              pw.Table(
+                children: [
+                  pw.TableRow(
+                    children: [_buildAiQuizItem(q, questionCounter, isAnswerSheet: isAnswerSheet)],
+                  ),
+                ],
+              ),
+            );
+            widgets.add(pw.Divider(height: 20, color: PdfColors.grey400));
+            if (q.type == 'reading_section' && q.questions != null) {
+              questionCounter += q.questions!.length;
+            } else {
+              questionCounter++;
+            }
+          }
+          return widgets;
+        },
       ),
     );
     return pdf.save();
   }
 
-  pw.Widget _buildAiQuizPage(List<AiQuestion> questions, {required bool isAnswerSheet}) {
-    int questionCounter = 0;
-    return pw.ListView.separated(
-      itemCount: questions.length,
-      separatorBuilder: (context, index) => pw.Divider(height: 20, color: PdfColors.grey400),
-      itemBuilder: (context, index) {
-        final q = questions[index];
-        if (q.type == 'reading_section') {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              if (q.passage != null)
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(12),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300),
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                  ),
-                  child: pw.Text(q.passage!),
-                ),
-              pw.SizedBox(height: 12),
-              ...?q.questions?.map((subQ) {
-                questionCounter++;
-                return pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      '$questionCounter. ${subQ.question}',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 8),
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children:
-                          subQ.options.asMap().entries.map((optEntry) {
-                            final isCorrect = optEntry.value == subQ.answer;
-                            return pw.Row(
-                              children: [
-                                pw.Text('${optEntry.key + 1}) ${optEntry.value}'),
-                                if (isAnswerSheet && isCorrect)
-                                  pw.Padding(
-                                    padding: const pw.EdgeInsets.only(left: 8),
-                                    child: pw.Text(
-                                      '(정답)',
-                                      style: pw.TextStyle(
-                                        color: PdfColors.red,
-                                        fontWeight: pw.FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            );
-                          }).toList(),
-                    ),
-                    if (isAnswerSheet && subQ.explanation != null && subQ.explanation!.isNotEmpty)
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.only(top: 4, left: 12),
-                        child: pw.Text(
-                          '└ 해설: ${subQ.explanation}',
-                          style: const pw.TextStyle(color: PdfColors.blueGrey, fontSize: 9),
-                        ),
-                      ),
-                    if (!isAnswerSheet)
-                      pw.Container(
-                        padding: const pw.EdgeInsets.only(top: 8),
-                        child: pw.Text('정답: ________________'),
-                      ),
-                    pw.SizedBox(height: 12),
-                  ],
-                );
-              }),
-            ],
-          );
-        } else {
-          questionCounter++;
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              if (q.script != null)
-                pw.Text('듣기 지문: ${q.script!}', style: const pw.TextStyle(color: PdfColors.grey600)),
-              if (q.question != null) ...[
-                pw.SizedBox(height: 8),
+  pw.Widget _buildAiQuizItem(
+    AiQuestion q,
+    int questionCounterOffset, {
+    required bool isAnswerSheet,
+  }) {
+    int questionCounter = questionCounterOffset;
+
+    if (q.type == 'reading_section') {
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          if (q.passage != null)
+            pw.Container(
+              padding: const pw.EdgeInsets.all(12),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Text(q.passage!),
+            ),
+          pw.SizedBox(height: 12),
+          ...?q.questions?.map((subQ) {
+            questionCounter++;
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
                 pw.Text(
-                  '$questionCounter. ${q.question!}',
+                  '$questionCounter. ${subQ.question}',
                   style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                 ),
-              ],
-              if (q.options != null) ...[
                 pw.SizedBox(height: 8),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children:
-                      q.options!.asMap().entries.map((entry) {
-                        final isCorrect = entry.value == q.answer;
+                      subQ.options.asMap().entries.map((optEntry) {
+                        final isCorrect = optEntry.value == subQ.answer;
                         return pw.Row(
                           children: [
-                            pw.Text('${entry.key + 1}) ${entry.value}'),
+                            pw.Text('${optEntry.key + 1}) ${optEntry.value}'),
                             if (isAnswerSheet && isCorrect)
                               pw.Padding(
                                 padding: const pw.EdgeInsets.only(left: 8),
@@ -489,25 +505,81 @@ class TestSheetService {
                         );
                       }).toList(),
                 ),
-              ],
-              if (isAnswerSheet && q.explanation != null && q.explanation!.isNotEmpty)
-                pw.Padding(
-                  padding: const pw.EdgeInsets.only(top: 4, left: 12),
-                  child: pw.Text(
-                    '└ 해설: ${q.explanation}',
-                    style: const pw.TextStyle(color: PdfColors.blueGrey, fontSize: 9),
+                if (isAnswerSheet && subQ.explanation != null && subQ.explanation!.isNotEmpty)
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(top: 4, left: 12),
+                    child: pw.Text(
+                      '└ 해설: ${subQ.explanation}',
+                      style: const pw.TextStyle(color: PdfColors.blueGrey, fontSize: 9),
+                    ),
                   ),
-                ),
-              if (!isAnswerSheet && q.question != null)
-                pw.Container(
-                  padding: const pw.EdgeInsets.only(top: 8),
-                  child: pw.Text('정답: ________________'),
-                ),
-            ],
-          );
-        }
-      },
-    );
+                if (!isAnswerSheet)
+                  pw.Container(
+                    padding: const pw.EdgeInsets.only(top: 8),
+                    child: pw.Text('정답: ________________'),
+                  ),
+                pw.SizedBox(height: 12),
+              ],
+            );
+          }),
+        ],
+      );
+    } else {
+      questionCounter++;
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          if (q.script != null)
+            pw.Text('듣기 지문: ${q.script!}', style: const pw.TextStyle(color: PdfColors.grey600)),
+          if (q.question != null) ...[
+            pw.SizedBox(height: 8),
+            pw.Text(
+              '$questionCounter. ${q.question!}',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
+          ],
+          if (q.options != null) ...[
+            pw.SizedBox(height: 8),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children:
+                  q.options!.asMap().entries.map((entry) {
+                    final isCorrect = entry.value == q.answer;
+                    return pw.Row(
+                      children: [
+                        pw.Text('${entry.key + 1}) ${entry.value}'),
+                        if (isAnswerSheet && isCorrect)
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.only(left: 8),
+                            child: pw.Text(
+                              '(정답)',
+                              style: pw.TextStyle(
+                                color: PdfColors.red,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  }).toList(),
+            ),
+          ],
+          if (isAnswerSheet && q.explanation != null && q.explanation!.isNotEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 4, left: 12),
+              child: pw.Text(
+                '└ 해설: ${q.explanation}',
+                style: const pw.TextStyle(color: PdfColors.blueGrey, fontSize: 9),
+              ),
+            ),
+          if (!isAnswerSheet && q.question != null)
+            pw.Container(
+              padding: const pw.EdgeInsets.only(top: 8),
+              child: pw.Text('정답: ________________'),
+            ),
+        ],
+      );
+    }
   }
 
   Future<void> _saveFileToPath(String fullPath, List<int> bytes) async {
