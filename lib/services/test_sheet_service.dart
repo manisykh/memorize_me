@@ -94,7 +94,6 @@ class TestSheetService {
     final boldFont = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Bold.ttf"));
 
     final baseFileName = title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    final double fontSize = settings.fontSize;
 
     if (settings.exportOption == ExportOption.both) {
       final questionsBytes = await _generateSingleWordTestPdf(
@@ -102,16 +101,16 @@ class TestSheetService {
         testData,
         font,
         boldFont,
+        settings,
         isAnswerSheet: false,
-        fontSize: fontSize,
       );
       final answersBytes = await _generateSingleWordTestPdf(
         '$title - 정답',
         testData,
         font,
         boldFont,
+        settings,
         isAnswerSheet: true,
-        fontSize: fontSize,
       );
       final questionFileName = '$baseFileName.pdf';
       final answerFileName = '${baseFileName}_answers.pdf';
@@ -136,8 +135,8 @@ class TestSheetService {
         testData,
         font,
         boldFont,
+        settings,
         isAnswerSheet: isAnswerOnly,
-        fontSize: fontSize,
       );
       final fileName = '$baseFileName.pdf';
 
@@ -176,12 +175,13 @@ class TestSheetService {
     String docTitle,
     List<Map<String, dynamic>> testData,
     pw.Font font,
-    pw.Font boldFont, {
+    pw.Font boldFont,
+    AppSettings settings, {
     required bool isAnswerSheet,
-    required double fontSize,
   }) async {
     final pdfDoc = pw.Document();
     final date = DateFormat('yyyy년 MM월 dd일').format(DateTime.now());
+    final double fontSize = settings.fontSize;
 
     pdfDoc.addPage(
       pw.MultiPage(
@@ -235,7 +235,6 @@ class TestSheetService {
                           ? questionText
                           : '$questionText  →  _________________________';
 
-                  // ▼▼▼ [수정] pw.KeepTogether를 pw.Table로 대체
                   return pw.Table(
                     columnWidths: {0: const pw.FixedColumnWidth(45), 1: const pw.FlexColumnWidth()},
                     children: [
@@ -246,7 +245,9 @@ class TestSheetService {
                             crossAxisAlignment: pw.CrossAxisAlignment.start,
                             children: [
                               pw.Text(questionContent, style: pw.TextStyle(fontSize: fontSize)),
-                              if (translation != null && translation.isNotEmpty)
+                              if (settings.includeTranslation &&
+                                  translation != null &&
+                                  translation.isNotEmpty)
                                 pw.Padding(
                                   padding: const pw.EdgeInsets.only(top: 4.0),
                                   child: pw.Text(
@@ -427,7 +428,6 @@ class TestSheetService {
           final List<pw.Widget> widgets = [];
           int questionCounter = 0;
           for (final q in questions) {
-            // ▼▼▼ [수정] pw.KeepTogether를 pw.Table로 대체
             widgets.add(
               pw.Table(
                 children: [

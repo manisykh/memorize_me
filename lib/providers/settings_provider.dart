@@ -1,23 +1,25 @@
+// lib/providers/settings_provider.dart
+
 import 'package:flutter/foundation.dart';
 import '../models/word_model.dart';
 
-// 'random'을 제거하고, 사용자가 직접 여러 유형을 선택하게 합니다.
 enum SelfTestType { wordToMeaning, meaningToWord, sentenceCompletion }
 
 enum ExportOption { testOnly, answersOnly, both }
 
 class AppSettings {
   final int wordCount;
-  final Set<SelfTestType> testTypes; // 단일 선택에서 Set(집합)을 이용한 복수 선택으로 변경
+  final Set<SelfTestType> testTypes;
   final ExportOption exportOption;
   final double fontSize;
+  final bool includeTranslation; // ▼▼▼ [추가] 해석 포함 여부 설정
 
   AppSettings({
     this.wordCount = 20,
-    // 기본값으로 두 가지 유형을 포함하는 Set으로 설정
     this.testTypes = const {SelfTestType.wordToMeaning, SelfTestType.meaningToWord},
     this.exportOption = ExportOption.both,
     this.fontSize = 12.0,
+    this.includeTranslation = true, // ▼▼▼ [추가] 기본값은 true (보이게)
   });
 
   AppSettings copyWith({
@@ -25,11 +27,13 @@ class AppSettings {
     Set<SelfTestType>? testTypes,
     ExportOption? exportOption,
     double? fontSize,
+    bool? includeTranslation, // ▼▼▼ [추가]
   }) => AppSettings(
     wordCount: wordCount ?? this.wordCount,
     testTypes: testTypes ?? this.testTypes,
     exportOption: exportOption ?? this.exportOption,
     fontSize: fontSize ?? this.fontSize,
+    includeTranslation: includeTranslation ?? this.includeTranslation, // ▼▼▼ [추가]
   );
 }
 
@@ -50,7 +54,6 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  // setTestType을 updateTestTypes로 변경하여 복수 선택을 처리
   void updateTestTypes(Set<SelfTestType> types) {
     _settings = _settings.copyWith(testTypes: types);
     notifyListeners();
@@ -63,6 +66,12 @@ class SettingsNotifier extends ChangeNotifier {
 
   void setFontSize(double size) {
     _settings = _settings.copyWith(fontSize: size);
+    notifyListeners();
+  }
+
+  // ▼▼▼ [추가] 해석 포함 여부를 설정하는 메서드
+  void setIncludeTranslation(bool value) {
+    _settings = _settings.copyWith(includeTranslation: value);
     notifyListeners();
   }
 }

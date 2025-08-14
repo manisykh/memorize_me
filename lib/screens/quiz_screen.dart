@@ -57,6 +57,7 @@ class _QuizScreenState extends State<QuizScreen> {
   bool _isScreenLoading = true;
   late QuizMode _currentMode;
   late final TextEditingController _pdfTitleController;
+  bool _canDoSentenceCompletion = false;
 
   @override
   void initState() {
@@ -102,6 +103,10 @@ class _QuizScreenState extends State<QuizScreen> {
       setState(() {
         _selectedWordbook = wordbook;
         _words = wordListNotifier.words;
+        // ▼▼▼ [수정] 예문 존재 여부 확인 로직
+        _canDoSentenceCompletion = _words.any(
+          (w) => w.exampleSentence != null && w.exampleSentence!.isNotEmpty,
+        );
         _reviewWords = wordbookManager.getWordsForReview();
         _isLoading = false;
       });
@@ -528,6 +533,13 @@ class _QuizScreenState extends State<QuizScreen> {
           onTap: () => _showTestTypePicker(context, testTypeMap),
         ),
         const Divider(indent: 16, endIndent: 16),
+        SwitchListTile(
+          title: Text('문장 완성 문제에 해석 포함', style: theme.textTheme.bodyLarge),
+          value: settings.includeTranslation,
+          onChanged: (value) => settingsNotifier.setIncludeTranslation(value),
+          contentPadding: const EdgeInsets.only(left: 16.0, right: 6.0),
+        ),
+        const Divider(indent: 16, endIndent: 16),
         ListTile(
           title: Text('내보내기 옵션', style: theme.textTheme.bodyLarge),
           trailing: Text(
@@ -560,6 +572,36 @@ class _QuizScreenState extends State<QuizScreen> {
                       child: Text('시험 유형 선택 (복수 가능)', style: Theme.of(ctx).textTheme.titleLarge),
                     ),
                     ...testTypeMap.entries.map((entry) {
+                      if (entry.key == SelfTestType.sentenceCompletion) {
+                        return CheckboxListTile(
+                          title: Text(entry.value, style: Theme.of(ctx).textTheme.bodyLarge),
+                          subtitle:
+                              !_canDoSentenceCompletion
+                                  ? Text(
+                                    '단어장에 예문이 없어 비활성화되었습니다.\n(AI 예문 생성 기능으로 예문을 추가하세요)',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(ctx).disabledColor,
+                                    ),
+                                  )
+                                  : null,
+                          value: tempSelectedTypes.contains(entry.key),
+                          onChanged:
+                              !_canDoSentenceCompletion
+                                  ? null
+                                  : (bool? isSelected) {
+                                    setModalState(() {
+                                      if (isSelected == true) {
+                                        tempSelectedTypes.add(entry.key);
+                                      } else {
+                                        if (tempSelectedTypes.length > 1) {
+                                          tempSelectedTypes.remove(entry.key);
+                                        }
+                                      }
+                                    });
+                                  },
+                        );
+                      }
                       return CheckboxListTile(
                         title: Text(entry.value, style: Theme.of(ctx).textTheme.bodyLarge),
                         value: tempSelectedTypes.contains(entry.key),
