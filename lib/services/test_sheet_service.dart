@@ -1,5 +1,6 @@
 // lib/services/test_sheet_service.dart
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -19,6 +20,8 @@ import '../providers/settings_provider.dart';
 enum PdfExportType { questionsOnly, withAnswers }
 
 class TestSheetService {
+  final HtmlEscape _htmlEscape = const HtmlEscape();
+
   String _getQuestionText(Word word, SelfTestType type) {
     if (type == SelfTestType.wordToMeaning) return word.word;
     if (type == SelfTestType.meaningToWord) return word.meaning;
@@ -35,6 +38,66 @@ class TestSheetService {
     if (type == SelfTestType.meaningToWord) return word.word;
     if (type == SelfTestType.sentenceCompletion) return word.word;
     return '';
+  }
+
+  bool _canUseSpellingHint(SelfTestType type) {
+    return type == SelfTestType.meaningToWord || type == SelfTestType.sentenceCompletion;
+  }
+
+  String _buildSpellingHint(String answer) {
+    final chars = answer.runes.map((codePoint) => String.fromCharCode(codePoint)).toList();
+    final letterIndexes = <int>[];
+
+    for (var i = 0; i < chars.length; i++) {
+      final char = chars[i];
+      if (RegExp(r'[A-Za-z가-힣0-9]').hasMatch(char)) {
+        letterIndexes.add(i);
+      }
+    }
+
+    if (letterIndexes.isEmpty) return '';
+
+    final visible = <int>{letterIndexes.first};
+    if (letterIndexes.length >= 4) {
+      visible.add(letterIndexes.last);
+    }
+
+    return chars.asMap().entries.map((entry) {
+      final index = entry.key;
+      final char = entry.value;
+      if (char.trim().isEmpty) return '   ';
+      if (!RegExp(r'[A-Za-z가-힣0-9]').hasMatch(char)) return char;
+      return visible.contains(index) ? char : '_';
+    }).join(' ');
+  }
+
+  bool _isSameWord(Word a, Word b) {
+    if (a.id != null && b.id != null) return a.id == b.id;
+    return identical(a, b) || (a.word == b.word && a.meaning == b.meaning);
+  }
+
+  List<String> _buildMultipleChoiceOptions({
+    required List<Word> allWords,
+    required Word questionWord,
+    required SelfTestType type,
+    required String answer,
+    required Random random,
+  }) {
+    final normalizedAnswer = answer.trim().toLowerCase();
+    if (normalizedAnswer.isEmpty) return const [];
+
+    final distractorSet = <String>{};
+    for (final candidate in allWords) {
+      if (_isSameWord(candidate, questionWord)) continue;
+      final candidateAnswer = _getAnswerText(candidate, type).trim();
+      if (candidateAnswer.isEmpty) continue;
+      if (candidateAnswer.toLowerCase() == normalizedAnswer) continue;
+      distractorSet.add(candidateAnswer);
+    }
+
+    final distractors = distractorSet.toList()..shuffle(random);
+    final options = <String>[answer.trim(), ...distractors.take(3)]..shuffle(random);
+    return options.length > 1 ? options : const [];
   }
 
   List<Map<String, dynamic>> _prepareTestData(List<Word> allWords, AppSettings settings) {
@@ -68,16 +131,59 @@ class TestSheetService {
       }
 
       final currentType = availableTypes[random.nextInt(availableTypes.length)];
-
-      testData.add({
-        'question': _getQuestionText(word, currentType),
-        'answer': _getAnswerText(word, currentType),
+      final questionText = _getQuestionText(word, currentType);
+      final answerText = _getAnswerText(word, currentType);
+      final questionData = <String, dynamic>{
+        'question': questionText,
+        'answer': answerText,
         'type': currentType,
+        'questionFormat': TestQuestionFormat.shortAnswer,
         'translation':
             currentType == SelfTestType.sentenceCompletion ? word.exampleSentenceTranslation : null,
-      });
+      };
+
+      if (settings.questionFormat == TestQuestionFormat.multipleChoice) {
+        final options = _buildMultipleChoiceOptions(
+          allWords: allWords,
+          questionWord: word,
+          type: currentType,
+          answer: answerText,
+          random: random,
+        );
+        if (options.isNotEmpty) {
+          questionData['questionFormat'] = TestQuestionFormat.multipleChoice;
+          questionData['options'] = options;
+        }
+      }
+
+      if (settings.questionFormat == TestQuestionFormat.shortAnswer &&
+          settings.includeSpellingHint &&
+          _canUseSpellingHint(currentType)) {
+        final hint = _buildSpellingHint(answerText);
+        if (hint.isNotEmpty) questionData['hint'] = hint;
+      }
+
+      testData.add(questionData);
     }
     return testData;
+  }
+
+  String _optionLabel(int index) => '${String.fromCharCode(65 + index)}.';
+
+  List<String> _questionOptions(Map<String, dynamic> questionData) {
+    final rawOptions = questionData['options'];
+    if (rawOptions is List) {
+      return rawOptions.map((option) => option.toString()).toList();
+    }
+    return const [];
+  }
+
+  String _answerTextForDisplay(Map<String, dynamic> questionData) {
+    final answer = questionData['answer'] as String? ?? '';
+    final options = _questionOptions(questionData);
+    final answerIndex = options.indexWhere((option) => option.trim() == answer.trim());
+    if (answerIndex >= 0) return '${_optionLabel(answerIndex)} $answer';
+    return answer;
   }
 
   Future<void> exportPdf({
@@ -86,6 +192,7 @@ class TestSheetService {
     required String title,
     required bool share,
     String? savePath,
+    bool openAfterSave = true,
   }) async {
     final testData = _prepareTestData(allWords, settings);
     if (testData.isEmpty) throw Exception("시험지를 생성할 단어가 없습니다.");
@@ -125,7 +232,7 @@ class TestSheetService {
         assert(savePath != null, 'Save path must be provided when not sharing.');
         await _saveFileToPath('$savePath/$questionFileName', questionsBytes);
         await _saveFileToPath('$savePath/$answerFileName', answersBytes);
-        OpenFilex.open('$savePath/$questionFileName');
+        if (openAfterSave) OpenFilex.open('$savePath/$questionFileName');
       }
     } else {
       final isAnswerOnly = settings.exportOption == ExportOption.answersOnly;
@@ -146,7 +253,7 @@ class TestSheetService {
         assert(savePath != null, 'Save path must be provided when not sharing.');
         final fullPath = '$savePath/$fileName';
         await _saveFileToPath(fullPath, bytes);
-        OpenFilex.open(fullPath);
+        if (openAfterSave) OpenFilex.open(fullPath);
       }
     }
   }
@@ -154,20 +261,47 @@ class TestSheetService {
   Future<void> exportExcel(
     List<Word> allWords,
     AppSettings settings, {
+    required String title,
     required bool share,
     String? savePath,
+    bool openAfterSave = true,
   }) async {
     final bytes = _generateExcelBytes(allWords, settings);
     if (bytes != null) {
-      const fileName = 'word_test.xlsx';
+      final fileName = '${_safeFileName(title)}.xlsx';
       if (share) {
-        await _shareFile(fileName, bytes, '단어 시험지');
+        await _shareFile(fileName, bytes, title);
       } else {
         assert(savePath != null, 'Save path must be provided when not sharing.');
         final fullPath = '$savePath/$fileName';
         await _saveFileToPath(fullPath, bytes);
-        OpenFilex.open(fullPath);
+        if (openAfterSave) OpenFilex.open(fullPath);
       }
+    }
+  }
+
+  Future<void> exportInteractiveHtml({
+    required List<Word> allWords,
+    required AppSettings settings,
+    required String title,
+    required bool share,
+    String? savePath,
+    bool openAfterSave = true,
+  }) async {
+    final testData = _prepareTestData(allWords, settings);
+    if (testData.isEmpty) throw Exception("시험지를 생성할 단어가 없습니다.");
+
+    final html = _generateWordTestHtml(title, testData, settings);
+    final bytes = utf8.encode(html);
+    final fileName = '${_safeFileName(title)}.html';
+
+    if (share) {
+      await _shareFile(fileName, bytes, title);
+    } else {
+      assert(savePath != null, 'Save path must be provided when not sharing.');
+      final fullPath = '$savePath/$fileName';
+      await _saveFileToPath(fullPath, bytes);
+      if (openAfterSave) OpenFilex.open(fullPath);
     }
   }
 
@@ -214,7 +348,7 @@ class TestSheetService {
                 data: <List<String>>[
                   <String>['번호', '정답'],
                   ...testData.asMap().entries.map(
-                    (entry) => ['${entry.key + 1}', entry.value['answer']! as String],
+                    (entry) => ['${entry.key + 1}', _answerTextForDisplay(entry.value)],
                   ),
                 ],
               ),
@@ -229,9 +363,11 @@ class TestSheetService {
                   final type = questionData['type'] as SelfTestType;
                   final questionText = questionData['question'] as String;
                   final translation = questionData['translation'] as String?;
+                  final options = _questionOptions(questionData);
+                  final hint = questionData['hint'] as String?;
 
                   final questionContent =
-                      type == SelfTestType.sentenceCompletion
+                      options.isNotEmpty || type == SelfTestType.sentenceCompletion
                           ? questionText
                           : '$questionText  →  _________________________';
 
@@ -245,6 +381,34 @@ class TestSheetService {
                             crossAxisAlignment: pw.CrossAxisAlignment.start,
                             children: [
                               pw.Text(questionContent, style: pw.TextStyle(fontSize: fontSize)),
+                              if (options.isNotEmpty)
+                                pw.Padding(
+                                  padding: const pw.EdgeInsets.only(top: 6.0),
+                                  child: pw.Column(
+                                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                    children:
+                                        options.asMap().entries.map((optionEntry) {
+                                          return pw.Padding(
+                                            padding: const pw.EdgeInsets.only(bottom: 3.0),
+                                            child: pw.Text(
+                                              '${_optionLabel(optionEntry.key)} ${optionEntry.value}',
+                                              style: pw.TextStyle(fontSize: fontSize - 1),
+                                            ),
+                                          );
+                                    }).toList(),
+                                  ),
+                                ),
+                              if (hint != null && hint.isNotEmpty)
+                                pw.Padding(
+                                  padding: const pw.EdgeInsets.only(top: 5.0),
+                                  child: pw.Text(
+                                    '힌트: $hint',
+                                    style: pw.TextStyle(
+                                      fontSize: fontSize - 1,
+                                      color: PdfColors.blueGrey700,
+                                    ),
+                                  ),
+                                ),
                               if (settings.includeTranslation &&
                                   translation != null &&
                                   translation.isNotEmpty)
@@ -278,39 +442,82 @@ class TestSheetService {
     final testData = _prepareTestData(allWords, settings);
     if (testData.isEmpty) throw Exception("시험지를 생성할 단어가 없습니다.");
     var excel = Excel.createExcel();
-    CellStyle headerStyle = CellStyle(bold: true, horizontalAlign: HorizontalAlign.Center);
+    final excelFontSize = settings.fontSize.round().clamp(8, 20).toInt();
+    CellStyle headerStyle = CellStyle(
+      bold: true,
+      fontSize: excelFontSize,
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+      textWrapping: TextWrapping.WrapText,
+    );
+    CellStyle bodyStyle = CellStyle(
+      fontSize: excelFontSize,
+      verticalAlign: VerticalAlign.Top,
+      textWrapping: TextWrapping.WrapText,
+    );
     if (settings.exportOption != ExportOption.answersOnly) {
       Sheet testSheet = excel['시험지'];
-      testSheet.appendRow([TextCellValue('번호'), TextCellValue('문제'), TextCellValue('답란')]);
-      for (var i = 0; i < 3; i++) {
+      testSheet.appendRow([
+        TextCellValue('번호'),
+        TextCellValue('유형'),
+        TextCellValue('문제'),
+        TextCellValue('힌트'),
+        TextCellValue('선택지'),
+        TextCellValue('답란'),
+      ]);
+      for (var i = 0; i < 6; i++) {
         testSheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).cellStyle =
             headerStyle;
       }
       for (int i = 0; i < testData.length; i++) {
+        final questionData = testData[i];
+        final type = questionData['type'] as SelfTestType;
+        final options = _questionOptions(questionData);
+        final optionText =
+            options.asMap().entries.map((entry) => '${_optionLabel(entry.key)} ${entry.value}').join('\n');
         testSheet.appendRow([
           IntCellValue(i + 1),
-          TextCellValue(testData[i]['question']! as String),
+          TextCellValue(_selfTestTypeLabel(type)),
+          TextCellValue(questionData['question']! as String),
+          TextCellValue(questionData['hint'] as String? ?? ''),
+          TextCellValue(optionText),
+          TextCellValue(options.isEmpty ? '____________________' : '선택지에서 고르세요'),
         ]);
+        for (var column = 0; column < 6; column++) {
+          testSheet.cell(CellIndex.indexByColumnRow(columnIndex: column, rowIndex: i + 1)).cellStyle =
+              bodyStyle;
+        }
       }
       testSheet.setColumnWidth(0, 5);
-      testSheet.setColumnWidth(1, 40);
-      testSheet.setColumnWidth(2, 40);
+      testSheet.setColumnWidth(1, 14);
+      testSheet.setColumnWidth(2, 44);
+      testSheet.setColumnWidth(3, 28);
+      testSheet.setColumnWidth(4, 44);
+      testSheet.setColumnWidth(5, 24);
     }
     if (settings.exportOption != ExportOption.testOnly) {
       Sheet answerSheet = excel['답안지'];
-      answerSheet.appendRow([TextCellValue('번호'), TextCellValue('정답')]);
-      for (var i = 0; i < 2; i++) {
+      answerSheet.appendRow([TextCellValue('번호'), TextCellValue('유형'), TextCellValue('정답')]);
+      for (var i = 0; i < 3; i++) {
         answerSheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).cellStyle =
             headerStyle;
       }
       for (int i = 0; i < testData.length; i++) {
+        final questionData = testData[i];
+        final type = questionData['type'] as SelfTestType;
         answerSheet.appendRow([
           IntCellValue(i + 1),
-          TextCellValue(testData[i]['answer']! as String),
+          TextCellValue(_selfTestTypeLabel(type)),
+          TextCellValue(_answerTextForDisplay(questionData)),
         ]);
+        for (var column = 0; column < 3; column++) {
+          answerSheet.cell(CellIndex.indexByColumnRow(columnIndex: column, rowIndex: i + 1)).cellStyle =
+              bodyStyle;
+        }
       }
       answerSheet.setColumnWidth(0, 5);
-      answerSheet.setColumnWidth(1, 40);
+      answerSheet.setColumnWidth(1, 14);
+      answerSheet.setColumnWidth(2, 40);
     }
     excel.delete('Sheet1');
     if (excel.sheets.keys.isNotEmpty) excel.setDefaultSheet(excel.sheets.keys.first);
@@ -402,6 +609,26 @@ class TestSheetService {
         await _saveFileToPath('${directory.path}/${fileNames[i]}', fileBytes[i]);
       }
       OpenFilex.open('${directory.path}/${fileNames.first}');
+    }
+  }
+
+  Future<void> exportAiQuizAsInteractiveHtml({
+    required List<AiQuestion> questions,
+    required String title,
+    required bool share,
+    String? savePath,
+  }) async {
+    final html = _generateAiQuizHtml(title, questions);
+    final bytes = utf8.encode(html);
+    final fileName = '${_safeFileName(title)}.html';
+
+    if (share) {
+      await _shareFile(fileName, bytes, title);
+    } else {
+      final directory = savePath ?? (await getApplicationDocumentsDirectory()).path;
+      final fullPath = '$directory/$fileName';
+      await _saveFileToPath(fullPath, bytes);
+      OpenFilex.open(fullPath);
     }
   }
 
@@ -579,6 +806,444 @@ class TestSheetService {
             ),
         ],
       );
+    }
+  }
+
+  String _generateWordTestHtml(
+    String title,
+    List<Map<String, dynamic>> testData,
+    AppSettings settings,
+  ) {
+    final questions =
+        testData.asMap().entries.map((entry) {
+          final item = entry.value;
+          final type = item['type'] as SelfTestType;
+          final options = _questionOptions(item);
+          final question = <String, dynamic>{
+            'number': entry.key + 1,
+            'type': _selfTestTypeLabel(type),
+            'question': item['question'] as String? ?? '',
+            'answer': item['answer'] as String? ?? '',
+            'hint': item['hint'] as String?,
+            'translation': settings.includeTranslation ? item['translation'] as String? : null,
+          };
+          if (options.isNotEmpty) question['options'] = options;
+          return question;
+        }).toList();
+
+    return _interactiveHtmlShell(
+      title: title,
+      subtitle: '단어 시험지',
+      dataJson: jsonEncode(questions),
+      mode: 'word',
+    );
+  }
+
+  String _generateAiQuizHtml(String title, List<AiQuestion> questions) {
+    final items = <Map<String, dynamic>>[];
+
+    for (final q in questions) {
+      if (q.type == 'reading_section' && q.questions != null) {
+        for (final subQuestion in q.questions!) {
+          items.add({
+            'type': 'choice',
+            'passage': q.passage,
+            'script': null,
+            'question': subQuestion.question,
+            'options': subQuestion.options,
+            'answer': subQuestion.answer,
+            'explanation': subQuestion.explanation,
+          });
+        }
+      } else {
+        items.add({
+          'type': (q.options == null || q.options!.isEmpty) ? 'text' : 'choice',
+          'passage': null,
+          'script': q.script,
+          'question': q.question ?? '',
+          'options': q.options ?? const <String>[],
+          'answer': q.answer ?? '',
+          'explanation': q.explanation,
+        });
+      }
+    }
+
+    return _interactiveHtmlShell(
+      title: title,
+      subtitle: 'AI 인터랙티브 퀴즈',
+      dataJson: jsonEncode(items),
+      mode: 'ai',
+    );
+  }
+
+  String _interactiveHtmlShell({
+    required String title,
+    required String subtitle,
+    required String dataJson,
+    required String mode,
+  }) {
+    final safeTitle = _htmlEscape.convert(title);
+    final safeSubtitle = _htmlEscape.convert(subtitle);
+    final safeDataJson = dataJson.replaceAll('</script>', '<\\/script>');
+
+    return '''
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>$safeTitle</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f2;
+      --surface: #fffefa;
+      --surface-soft: #eef1ea;
+      --text: #172026;
+      --muted: #64706c;
+      --brand: #1f6b5f;
+      --accent: #d46a5d;
+      --success: #4f8f65;
+      --danger: #c94f4f;
+      --line: #dfe4da;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+      background: radial-gradient(circle at top left, #eaf2ed 0, transparent 34rem), var(--bg);
+      color: var(--text);
+    }
+    .app {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding: 24px 18px 44px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-end;
+      margin-bottom: 18px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(1.7rem, 4.5vw, 2.7rem);
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+    .subtitle {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.98rem;
+    }
+    .score-card {
+      min-width: 136px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 254, 250, 0.82);
+      text-align: right;
+      box-shadow: 0 16px 36px rgba(31, 107, 95, 0.08);
+    }
+    .score {
+      font-weight: 800;
+      font-size: 1.55rem;
+      color: var(--brand);
+    }
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 12px 0;
+      background: linear-gradient(to bottom, var(--bg) 76%, rgba(246, 247, 242, 0));
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 16px;
+      background: var(--brand);
+      color: white;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: var(--surface-soft);
+      color: var(--brand);
+      border: 1px solid var(--line);
+    }
+    button.active {
+      background: var(--brand);
+      color: white;
+      border-color: transparent;
+    }
+    .question {
+      margin: 14px 0;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255, 254, 250, 0.92);
+      box-shadow: 0 20px 45px rgba(31, 107, 95, 0.08);
+    }
+    .question.correct { border-color: rgba(79, 143, 101, 0.7); }
+    .question.wrong { border-color: rgba(201, 79, 79, 0.65); }
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+    }
+    .prompt {
+      font-size: 1.08rem;
+      font-weight: 750;
+      line-height: 1.55;
+      margin-bottom: 12px;
+      white-space: pre-wrap;
+    }
+    .passage, .script, .translation, .explanation {
+      margin: 10px 0 12px;
+      padding: 12px;
+      border-radius: 14px;
+      background: var(--surface-soft);
+      color: #33413d;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .hint {
+      display: inline-flex;
+      margin: 0 0 12px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #eef6f2;
+      color: var(--brand);
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      font-size: 1rem;
+      outline-color: var(--brand);
+      background: white;
+    }
+    .options {
+      display: grid;
+      gap: 8px;
+    }
+    .option {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 13px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      cursor: pointer;
+      background: white;
+    }
+    .option.selected {
+      border-color: var(--brand);
+      background: #eef6f2;
+    }
+    .option.correct {
+      border-color: var(--success);
+      background: #edf7f0;
+    }
+    .option.wrong {
+      border-color: var(--danger);
+      background: #fff0ee;
+    }
+    .feedback {
+      display: none;
+      margin-top: 12px;
+      font-weight: 750;
+    }
+    .feedback.show { display: block; }
+    .feedback.correct { color: var(--success); }
+    .feedback.wrong { color: var(--danger); }
+    .answer {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    @media (max-width: 640px) {
+      header { align-items: stretch; flex-direction: column; }
+      .score-card { text-align: left; }
+      .toolbar button { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>$safeTitle</h1>
+        <div class="subtitle">$safeSubtitle · 브라우저에서 바로 풀고 채점할 수 있습니다.</div>
+      </div>
+      <section class="score-card">
+        <div>점수</div>
+        <div class="score"><span id="score">0</span>/<span id="total">0</span></div>
+      </section>
+    </header>
+    <div class="toolbar">
+      <button id="gradeButton" class="secondary" onclick="gradeAll()">전체 채점</button>
+      <button id="answerButton" class="secondary" onclick="showAnswers()">정답 보기</button>
+      <button class="secondary" onclick="resetQuiz()">다시 풀기</button>
+    </div>
+    <section id="quiz"></section>
+  </main>
+  <script>
+    const quizMode = ${jsonEncode(mode)};
+    const questions = $safeDataJson;
+    const state = {};
+    const quiz = document.getElementById('quiz');
+    const total = document.getElementById('total');
+    const score = document.getElementById('score');
+    const gradeButton = document.getElementById('gradeButton');
+    const answerButton = document.getElementById('answerButton');
+
+    function normalize(value) {
+      return String(value || '').trim().toLowerCase().replace(/\\s+/g, ' ');
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function answerOf(index) {
+      const input = document.querySelector('[data-input="' + index + '"]');
+      if (input) return input.value;
+      return state[index] || '';
+    }
+
+    function render() {
+      total.textContent = questions.length;
+      quiz.innerHTML = questions.map(function(q, index) {
+        const number = q.number || index + 1;
+        const type = q.type || (q.options && q.options.length ? 'choice' : 'text');
+        const hasOptions = Array.isArray(q.options) && q.options.length > 0;
+        const passage = q.passage ? '<div class="passage">' + escapeHtml(q.passage) + '</div>' : '';
+        const script = q.script ? '<div class="script">' + escapeHtml(q.script) + '</div>' : '';
+        const translation = q.translation ? '<div class="translation">해석: ' + escapeHtml(q.translation) + '</div>' : '';
+        const hint = q.hint ? '<div class="hint">힌트: ' + escapeHtml(q.hint) + '</div>' : '';
+        const options = hasOptions
+          ? '<div class="options">' + q.options.map(function(opt, optIndex) {
+              return '<label class="option" data-option="' + index + '-' + optIndex + '"><input type="radio" name="q' + index + '" onchange="choose(' + index + ', ' + optIndex + ')"><span>' + escapeHtml(opt) + '</span></label>';
+            }).join('') + '</div>'
+          : '<input data-input="' + index + '" type="text" placeholder="답을 입력하세요" oninput="markDirty()">';
+
+        return '<article class="question" id="q' + index + '">' +
+          '<div class="meta"><span>문제 ' + number + '</span><span>' + escapeHtml(type) + '</span></div>' +
+          passage + script +
+          '<div class="prompt">' + escapeHtml(q.question || '') + '</div>' +
+          translation + hint + options +
+          '<div class="feedback" id="f' + index + '"></div>' +
+        '</article>';
+      }).join('');
+    }
+
+    function markDirty() {
+      gradeButton.classList.remove('active');
+      answerButton.classList.remove('active');
+    }
+
+    function choose(index, optIndex) {
+      markDirty();
+      state[index] = questions[index].options[optIndex];
+      const labels = document.querySelectorAll('[data-option^="' + index + '-"]');
+      labels.forEach(function(label) { label.classList.remove('selected'); });
+      const selected = document.querySelector('[data-option="' + index + '-' + optIndex + '"]');
+      if (selected) selected.classList.add('selected');
+    }
+
+    function gradeQuestion(index, reveal) {
+      const q = questions[index];
+      const card = document.getElementById('q' + index);
+      const feedback = document.getElementById('f' + index);
+      const userAnswer = answerOf(index);
+      const correct = normalize(userAnswer) === normalize(q.answer);
+
+      card.classList.remove('correct', 'wrong');
+      card.classList.add(correct ? 'correct' : 'wrong');
+      feedback.className = 'feedback show ' + (correct ? 'correct' : 'wrong');
+      feedback.innerHTML = correct ? '정답입니다.' : '오답입니다.';
+      if (!correct || reveal) {
+        feedback.innerHTML += '<div class="answer">정답: ' + escapeHtml(q.answer) + '</div>';
+      }
+      if (q.explanation) {
+        feedback.innerHTML += '<div class="explanation">' + escapeHtml(q.explanation) + '</div>';
+      }
+
+      if (Array.isArray(q.options)) {
+        q.options.forEach(function(opt, optIndex) {
+          const label = document.querySelector('[data-option="' + index + '-' + optIndex + '"]');
+          if (!label) return;
+          label.classList.remove('correct', 'wrong');
+          if (normalize(opt) === normalize(q.answer)) label.classList.add('correct');
+          if (normalize(opt) === normalize(userAnswer) && !correct) label.classList.add('wrong');
+        });
+      }
+
+      return correct;
+    }
+
+    function gradeAll() {
+      let correctCount = 0;
+      questions.forEach(function(_, index) {
+        if (gradeQuestion(index, false)) correctCount++;
+      });
+      score.textContent = correctCount;
+      gradeButton.classList.add('active');
+      answerButton.classList.remove('active');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function showAnswers() {
+      questions.forEach(function(_, index) { gradeQuestion(index, true); });
+      answerButton.classList.add('active');
+      gradeButton.classList.remove('active');
+    }
+
+    function resetQuiz() {
+      Object.keys(state).forEach(function(key) { delete state[key]; });
+      score.textContent = '0';
+      gradeButton.classList.remove('active');
+      answerButton.classList.remove('active');
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    render();
+  </script>
+</body>
+</html>
+''';
+  }
+
+  String _safeFileName(String value) {
+    final cleaned = value.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    return cleaned.isEmpty ? 'interactive_quiz' : cleaned;
+  }
+
+  String _selfTestTypeLabel(SelfTestType type) {
+    switch (type) {
+      case SelfTestType.wordToMeaning:
+        return '뜻 쓰기';
+      case SelfTestType.meaningToWord:
+        return '단어 쓰기';
+      case SelfTestType.sentenceCompletion:
+        return '문장 완성';
     }
   }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 import '../providers/wordbook_manager.dart';
+import '../services/srs_service.dart';
 import '../widgets/glassmorphic_card.dart';
 import 'manage_words_screen.dart';
 import 'merge_wordbooks_screen.dart';
@@ -20,12 +22,14 @@ class WordbookManagementScreen extends StatefulWidget {
 
 class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
   Wordbook? _selectedForEditing;
-
-  // 검색 기능 관련 상태 변수들
+  final SrsService _srsService = SrsService();
+  final Map<Object, Future<_WordbookStatsSnapshot>> _statsFutures = {};
   final _searchController = TextEditingController();
+
   Timer? _debounce;
   Map<Wordbook, List<Word>> _searchResults = {};
   bool _isSearching = false;
+  int? _lastStatsRevision;
 
   @override
   void initState() {
@@ -33,10 +37,10 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
     _selectedForEditing = context.read<WordbookManager>().activeWordbook;
 
     _searchController.addListener(() {
-      if (_debounce?.isActive ?? false) _debounce!.cancel();
-      _debounce = Timer(const Duration(milliseconds: 500), () {
-        _performSearch();
-      });
+      if (_debounce?.isActive ?? false) {
+        _debounce!.cancel();
+      }
+      _debounce = Timer(const Duration(milliseconds: 500), _performSearch);
     });
   }
 
@@ -60,52 +64,65 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
     setState(() => _isSearching = true);
     final manager = context.read<WordbookManager>();
     final results = await manager.searchAllWordbooks(query);
-    if (mounted) {
-      setState(() {
-        _searchResults = results;
-        _isSearching = false;
-      });
+
+    if (!mounted) {
+      return;
     }
+
+    setState(() {
+      _searchResults = results;
+      _isSearching = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final manager = context.watch<WordbookManager>();
-    final bool isSearchingMode = _searchController.text.trim().isNotEmpty;
+    final isSearchingMode = _searchController.text.trim().isNotEmpty;
+
+    if (_lastStatsRevision != manager.statsRevision) {
+      _statsFutures.clear();
+      _lastStatsRevision = manager.statsRevision;
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(title: const Text('내 단어장'), automaticallyImplyLeading: true),
+      appBar: AppBar(
+        title: const Text('단어장 관리'),
+        automaticallyImplyLeading: true,
+      ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 검색창 UI
               GlassmorphicCard(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                 child: TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(CupertinoIcons.search),
                     hintText: '모든 단어장에서 단어 검색...',
                     border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                    isDense: true,
                     suffixIcon:
                         isSearchingMode
                             ? IconButton(
                               icon: const Icon(CupertinoIcons.xmark_circle_fill),
-                              onPressed: () {
-                                _searchController.clear();
-                              },
+                              onPressed: _searchController.clear,
                             )
                             : null,
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-              // 검색 모드에 따라 다른 UI를 보여줌
               Expanded(
                 child: isSearchingMode ? _buildSearchResults() : _buildDefaultView(theme, manager),
               ),
@@ -116,11 +133,11 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
     );
   }
 
-  // 검색 결과를 보여주는 위젯
   Widget _buildSearchResults() {
     if (_isSearching) {
       return const Center(child: CircularProgressIndicator());
     }
+
     if (_searchResults.isEmpty) {
       return const Center(child: Text('검색 결과가 없습니다.'));
     }
@@ -136,20 +153,24 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
           initiallyExpanded: true,
           children:
               words
-                  .map((word) => ListTile(title: Text(word.word), subtitle: Text(word.meaning)))
+                  .map(
+                    (word) => ListTile(
+                      title: Text(word.word),
+                      subtitle: Text(word.meaning),
+                    ),
+                  )
                   .toList(),
         );
       },
     );
   }
 
-  // 기존 UI를 별도 메서드로 분리
   Widget _buildDefaultView(ThemeData theme, WordbookManager manager) {
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('단어장 도구', style: theme.textTheme.titleLarge),
+          Text('단어장 가져오기', style: theme.textTheme.titleLarge),
           const SizedBox(height: 10),
           Column(
             children: [
@@ -196,11 +217,14 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
                               builder: (_) => ManageWordsScreen(wordbook: _selectedForEditing!),
                             ),
                           );
-                        } else {
-                          ScaffoldMessenger.of(
-                            context,
-                          ).showSnackBar(const SnackBar(content: Text('편집할 단어장을 목록에서 선택해주세요.')));
+                          return;
                         }
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('편집할 단어장을 목록에서 선택해 주세요.'),
+                          ),
+                        );
                       },
                     ),
                   ),
@@ -221,12 +245,12 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          Text('단어장 목록 (탭하여 편집 대상으로 선택)', style: theme.textTheme.titleLarge),
+          Text('단어장 목록 (탭하면 편집 대상으로 선택)', style: theme.textTheme.titleLarge),
           const SizedBox(height: 10),
           if (manager.wordbooks.isEmpty)
             const Padding(
-              padding: EdgeInsets.symmetric(vertical: 40.0),
-              child: Center(child: Text("추가된 단어장이 없습니다.")),
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(child: Text('추가된 단어장이 없습니다.')),
             )
           else
             ListView.builder(
@@ -236,29 +260,84 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
               itemBuilder: (context, index) {
                 final wordbook = manager.wordbooks[index];
                 final isSelectedForEditing = _selectedForEditing?.id == wordbook.id;
+
                 return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4.0),
-                  child: GlassmorphicCard(
-                    isActive: isSelectedForEditing,
-                    onTap: () => setState(() => _selectedForEditing = wordbook),
-                    padding: const EdgeInsets.only(left: 16, right: 8),
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: _getSourceIcon(wordbook.source, theme),
-                      title: Text(
-                        wordbook.name,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          fontWeight: isSelectedForEditing ? FontWeight.bold : FontWeight.normal,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: FutureBuilder<_WordbookStatsSnapshot>(
+                    future: _statsFutureFor(manager, wordbook),
+                    builder: (context, snapshot) {
+                      final stats = snapshot.data;
+                      return GlassmorphicCard(
+                        isActive: isSelectedForEditing,
+                        onTap: () => setState(() => _selectedForEditing = wordbook),
+                        padding: const EdgeInsets.fromLTRB(16, 14, 8, 12),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                _getSourceIcon(wordbook.source, theme),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    wordbook.name,
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      fontWeight:
+                                          isSelectedForEditing ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: Icon(
+                                    CupertinoIcons.trash,
+                                    color: theme.iconTheme.color?.withValues(alpha: 0.7),
+                                  ),
+                                  onPressed: () => _confirmDelete(context, manager, wordbook),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildStatChip(
+                                    context,
+                                    '전체',
+                                    stats?.totalWords.toString() ?? '...',
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildStatChip(
+                                    context,
+                                    '오늘 복습',
+                                    stats?.dueCount.toString() ?? '...',
+                                    color: Colors.deepOrange,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildStatChip(
+                                    context,
+                                    '새 단어',
+                                    stats?.newCount.toString() ?? '...',
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildStatChip(
+                                    context,
+                                    '학습 중',
+                                    stats?.learningCount.toString() ?? '...',
+                                    color: Colors.amber.shade800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ),
-                      trailing: IconButton(
-                        icon: Icon(
-                          CupertinoIcons.trash,
-                          color: theme.iconTheme.color?.withOpacity(0.7),
-                        ),
-                        onPressed: () => _confirmDelete(context, manager, wordbook),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 );
               },
@@ -279,29 +358,91 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
       padding: const EdgeInsets.all(14),
       onTap: onTap,
       child: Column(
-        children: [icon, const SizedBox(height: 8), Text(label, style: theme.textTheme.bodySmall)],
+        children: [
+          icon,
+          const SizedBox(height: 8),
+          Text(label, style: theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+
+  Future<_WordbookStatsSnapshot> _statsFutureFor(WordbookManager manager, Wordbook wordbook) {
+    final key = wordbook.id ?? wordbook.dbFileName;
+    return _statsFutures.putIfAbsent(key, () async {
+      final words = await manager.getAllWordsFrom(wordbook);
+      final plan = _srsService.buildDailyPlan(words);
+      return _WordbookStatsSnapshot(
+        totalWords: words.length,
+        dueCount: plan.dueWords.length,
+        newCount: plan.newWords.length,
+        learningCount: plan.learningWords.length,
+      );
+    });
+  }
+
+  Widget _buildStatChip(
+    BuildContext context,
+    String label,
+    String value, {
+    Color? color,
+  }) {
+    final theme = Theme.of(context);
+    final accent = color ?? theme.colorScheme.primary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: accent,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   void _confirmDelete(BuildContext context, WordbookManager manager, Wordbook wordbook) {
-    showCupertinoDialog(
+    showDialog(
       context: context,
       builder:
-          (_) => CupertinoAlertDialog(
+          (dialogContext) => AlertDialog(
             title: const Text('단어장 삭제'),
-            content: Text("'${wordbook.name}' 단어장을 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다."),
+            content: Text(
+              "'${wordbook.name}' 단어장을 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
+            ),
             actions: [
-              CupertinoDialogAction(
+              TextButton(
                 child: const Text('취소'),
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => Navigator.of(dialogContext).pop(),
               ),
-              CupertinoDialogAction(
-                isDestructiveAction: true,
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                  foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+                ),
                 child: const Text('삭제'),
                 onPressed: () {
                   manager.deleteWordbook(wordbook);
-                  Navigator.of(context).pop();
+                  Navigator.of(dialogContext).pop();
                 },
               ),
             ],
@@ -317,8 +458,22 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
         return Icon(
           CupertinoIcons.doc_text_fill,
           size: 24,
-          color: theme.textTheme.bodyLarge?.color?.withOpacity(0.9),
+          color: theme.textTheme.bodyLarge?.color?.withValues(alpha: 0.9),
         );
     }
   }
+}
+
+class _WordbookStatsSnapshot {
+  final int totalWords;
+  final int dueCount;
+  final int newCount;
+  final int learningCount;
+
+  const _WordbookStatsSnapshot({
+    required this.totalWords,
+    required this.dueCount,
+    required this.newCount,
+    required this.learningCount,
+  });
 }

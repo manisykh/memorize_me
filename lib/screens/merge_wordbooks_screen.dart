@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/wordbook_model.dart';
@@ -14,7 +13,7 @@ class MergeWordbooksScreen extends StatefulWidget {
 class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
   final Set<int> _selectedWordbookIds = {};
 
-  void _onMerge() {
+  Future<void> _onMerge() async {
     if (_selectedWordbookIds.length < 2) {
       ScaffoldMessenger.of(
         context,
@@ -23,43 +22,40 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
     }
 
     final nameController = TextEditingController();
-
-    showCupertinoDialog(
+    final newName = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
-        return CupertinoAlertDialog(
+        return AlertDialog(
           title: const Text('새 단어장 이름 입력'),
-          content: Padding(
-            padding: const EdgeInsets.only(top: 16.0),
-            child: CupertinoTextField(
-              controller: nameController,
-              placeholder: '병합된 단어장의 이름을 입력하세요',
-              autofocus: true,
+          content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              labelText: '새 단어장 이름',
+              hintText: '병합된 단어장의 이름을 입력하세요',
             ),
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
           ),
           actions: [
-            CupertinoDialogAction(
+            TextButton(
               child: const Text('취소'),
               onPressed: () => Navigator.pop(dialogContext),
             ),
-            CupertinoDialogAction(
-              isDefaultAction: true,
+            FilledButton(
               child: const Text('병합'),
-              onPressed: () {
-                final newName = nameController.text.trim();
-                if (newName.isNotEmpty) {
-                  Navigator.pop(dialogContext);
-                  context.read<WordbookManager>().mergeWordbooks(
-                    _selectedWordbookIds,
-                    newName,
-                    context,
-                  );
-                }
-              },
+              onPressed: () => Navigator.pop(dialogContext, nameController.text.trim()),
             ),
           ],
         );
       },
+    );
+    nameController.dispose();
+    if (!mounted || newName == null || newName.isEmpty) return;
+    context.read<WordbookManager>().mergeWordbooks(
+      _selectedWordbookIds,
+      newName,
+      context,
     );
   }
 

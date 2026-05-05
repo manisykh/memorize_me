@@ -15,7 +15,7 @@ Future<List<Word>> _getAllWordsInBackground(Map<String, dynamic> params) async {
   BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
   Directory documentsDirectory = await getApplicationDocumentsDirectory();
   String path = p.join(documentsDirectory.path, dbFileName);
-  final db = await openDatabase(path);
+  final db = await openDatabase(path, singleInstance: false);
   final List<Map<String, dynamic>> maps = await db.query('words', orderBy: 'id DESC');
   await db.close();
   return List.generate(maps.length, (i) => Word.fromMap(maps[i]));
@@ -23,7 +23,6 @@ Future<List<Word>> _getAllWordsInBackground(Map<String, dynamic> params) async {
 
 class DatabaseService {
   Database? _metaDb;
-  final Map<String, Database> _openedWordDbs = {};
 
   Future<Database> get _metaDatabase async {
     if (_metaDb != null) return _metaDb!;
@@ -145,6 +144,7 @@ class DatabaseService {
     String path = p.join(documentsDirectory.path, dbFileName);
     return await openDatabase(
       path,
+      singleInstance: false,
       version: 5, // ▼▼▼ [수정] DB 버전 5로 변경
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE words(

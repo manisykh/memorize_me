@@ -61,10 +61,13 @@ class WordListNotifier extends ChangeNotifier {
         _words.where((w) => w.exampleSentence == null || w.exampleSentence!.isEmpty).toList();
     if (wordsToUpdate.isEmpty) return;
 
-    final sentenceMap = await aiService.generateSentencesForWords(
+    final fallbackResult = await aiService.generateSentencesForWordsWithFallback(
       wordsToUpdate,
-      aiSettings.selectedModel,
+      aiSettings.requestOptions(
+        fallbackEnabled: aiSettings.autoFallbackEnabled,
+      ),
     );
+    final sentenceMap = fallbackResult.value;
 
     for (final word in wordsToUpdate) {
       if (sentenceMap.containsKey(word.word)) {

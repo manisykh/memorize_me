@@ -71,7 +71,9 @@ class TtsService {
               v['name']!.toLowerCase().contains(keyword) ||
               (v['gender'] != null && v['gender']!.toLowerCase() == keyword),
         );
-      } catch (e) {}
+      } catch (_) {
+        // 해당 키워드와 맞는 음성이 없으면 다음 키워드로 계속 탐색합니다.
+      }
     }
     return null;
   }

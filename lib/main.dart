@@ -9,7 +9,7 @@ import 'providers/settings_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/word_list_provider.dart';
 import 'providers/wordbook_manager.dart';
-import 'screens/home_screen.dart';
+import 'screens/app_shell_screen.dart';
 import 'services/ai_service.dart';
 import 'services/api_key_service.dart';
 import 'services/csv_service.dart';
@@ -140,7 +140,7 @@ class _AppInitializerState extends State<AppInitializer> {
               body: Center(child: Text('앱 초기화 실패:\n${snapshot.error}')),
             );
           }
-          return const HomeScreen();
+          return const AppShellScreen();
         }
         return Scaffold(
           backgroundColor: Colors.transparent,

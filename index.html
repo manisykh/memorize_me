@@ -1,0 +1,2338 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>올인원 퀴즈 (AI 영단어 + AI 동사 변형)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        /* 기본 폰트 설정 및 배경 스타일 */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+        }
+        
+        /* 탭 스타일 */
+        .tab-button {
+            transition: all 0.2s;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            border-bottom: 4px solid transparent;
+            color: #4b5563; 
+        }
+        .tab-button:hover {
+            background-color: #f3f4f6;
+        }
+        .tab-button.active {
+            color: #4f46e5;
+            border-bottom-color: #4f46e5;
+        }
+        .quiz-tab-content {
+            display: none; 
+        }
+        .quiz-tab-content.active {
+            display: block; 
+        }
+
+        /* 옵션 버튼 스타일 */
+        .option-button {
+            transition: all 0.1s;
+            cursor: pointer;
+        }
+        .option-button:hover:not(:disabled) {
+            background-color: #eee;
+        }
+        .selected {
+            background-color: #3b82f6; 
+            border-color: #2563eb; 
+            color: white;
+            font-weight: 600; 
+        }
+        /* 깜빡이는 애니메이션 */
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .blinking {
+            animation: blink 0.5s step-end infinite;
+        }
+        
+        /* [수정] 타이머 고정 (Sticky Header) 스타일 */
+        .sticky-header {
+            position: sticky;
+            top: 0;
+            z-index: 10; 
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            /* border-radius-b 제거 (API 창과 연결) */
+        }
+        /* 해설 영역 스타일 */
+        .rationale-text {
+            border-left: 4px solid #f59e0b;
+            background-color: #fffbeb; 
+            padding: 1rem;
+            margin-top: 0.75rem;
+            border-radius: 0 0.5rem 0.5rem 0;
+            font-style: italic;
+            color: #4b5563; 
+        }
+        /* 로딩 스피너 (버튼용) */
+        .loader {
+            width: 18px;
+            height: 18px;
+            border: 2px solid #FFF;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+        #vocab-generate-quiz-button .loader, #verb-generate-quiz-button .loader {
+             margin-right: 8px;
+        }
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* 동사 변형 검토 영역 스타일 */
+        .verb-review-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        .verb-review-grid label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #4b5563;
+            padding-left: 0.25rem;
+        }
+        .verb-review-grid input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #d1d5db; 
+            border-radius: 0.375rem; 
+            font-size: 0.875rem; 
+        }
+
+        /* [추가] 모드 전환 서브 탭 스타일 (AI모드 / 수동모드) */
+        .mode-toggle-container {
+            background-color: #e0e7ff; /* indigo-100 */
+            padding: 0.25rem;
+            border-radius: 0.5rem;
+            display: flex;
+            margin-bottom: 1.5rem;
+        }
+        .mode-toggle-btn {
+            flex: 1;
+            padding: 0.5rem;
+            text-align: center;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #4b5563;
+            transition: all 0.2s;
+        }
+        .mode-toggle-btn.active {
+            background-color: white;
+            color: #4f46e5; /* indigo-600 */
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        /* 인쇄용 스타일 */
+        @media print {
+            body {
+                font-family: 'Inter', sans-serif;
+                background-color: #fff;
+            }
+            .no-print {
+                display: none;
+            }
+            .question-block-print {
+                page-break-inside: avoid;
+                margin-bottom: 1.5rem;
+                border-bottom: 1px solid #ccc;
+                padding-bottom: 1rem;
+            }
+            .answer-key, .rationale-key {
+                display: block !important; 
+                margin-top: 0.5rem;
+                font-size: 0.9rem;
+            }
+            .answer-key { color: #d9534f; font-weight: bold; }
+            .rationale-key { color: #0275d8; font-style: italic; }
+            
+            #tab-navigation, .sticky-header, #shared-api-key-area {
+                display: none;
+            }
+            .quiz-tab-content {
+                display: block !important; 
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+
+    <div id="tab-navigation" class="w-full max-w-2xl bg-white rounded-t-xl shadow-lg flex justify-center no-print">
+        <button id="tab-vocab" onclick="switchTab('vocab')" class="tab-button active">
+            <i data-lucide="brain-circuit" class="inline-block h-5 w-5 mr-1"></i> AI 영단어
+        </button>
+        <button id="tab-verbs" onclick="switchTab('verbs')" class="tab-button">
+            <i data-lucide="list-collapse" class="inline-block h-5 w-5 mr-1"></i> AI 동사 변형
+        </button>
+    </div>
+
+    <div id="score-timer-summary" class="w-full max-w-2xl bg-gray-100 p-4 flex justify-between items-center sticky-header no-print">
+        <p class="text-lg font-bold text-gray-700"><span id="current-quiz-type-display">AI 영단어</span></p>
+        <p class="text-lg font-bold text-gray-700">최고 점수: <span id="high-score-display" class="text-green-600">0</span></p>
+        <div class="flex items-center space-x-2">
+            <i data-lucide="clock" class="h-6 w-6 text-red-500"></i>
+            <p class="text-xl font-extrabold text-red-600" id="timer-display">00:00</p>
+        </div>
+        <p class="text-lg font-bold text-gray-700">총 문항 수: <span id="total-questions-display" class="text-indigo-600">0</span></p>
+    </div>
+
+    <div id="shared-api-key-area" class="w-full max-w-2xl bg-white shadow-lg p-6 space-y-4 mb-6 no-print" style="border-radius: 0 0 1rem 1rem;">
+        <label for="api-key-input" class="block text-sm font-bold text-gray-700">Google AI API 키 (공통)</label>
+        <input type="password" id="api-key-input" class="w-full p-3 border border-gray-400 rounded-lg text-sm shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="API 키를 여기에 붙여넣으세요">
+        <div class="flex justify-between items-center">
+            <div class="flex items-center">
+                <input type="checkbox" id="save-key-checkbox" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                <label for="save-key-checkbox" class="ml-2 block text-sm text-gray-900">API 키 저장 (브라우저에만 저장됩니다)</label>
+            </div>
+            <p class="text-xs text-gray-500">
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-600 hover:underline">Google AI Studio</a>에서 키 발급
+            </p>
+        </div>
+    </div>
+
+
+    <div class="w-full max-w-2xl">
+        <div id="vocab-quiz-app" class="quiz-tab-content active w-full bg-white rounded-xl shadow-2xl p-6 space-y-8">
+            <h1 class="text-3xl font-extrabold text-center text-indigo-700">영단어 시험</h1>
+            <div id="auth-status" class="text-xs text-center text-gray-500 mb-4">인증 및 데이터 로딩 중...</div>
+
+            <div id="vocab-setup-container" class="space-y-6 p-6 border-2 border-indigo-300 rounded-xl bg-indigo-50">
+                
+                <div class="mode-toggle-container">
+                    <button onclick="switchVocabMode('ai')" id="vocab-mode-ai" class="mode-toggle-btn active">AI 자동 생성</button>
+                    <button onclick="switchVocabMode('manual')" id="vocab-mode-manual" class="mode-toggle-btn">직접 입력 / 엑셀</button>
+                </div>
+
+                <div id="vocab-input-ai" class="space-y-4">
+                    <label for="vocab-word-list-input" class="block text-lg font-bold text-center text-indigo-800 mb-2">단어 목록 붙여넣기</label>
+                    <p class="text-sm text-center text-gray-600 mb-3">
+                        AI가 문제를 생성할 단어 목록을 입력하세요.<br>
+                        (한 줄에 한 단어씩, 5단어 이상 권장)
+                    </p>
+                    <textarea id="vocab-word-list-input" rows="8" class="w-full p-3 border border-indigo-400 rounded-lg text-sm shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="apple
+banana
+concentrate
+research
+system"></textarea>
+
+                    <button id="vocab-generate-quiz-button" onclick="handleGenerateVocabQuiz()" class="w-full py-3 bg-blue-600 text-white font-extrabold text-lg rounded-lg shadow-lg hover:bg-blue-700 transition-colors flex justify-center items-center">
+                        <i data-lucide="brain-circuit" class="inline-block h-6 w-6 mr-2"></i>
+                        <span id="vocab-generate-button-text">AI 문제 생성</span>
+                    </button>
+                    
+                    <p id="vocab-ai-feedback" class="text-center text-sm text-indigo-600 font-medium min-h-[20px]"></p>
+                </div>
+
+                <div id="vocab-input-manual" class="space-y-6 hidden">
+                    <div class="bg-white p-4 rounded-lg border border-indigo-200 shadow-sm">
+                        <h4 class="font-bold text-indigo-800 mb-2 flex items-center">
+                            <i data-lucide="file-spreadsheet" class="w-5 h-5 mr-2 text-green-600"></i>엑셀 파일 업로드
+                        </h4>
+                        <input type="file" id="excel-upload" accept=".xlsx, .xls" onchange="handleExcelUpload(event)" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"/>
+                        <p class="text-xs text-gray-500 mt-2">
+                            * 엑셀 양식: A열(단어), B열(영영정의), C열(해설-선택사항)
+                        </p>
+                    </div>
+
+                    <div class="relative flex py-2 items-center">
+                        <div class="flex-grow border-t border-gray-300"></div>
+                        <span class="flex-shrink-0 mx-4 text-gray-400 text-xs">또는 직접 하나씩 추가</span>
+                        <div class="flex-grow border-t border-gray-300"></div>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-lg border border-indigo-200 shadow-sm space-y-3">
+                        <h4 class="font-bold text-indigo-800 mb-2">문제 직접 추가</h4>
+                        <input type="text" id="manual-word" placeholder="단어 (예: apple)" class="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <input type="text" id="manual-def" placeholder="영영 정의 (예: A round red fruit)" class="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <input type="text" id="manual-rat" placeholder="해설/뜻 (예: 사과 - 빨간 과일)" class="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <button onclick="addManualVocabItem()" class="w-full py-2 bg-indigo-500 text-white rounded-md font-bold hover:bg-indigo-600 transition-colors">
+                            + 목록에 추가하기
+                        </button>
+                    </div>
+                    
+                    <div class="flex justify-between items-center pt-2 px-1">
+                        <p class="text-sm font-bold text-gray-700">현재 추가된 문제: <span id="manual-count" class="text-indigo-600 text-lg">0</span>개</p>
+                        <button onclick="clearManualList()" class="text-xs text-red-500 underline hover:text-red-700">목록 초기화</button>
+                    </div>
+                </div>
+
+                <div id="vocab-review-area" class="hidden space-y-4 pt-6 border-t-2 border-indigo-200">
+                    <h3 class="text-lg font-bold text-center text-indigo-800">문제 검토 및 수정</h3>
+                    <p class="text-sm text-center text-gray-600">생성되거나 입력된 문제를 확인하고 수정하세요.</p>
+                    
+                    <div id="vocab-review-list" class="space-y-4 max-h-96 overflow-y-auto p-2 bg-indigo-100 rounded-lg">
+                        </div>
+
+                    <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                        <button onclick="exportVocabQuiz('print', false)" class="w-full sm:w-1/2 py-2 bg-gray-600 text-white font-semibold rounded-lg shadow hover:bg-gray-700 transition-colors flex justify-center items-center">
+                            <i data-lucide="printer" class="inline-block h-5 w-5 mr-2"></i>
+                            인쇄 (문제만)
+                        </button>
+                        <button onclick="exportVocabQuiz('print', true)" class="w-full sm:w-1/2 py-2 bg-blue-700 text-white font-semibold rounded-lg shadow hover:bg-blue-800 transition-colors flex justify-center items-center">
+                            <i data-lucide="printer" class="inline-block h-5 w-5 mr-2"></i>
+                            인쇄 (문제+정답)
+                        </button>
+                    </div>
+                    <div class="flex">
+                        <button onclick="exportVocabQuiz('html')" class="w-full py-2 bg-green-600 text-white font-semibold rounded-lg shadow hover:bg-green-700 transition-colors flex justify-center items-center">
+                            <i data-lucide="download" class="inline-block h-5 w-5 mr-2"></i>
+                            HTML (대화형 퀴즈)
+                        </button>
+                    </div>
+                </div>
+
+                <div id="vocab-start-area" class="space-y-4 pt-6 border-t-2 border-indigo-200">
+                    <div class="space-y-2">
+                        <p class="text-lg font-bold text-center text-indigo-800">문제 유형을 선택하세요.</p>
+                        <select id="vocab-question-type-select" class="w-full p-3 border border-indigo-400 rounded-lg text-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm bg-white">
+                            <option value="multiple_choice" selected>객관식 (5지선다)</option>
+                            <option value="fill_in_blank">주관식 (단어 입력)</option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-2 pt-2">
+                        <p class="text-lg font-bold text-center text-indigo-800">시험 제한 시간을 선택하세요.</p>
+                        <select id="vocab-time-select" class="w-full p-3 border border-indigo-400 rounded-lg text-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm">
+                            <option value="5">5분</option>
+                            <option value="10" selected>10분</option>
+                            <option value="15">15분</option>
+                            <option value="20">20분</option>
+                        </select>
+                    </div>
+
+                    <button id="vocab-start-quiz-button" onclick="handleStartVocabQuiz()" class="w-full py-3 bg-indigo-600 text-white font-extrabold text-lg rounded-lg shadow-lg hover:bg-indigo-700 transition-colors flex justify-center items-center disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                        <i data-lucide="play" class="inline-block h-6 w-6 mr-2"></i>
+                        <span id="vocab-start-button-text">문제 목록을 먼저 준비하세요</span>
+                    </button>
+                </div>
+            </div>
+
+
+            <div id="vocab-quiz-container" class="space-y-6 hidden">
+                <p class="text-center text-gray-500 font-medium border-b pb-2">다음 영영 정의를 읽고 알맞은 단어를 고르거나 입력하세요.</p>
+                
+                <div id="vocab-quiz-list" class="space-y-8">
+                    </div>
+
+                <div id="vocab-submission-area" class="pt-8 border-t-2 border-indigo-200 space-y-4 hidden">
+                    <p id="vocab-feedback-message" class="text-center text-xl font-bold min-h-[30px]"></p>
+                    
+                    <button id="vocab-submit-button" class="w-full py-4 bg-indigo-600 text-white font-extrabold text-lg rounded-xl shadow-lg hover:bg-indigo-700 transition-colors" onclick="submitVocabQuiz(false)">
+                        <i data-lucide="check-circle" class="inline-block h-6 w-6 mr-2"></i>
+                        정답 확인 및 채점
+                    </button>
+
+                    <button id="vocab-restart-button" class="w-full py-3 bg-green-600 text-white font-semibold rounded-xl shadow-md hover:bg-green-700 transition-colors hidden" onclick="startVocabSetup()">
+                        <i data-lucide="rotate-ccw" class="inline-block h-5 w-5 mr-2"></i>
+                        시험 다시 시작
+                    </button>
+                </div>
+            </div>
+        </div>
+<div id="verb-quiz-app" class="quiz-tab-content w-full bg-white rounded-xl shadow-2xl p-6 space-y-8">
+            <h1 class="text-3xl font-extrabold text-center text-teal-700">AI 동사 변형 시험</h1>
+            <div class="text-xs text-center text-gray-500 mb-4">공유된 API 키를 사용하여 AI가 생성합니다.</div>
+
+            <div id="verb-setup-container" class="space-y-6 p-6 border-2 border-teal-300 rounded-xl bg-teal-50">
+                
+                <div class="space-y-4">
+                    <label for="verb-word-list-input" class="block text-lg font-bold text-center text-teal-800 mb-2">동사 원형 목록 붙여넣기</label>
+                    <p class="text-sm text-center text-gray-600 mb-3">
+                        AI가 과거형/과거분사형을 생성할 동사 목록을 입력하세요.<br>
+                        (예: go, eat, study, walk ... 5개 이상 권장)
+                    </p>
+                    <textarea id="verb-word-list-input" rows="8" class="w-full p-3 border border-teal-400 rounded-lg text-sm shadow-sm focus:ring-teal-500 focus:border-teal-500" placeholder="go
+eat
+study
+walk
+become"></textarea>
+
+                    <button id="verb-generate-quiz-button" onclick="handleGenerateVerbQuiz()" class="w-full py-3 bg-teal-600 text-white font-extrabold text-lg rounded-lg shadow-lg hover:bg-teal-700 transition-colors flex justify-center items-center">
+                        <i data-lucide="list-collapse" class="inline-block h-6 w-6 mr-2"></i>
+                        <span id="verb-generate-button-text">AI 동사 변형 생성</span>
+                    </button>
+                    
+                    <p id="verb-ai-feedback" class="text-center text-sm text-teal-600 font-medium min-h-[20px]"></p>
+                </div>
+
+                <div id="verb-review-area" class="hidden space-y-4 pt-6 border-t-2 border-teal-200">
+                    <h3 class="text-lg font-bold text-center text-teal-800">AI 생성 동사 변형 검토 및 수정</h3>
+                    <p class="text-sm text-center text-gray-600">AI가 생성한 과거형(Past)과 과거분사형(PP)을 확인하고, 틀린 부분이 있으면 직접 수정하세요.</p>
+                    
+                    <div class="verb-review-grid px-2">
+                        <label>Base (원형)</label>
+                        <label>Past (과거)</label>
+                        <label>PP (과거분사)</label>
+                    </div>
+                    
+                    <div id="verb-review-list" class="space-y-3 max-h-96 overflow-y-auto p-2 bg-teal-100 rounded-lg">
+                        </div>
+
+                    <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                        <button onclick="exportVerbQuiz('print', false)" class="w-full sm:w-1/2 py-2 bg-gray-600 text-white font-semibold rounded-lg shadow hover:bg-gray-700 transition-colors flex justify-center items-center">
+                            <i data-lucide="printer" class="inline-block h-5 w-5 mr-2"></i>
+                            인쇄 (문제만)
+                        </button>
+                        <button onclick="exportVerbQuiz('print', true)" class="w-full sm:w-1/2 py-2 bg-blue-700 text-white font-semibold rounded-lg shadow hover:bg-blue-800 transition-colors flex justify-center items-center">
+                            <i data-lucide="printer" class="inline-block h-5 w-5 mr-2"></i>
+                            인쇄 (문제+정답)
+                        </button>
+                    </div>
+                    <div class="flex">
+                        <button onclick="exportVerbQuiz('html')" class="w-full py-2 bg-green-600 text-white font-semibold rounded-lg shadow hover:bg-green-700 transition-colors flex justify-center items-center">
+                            <i data-lucide="download" class="inline-block h-5 w-5 mr-2"></i>
+                            HTML (대화형 퀴즈)
+                        </button>
+                    </div>
+                </div>
+
+                <div id="verb-start-area" class="space-y-4 pt-6 border-t-2 border-teal-200">
+                    <div class="space-y-2">
+                        <p class="text-lg font-bold text-center text-teal-800">문제 유형을 선택하세요.</p>
+                        <select id="verb-question-type-select" class="w-full p-3 border border-teal-400 rounded-lg text-lg focus:ring-teal-500 focus:border-teal-500 shadow-sm">
+                            <option value="mixed" selected>객관식 + 주관식 (혼합)</option>
+                            <option value="multiple_choice">객관식 (4지선다)</option>
+                            <option value="fill_in_blank">주관식 (빈칸 채우기)</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2 pt-4">
+                        <p class="text-lg font-bold text-center text-teal-800">시험 제한 시간을 선택하세요.</p>
+                        <select id="verb-time-select" class="w-full p-3 border border-teal-400 rounded-lg text-lg focus:ring-teal-500 focus:border-teal-500 shadow-sm">
+                            <option value="5">5분</option>
+                            <option value="10" selected>10분</option>
+                            <option value="15">15분</option>
+                            <option value="20">20분</option>
+                        </select>
+                    </div>
+                    <button id="verb-start-quiz-button" onclick="handleStartVerbQuiz()" class="w-full py-3 bg-teal-600 text-white font-extrabold text-lg rounded-lg shadow-lg hover:bg-teal-700 transition-colors flex justify-center items-center disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                        <i data-lucide="play" class="inline-block h-6 w-6 mr-2"></i>
+                        <span id="verb-start-button-text">AI로 동사 변형을 먼저 생성하세요</span>
+                    </button>
+                </div>
+            </div>
+
+
+            <div id="verb-quiz-container" class="space-y-6 hidden">
+                <p class="text-center text-gray-500 font-medium border-b pb-2">다음 동사의 올바른 과거형(Past)과 과거분사형(Past Participle)을 입력하거나 고르세요.</p>
+                
+                <div id="verb-quiz-list" class="space-y-8">
+                    </div>
+
+                <div id="verb-submission-area" class="pt-8 border-t-2 border-teal-200 space-y-4 hidden">
+                    <p id="verb-feedback-message" class="text-center text-xl font-bold min-h-[30px]"></p>
+                    
+                    <button id="verb-submit-button" class="w-full py-4 bg-teal-600 text-white font-extrabold text-lg rounded-xl shadow-lg hover:bg-teal-700 transition-colors" onclick="submitVerbQuiz(false)">
+                        <i data-lucide="check-circle" class="inline-block h-6 w-6 mr-2"></i>
+                        정답 확인 및 채점
+                    </button>
+
+                    <button id="verb-restart-button" class="w-full py-3 bg-green-600 text-white font-semibold rounded-xl shadow-md hover:bg-green-700 transition-colors hidden" onclick="startVerbSetup()">
+                        <i data-lucide="rotate-ccw" class="inline-block h-5 w-5 mr-2"></i>
+                        시험 다시 시작
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div> 
+    
+    <div id="loading-spinner" class="flex justify-center items-center py-8">
+        <svg class="animate-spin -ml-1 mr-3 h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span class="text-indigo-600 font-medium">퀴즈 준비 중...</span>
+    </div>
+
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase 설정 및 전역 변수 초기화
+        let app;
+        let db;
+        let auth;
+        let userId = 'anonymous'; 
+
+        // Firestore 전역 변수를 window 객체에 연결
+        window.db = db;
+        window.auth = auth;
+        window.userId = userId;
+
+        // 필수 전역 변수 로드
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // [수정] 최고 점수를 객체로 관리
+        window.highScores = {
+            vocab: 0,
+            verbs: 0
+        };
+        // [신규] 현재 활성화된 퀴즈 타입
+        window.currentQuizType = 'vocab'; // 'vocab' 또는 'verbs'
+
+        if (firebaseConfig) {
+            try {
+                // Firebase 초기화
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                // setLogLevel('Debug'); // 디버그 로깅
+
+                window.db = db; // 전역 변수 업데이트
+
+                const authStatusEl = document.getElementById('auth-status');
+                
+                // 인증 상태 변경 리스너
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        window.userId = user.uid;
+                        authStatusEl.textContent = `사용자 ID: ${user.uid.substring(0, 8)}... (인증됨)`;
+                        // [수정] 두 종류의 최고 점수를 모두 로드
+                        window.loadHighScore('vocab', user.uid);
+                        window.loadHighScore('verbs', user.uid);
+                    } else {
+                        window.userId = crypto.randomUUID();
+                        authStatusEl.textContent = '익명 사용자 모드입니다.';
+                        finishLoading();
+                    }
+                });
+
+                // 사용자 인증
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+            } catch (error) {
+                console.error("Firebase 초기화 또는 인증 오류:", error);
+                document.getElementById('auth-status').textContent = `오류: ${error.message}`;
+                finishLoading();
+            }
+        } else {
+            console.warn("Firebase 설정이 제공되지 않았습니다. 최고 점수 저장이 작동하지 않습니다.");
+            document.getElementById('auth-status').textContent = '데이터 저장이 비활성화되었습니다.';
+            finishLoading();
+        }
+
+        /**
+         * [수정] 특정 퀴즈 타입의 Firestore 최고 점수를 로드합니다.
+         */
+        window.loadHighScore = (quizType, uid) => {
+            if (!window.db) return;
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            
+            // [수정] 퀴즈 타입별 경로 구분
+            const docPath = quizType === 'vocab' 
+                ? `artifacts/${appId}/users/${uid}/vocabulary_quiz_scores/high_score`
+                : `artifacts/${appId}/users/${uid}/ai_verb_scores/high_score`; // [신규] 경로
+            
+            const docRef = doc(window.db, docPath);
+            
+            onSnapshot(docRef, (docSnap) => {
+                const highScore = docSnap.exists() ? docSnap.data().score : 0;
+                window.highScores[quizType] = highScore;
+                
+                // [수정] 현재 활성화된 탭의 최고 점수만 UI에 표시
+                if (window.currentQuizType === quizType) {
+                    document.getElementById('high-score-display').textContent = highScore;
+                }
+                
+                finishLoading(); // 로딩 완료 후 설정 화면 표시
+            }, (error) => {
+                console.error(`${quizType} 최고 점수 로드 중 오류 발생:`, error);
+                if (window.currentQuizType === quizType) {
+                    document.getElementById('high-score-display').textContent = '0 (로드 실패)';
+                }
+                finishLoading();
+            });
+        };
+
+        /**
+         * [수정] Firestore에 새 최고 점수를 저장합니다.
+         */
+        window.saveHighScore = async (quizType, newScore) => {
+            if (!window.db || !window.userId || newScore <= window.highScores[quizType]) {
+                return;
+            }
+
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            // [수정] 퀴즈 타입별 경로 구분
+            const docPath = quizType === 'vocab' 
+                ? `artifacts/${appId}/users/${uid}/vocabulary_quiz_scores/high_score`
+                : `artifacts/${appId}/users/${uid}/ai_verb_scores/high_score`; // [신규] 경로
+
+            const docRef = doc(window.db, docPath);
+
+            try {
+                await setDoc(docRef, { score: newScore, lastUpdated: new Date().toISOString() }, { merge: true });
+                console.log(`${quizType} 최고 점수 저장 완료:`, newScore);
+            } catch (error) {
+                console.error(`${quizType} 최고 점수 저장 오류:`, error);
+                const feedbackEl = document.getElementById(`${quizType}-feedback-message`);
+                if (feedbackEl) {
+                    feedbackEl.textContent = '최고 점수 저장에 실패했습니다.';
+                    feedbackEl.className = 'text-center text-xl font-bold text-red-500 min-h-[30px]';
+                }
+            }
+        };
+
+        // [신규] 로딩 완료 처리 (중복 호출 방지)
+        let isLoadingFinished = false;
+        function finishLoading() {
+            if (isLoadingFinished) return;
+            isLoadingFinished = true;
+            
+            document.getElementById('loading-spinner').classList.add('hidden');
+            document.getElementById('score-timer-summary').classList.remove('hidden');
+            
+            // [수정] 기본 탭(AI 영단어)의 설정 화면 표시
+            window.startVocabSetup(); 
+            // [신규] 불규칙 동사 탭도 초기화
+            window.startVerbSetup();
+            
+            // [신규] 탭 활성화 (기본값)
+            window.switchTab('vocab');
+        }
+
+    </script>
+    <script>
+        // --- 퀴즈 로직 및 타이머 시작 ---
+
+        // =====================================================================
+        // 전역 변수 설정
+        // =====================================================================
+        
+        // 1. 공통 타이머 변수
+        let timerInterval = null;
+        let totalTimeSeconds = 0; 
+        let currentTimerType = null; // 'vocab' 또는 'verbs'
+        
+        // 2. 영단어 퀴즈 (Vocab) 변수
+        let vocab_vocabulary = [];
+        let vocab_quizWords = []; 
+        let vocab_userAnswers = {};
+        let vocab_isSubmitted = false;
+        let vocab_TOTAL_QUESTIONS = 0; 
+        let vocab_questionType = 'multiple_choice'; // [추가] 'multiple_choice' or 'fill_in_blank'
+
+        // 3. AI 동사 변형 퀴즈 (Verb) 변수
+        let verb_vocabulary = []; 
+        let verb_quizWords = []; 
+        let verb_userAnswers = {}; 
+        let verb_isSubmitted = false;
+        let verb_TOTAL_QUESTIONS = 0;
+        let verb_questionType = 'mixed'; 
+
+
+        // =====================================================================
+        // 탭 전환 및 공통 헬퍼 함수
+        // =====================================================================
+
+        window.switchTab = (tabType) => {
+            if (timerInterval) {
+                alert("퀴즈가 진행 중입니다. 탭을 이동하려면 현재 퀴즈를 종료(채점)해주세요.");
+                return;
+            }
+
+            document.getElementById('tab-vocab').classList.toggle('active', tabType === 'vocab');
+            document.getElementById('tab-verbs').classList.toggle('active', tabType === 'verbs');
+
+            document.getElementById('vocab-quiz-app').classList.toggle('active', tabType === 'vocab');
+            document.getElementById('verb-quiz-app').classList.toggle('active', tabType === 'verbs');
+
+            window.currentQuizType = tabType;
+
+            if (tabType === 'vocab') {
+                document.getElementById('current-quiz-type-display').textContent = 'AI 영단어';
+                document.getElementById('high-score-display').textContent = window.highScores.vocab;
+                document.getElementById('total-questions-display').textContent = vocab_TOTAL_QUESTIONS;
+            } else {
+                document.getElementById('current-quiz-type-display').textContent = 'AI 동사 변형';
+                document.getElementById('high-score-display').textContent = window.highScores.verbs;
+                document.getElementById('total-questions-display').textContent = verb_TOTAL_QUESTIONS;
+            }
+            
+            lucide.createIcons();
+        };
+
+        function shuffleArray(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            return str.replace(/[&<>"']/g, function(m) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+            });
+        }
+
+        async function fetchWithRetry(url, options, retries = 3, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.status >= 500) { 
+                        throw new Error(`Server error: ${response.status}`);
+                    }
+                    return response; 
+                } catch (error) {
+                    if (i === retries - 1) throw error; 
+                    console.warn(`API call failed, retrying in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2; 
+                }
+            }
+        }
+
+        function getAndStoreApiKey() {
+            const apiKey = document.getElementById('api-key-input').value;
+            const saveKeyCheckbox = document.getElementById('save-key-checkbox');
+
+            if (!apiKey) {
+                throw new Error("Google AI API 키를 입력하세요.");
+            }
+
+            if (saveKeyCheckbox.checked) {
+                localStorage.setItem('gemini_api_key', apiKey);
+            } else {
+                localStorage.removeItem('gemini_api_key');
+            }
+            return apiKey;
+        }
+
+        // =====================================================================
+        // [추가] 영단어 퀴즈 - 모드 전환 및 데이터 입력 (엑셀/수동)
+        // =====================================================================
+
+        window.switchVocabMode = (mode) => {
+            const isAi = (mode === 'ai');
+            document.getElementById('vocab-mode-ai').classList.toggle('active', isAi);
+            document.getElementById('vocab-mode-manual').classList.toggle('active', !isAi);
+            
+            if (isAi) {
+                document.getElementById('vocab-input-ai').classList.remove('hidden');
+                document.getElementById('vocab-input-manual').classList.add('hidden');
+            } else {
+                document.getElementById('vocab-input-ai').classList.add('hidden');
+                document.getElementById('vocab-input-manual').classList.remove('hidden');
+            }
+        };
+
+        // [추가] 엑셀 파일 업로드 핸들러
+        window.handleExcelUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    // 헤더가 없다고 가정하고 배열의 배열로 가져옴 (A열, B열, C열...)
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+
+                    let addedCount = 0;
+                    
+                    for (let i = 0; i < jsonData.length; i++) {
+                        const row = jsonData[i];
+                        if (!row || row.length < 2) continue; // 최소 단어, 뜻은 있어야 함
+
+                        const word = row[0] ? String(row[0]).trim() : '';
+                        const definition = row[1] ? String(row[1]).trim() : '';
+                        // 해설은 선택 (없으면 뜻으로 대체하거나 비워둠)
+                        const rationale = row[2] ? String(row[2]).trim() : `Meaning: ${definition}`;
+
+                        // 간단한 헤더 감지: 'word'나 '단어'가 포함되어 있으면 건너뜀
+                        if (word.toLowerCase() === 'word' || word === '단어') continue;
+
+                        if (word && definition) {
+                            vocab_vocabulary.push({ word, definition, rationale });
+                            addedCount++;
+                        }
+                    }
+                    
+                    if (addedCount > 0) {
+                        alert(`엑셀 파일에서 ${addedCount}개의 단어를 성공적으로 불러왔습니다.`);
+                        updateManualListDisplay();
+                    } else {
+                        alert("추가할 유효한 단어가 없습니다. (A열: 단어, B열: 정의)");
+                    }
+
+                } catch (error) {
+                    console.error("Excel processing error:", error);
+                    alert("엑셀 파일을 처리하는 중 오류가 발생했습니다. 파일 형식을 확인해주세요.");
+                }
+                // input 초기화
+                event.target.value = '';
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        // [추가] 수동 단어 추가 핸들러
+        window.addManualVocabItem = () => {
+            const wordInput = document.getElementById('manual-word');
+            const defInput = document.getElementById('manual-def');
+            const ratInput = document.getElementById('manual-rat');
+
+            const word = wordInput.value.trim();
+            const definition = defInput.value.trim();
+            const rationale = ratInput.value.trim() || `Meaning: ${definition}`;
+
+            if (!word || !definition) {
+                alert("단어와 영영 정의는 필수 입력 항목입니다.");
+                return;
+            }
+
+            vocab_vocabulary.push({ word, definition, rationale });
+            
+            // 입력창 초기화
+            wordInput.value = '';
+            defInput.value = '';
+            ratInput.value = '';
+            wordInput.focus();
+
+            updateManualListDisplay();
+        };
+
+        // [추가] 수동 목록 초기화
+        window.clearManualList = () => {
+            if (confirm("현재 목록을 모두 비우시겠습니까?")) {
+                vocab_vocabulary = [];
+                updateManualListDisplay();
+            }
+        };
+
+        // [추가] 수동 입력 상태 업데이트 (개수 표시 및 검토 영역 연동)
+        function updateManualListDisplay() {
+            document.getElementById('manual-count').textContent = vocab_vocabulary.length;
+
+            // 목록이 있으면 검토 영역에 표시하고 시작 버튼 활성화
+            if (vocab_vocabulary.length > 0) {
+                populateVocabReviewArea(vocab_vocabulary);
+                document.getElementById('vocab-review-area').classList.remove('hidden');
+                
+                vocab_TOTAL_QUESTIONS = vocab_vocabulary.length;
+                document.getElementById('total-questions-display').textContent = vocab_TOTAL_QUESTIONS;
+                
+                const startBtn = document.getElementById('vocab-start-quiz-button');
+                const startBtnText = document.getElementById('vocab-start-button-text');
+                startBtn.disabled = false;
+                startBtnText.textContent = '설정 완료 및 시험 시작';
+                
+                // AI 피드백 메시지 영역을 빌려 안내
+                const feedbackEl = document.getElementById('vocab-ai-feedback');
+                feedbackEl.textContent = `현재 ${vocab_vocabulary.length}개의 단어가 준비되었습니다.`;
+            } else {
+                document.getElementById('vocab-review-area').classList.add('hidden');
+                const startBtn = document.getElementById('vocab-start-quiz-button');
+                startBtn.disabled = true;
+                document.getElementById('vocab-start-button-text').textContent = '문제 목록을 먼저 준비하세요';
+            }
+        }
+
+
+        // =====================================================================
+        // 1. 영단어 퀴즈 (Vocab) 로직 (AI 생성 + 검토 + 내보내기)
+        // =====================================================================
+
+        window.startVocabSetup = () => {
+            stopTimer(); 
+            vocab_isSubmitted = false;
+            
+            vocab_vocabulary = [];
+            vocab_quizWords = [];
+            vocab_userAnswers = {};
+            vocab_TOTAL_QUESTIONS = 0;
+            
+            if (window.currentQuizType === 'vocab') {
+                document.getElementById('total-questions-display').textContent = '0';
+            }
+
+            document.getElementById('vocab-review-area').classList.add('hidden');
+            document.getElementById('vocab-review-list').innerHTML = '';
+
+            document.getElementById('vocab-setup-container').classList.remove('hidden');
+            document.getElementById('vocab-quiz-container').classList.add('hidden');
+            document.getElementById('vocab-submission-area').classList.add('hidden');
+            document.getElementById('vocab-restart-button').classList.add('hidden');
+            document.getElementById('vocab-submit-button').classList.remove('hidden');
+            document.getElementById('vocab-submit-button').disabled = false;
+            
+            document.getElementById('timer-display').textContent = '00:00';
+            document.getElementById('timer-display').classList.remove('blinking', 'text-red-700');
+            document.getElementById('timer-display').classList.add('text-red-600');
+            
+            document.getElementById('vocab-feedback-message').textContent = '';
+            document.getElementById('vocab-ai-feedback').textContent = '';
+            
+            // [추가] 수동 입력 필드 및 카운트 초기화
+            document.getElementById('manual-word').value = '';
+            document.getElementById('manual-def').value = '';
+            document.getElementById('manual-rat').value = '';
+            document.getElementById('manual-count').textContent = '0';
+
+            const startButton = document.getElementById('vocab-start-quiz-button');
+            const startButtonText = document.getElementById('vocab-start-button-text');
+            startButton.disabled = true;
+            startButtonText.textContent = '문제 목록을 먼저 준비하세요';
+            
+            const genButton = document.getElementById('vocab-generate-quiz-button');
+            const genButtonText = document.getElementById('vocab-generate-button-text');
+            genButton.disabled = false;
+            genButtonText.textContent = 'AI 문제 생성';
+            const genIcon = genButton.querySelector('i[data-lucide="brain-circuit"]');
+            if (genIcon) genIcon.style.display = 'inline-block';
+            const loader = genButton.querySelector('.loader');
+            if (loader) loader.remove();
+
+            const savedKey = localStorage.getItem('gemini_api_key');
+            if (savedKey) {
+                document.getElementById('api-key-input').value = savedKey;
+                document.getElementById('save-key-checkbox').checked = true;
+            }
+        };
+
+        function parseWordListInput(inputText) {
+            return inputText.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+        }
+
+        async function generateVocabDataFromAI(words, apiKey) {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+            const systemPrompt = `You are a helpful assistant that creates vocabulary quiz questions. For each word provided by the user, generate a simple, clear English definition (suitable for a quiz) and a concise rationale (explanation in Korean). Provide the output as a JSON array of objects, where each object has 'word', 'definition', and 'rationale' keys. Ensure the definition is in English and the rationale is in Korean.`;
+            const userQuery = `Generate quiz data for the following words: ${words.join(', ')}`;
+            const responseSchema = {
+                type: "ARRAY",
+                items: {
+                    type: "OBJECT",
+                    properties: {
+                        "word": { "type": "STRING" },
+                        "definition": { "type": "STRING" },
+                        "rationale": { "type": "STRING" }
+                    },
+                    required: ["word", "definition", "rationale"]
+                }
+            };
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
+                }
+            };
+
+            const response = await fetchWithRetry(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`AI API Error ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
+            }
+
+            const result = await response.json();
+            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!text) {
+                throw new Error("AI가 유효한 응답을 생성하지 못했습니다.");
+            }
+            return JSON.parse(text);
+        }
+
+       
+        async function regenerateSingleVocabItem(word, request, apiKey) {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            const systemPrompt = `You are a quiz editor. A user provides a 'word' and a 'request'. You MUST re-generate a new 'definition' (in English) and 'rationale' (in Korean) for that word, strictly following the user's request.
+            Output ONLY a single JSON object with 'definition' and 'rationale' keys.`;
+            
+            const userQuery = `Word: "${word}"\nRequest: "${request}"`;
+
+            const responseSchema = {
+                type: "OBJECT",
+                properties: {
+                    "definition": { "type": "STRING" },
+                    "rationale": { "type": "STRING" }
+                },
+                required: ["definition", "rationale"]
+            };
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
+                }
+            };
+            
+            const response = await fetchWithRetry(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`AI API Error ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
+            }
+
+            const result = await response.json();
+            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) {
+                throw new Error("AI가 유효한 응답을 생성하지 못했습니다.");
+            }
+            return JSON.parse(text);
+        }
+
+        function populateVocabReviewArea(vocabularyData) {
+            const reviewListEl = document.getElementById('vocab-review-list');
+            reviewListEl.innerHTML = '';
+
+            vocabularyData.forEach((item, index) => {
+                const reviewId = `vocab-review-item-${index}`;
+                const itemEl = document.createElement('div');
+                itemEl.className = 'p-3 bg-white border border-gray-300 rounded-lg shadow-sm space-y-2';
+                itemEl.dataset.index = index;
+
+                itemEl.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <label for="${reviewId}-word" class="block text-sm font-bold text-gray-800">단어</label>
+                        <span class="text-xs text-gray-500">#${index + 1}</span>
+                    </div>
+                    <input type="text" id="${reviewId}-word" value="${escapeHTML(item.word)}" class="w-full p-2 border border-gray-300 rounded-md text-sm">
+                    
+                    <label for="${reviewId}-definition" class="block text-sm font-bold text-gray-800 mt-2">영영 정의 (문제)</label>
+                    <textarea id="${reviewId}-definition" rows="3" class="w-full p-2 border border-gray-300 rounded-md text-sm">${escapeHTML(item.definition)}</textarea>
+                    
+                    <label for="${reviewId}-rationale" class="block text-sm font-bold text-gray-800 mt-2">해설 (채점 시 표시)</label>
+                    <textarea id="${reviewId}-rationale" rows="2" class="w-full p-2 border border-gray-300 rounded-md text-sm">${escapeHTML(item.rationale)}</textarea>
+
+                    <div id="${reviewId}-regen-wrapper" class="hidden space-y-2 mt-2 pt-2 border-t border-blue-200">
+                        <label for="${reviewId}-request" class="block text-xs font-bold text-blue-700">AI 수정 요청:</label>
+                        <textarea id="${reviewId}-request" rows="2" class="w-full p-2 border-blue-300 rounded-md text-sm" placeholder="예: 이 정의를 더 쉽게 바꿔줘"></textarea>
+                        <button id="${reviewId}-regen-submit" onclick="handleRegenerateVocabItem(${index})" class="w-full py-1 bg-blue-500 text-white text-sm font-semibold rounded hover:bg-blue-600 flex justify-center items-center">
+                            <span class="loader hidden mr-2"></span>
+                            <span>이 문제만 AI로 다시 생성</span>
+                        </button>
+                    </div>
+                    <button id="${reviewId}-regen-toggle" onclick="toggleVocabRegenUI(${index})" class="w-full mt-2 py-1 bg-gray-200 text-gray-700 text-xs font-semibold rounded hover:bg-gray-300">
+                        AI로 이 문제 수정...
+                    </button>
+                `;
+                reviewListEl.appendChild(itemEl);
+            });
+        }
+
+        function toggleVocabRegenUI(index) {
+            const reviewId = `vocab-review-item-${index}`;
+            const wrapper = document.getElementById(`${reviewId}-regen-wrapper`);
+            const toggleBtn = document.getElementById(`${reviewId}-regen-toggle`);
+            const isHidden = wrapper.classList.contains('hidden');
+            
+            if (isHidden) {
+                wrapper.classList.remove('hidden');
+                toggleBtn.textContent = 'AI 수정 닫기';
+            } else {
+                wrapper.classList.add('hidden');
+                toggleBtn.textContent = 'AI로 이 문제 수정...';
+            }
+        }
+
+        async function handleRegenerateVocabItem(index) {
+            const reviewId = `vocab-review-item-${index}`;
+            const submitBtn = document.getElementById(`${reviewId}-regen-submit`);
+            const loader = submitBtn.querySelector('.loader');
+            const btnText = submitBtn.querySelector('span:not(.loader)');
+            
+            const word = document.getElementById(`${reviewId}-word`).value;
+            const request = document.getElementById(`${reviewId}-request`).value;
+            
+            let apiKey;
+            try {
+                apiKey = getAndStoreApiKey(); 
+            } catch (error) {
+                alert(error.message);
+                return;
+            }
+
+            if (!request) {
+                alert("수정 요청 사항을 입력하세요.");
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            loader.classList.remove('hidden');
+            btnText.textContent = 'AI 생성 중...';
+
+            try {
+                const { definition, rationale } = await regenerateSingleVocabItem(word, request, apiKey);
+                document.getElementById(`${reviewId}-definition`).value = definition;
+                document.getElementById(`${reviewId}-rationale`).value = rationale;
+                toggleVocabRegenUI(index); 
+                document.getElementById(`${reviewId}-request`).value = '';
+            } catch (error) {
+                console.error("Item regeneration failed:", error);
+                alert(`개별 항목 생성 오류: ${error.message}`);
+            } finally {
+                submitBtn.disabled = false;
+                loader.classList.add('hidden');
+                btnText.textContent = '이 문제만 AI로 다시 생성';
+            }
+        }
+
+        function saveEditsFromVocabReviewArea() {
+            const reviewItems = document.querySelectorAll('#vocab-review-list > div');
+            const newVocabulary = [];
+            
+            reviewItems.forEach(itemEl => {
+                const index = itemEl.dataset.index;
+                const reviewId = `vocab-review-item-${index}`;
+                
+                const word = document.getElementById(`${reviewId}-word`).value;
+                const definition = document.getElementById(`${reviewId}-definition`).value;
+                const rationale = document.getElementById(`${reviewId}-rationale`).value;
+                
+                if (word && definition) {
+                    newVocabulary.push({ word, definition, rationale });
+                }
+            });
+
+            if (newVocabulary.length === 0) {
+                console.error("저장 중 오류: 수정된 단어 목록이 비어있습니다.");
+                return false; 
+            }
+
+            vocab_vocabulary = newVocabulary;
+            vocab_quizWords = shuffleArray(vocab_vocabulary); 
+            vocab_TOTAL_QUESTIONS = vocab_vocabulary.length;
+            
+            if (window.currentQuizType === 'vocab') {
+                document.getElementById('total-questions-display').textContent = vocab_TOTAL_QUESTIONS;
+            }
+            
+            console.log("수정된 퀴즈 데이터 저장 완료:", vocab_vocabulary);
+            return true;
+        }
+
+        // 4. [수정] 내보내기 함수: 인쇄 및 대화형 HTML 저장 기능 (주관식/객관식 모두 지원)
+        window.exportVocabQuiz = (type, includeAnswers = false) => {
+            if (!saveEditsFromVocabReviewArea()) {
+                alert("내보낼 퀴즈 데이터가 없습니다. 먼저 문제를 생성하거나 추가해주세요.");
+                return;
+            }
+            
+            // 현재 설정된 문제 유형과 시간, 데이터 가져오기
+            const currentType = document.getElementById('vocab-question-type-select').value; // 'multiple_choice' or 'fill_in_blank'
+            const timeSelect = document.getElementById('vocab-time-select');
+            const selectedTimeMinutes = parseInt(timeSelect.value, 10);
+            const allWords = vocab_vocabulary.map(v => v.word);
+
+            // ----------------------------------------------------------------
+            // Case A: 인쇄용 (Print / PDF)
+            // ----------------------------------------------------------------
+            if (type === 'print') {
+                const answerDisplay = includeAnswers ? 'block' : 'none';
+                const typeLabel = currentType === 'fill_in_blank' ? '주관식' : '객관식';
+                
+                let quizHtml = `
+                <!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>영단어 퀴즈</title>
+                <style> 
+                    body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; }
+                    .header { text-align: center; border-bottom: 2px solid #333; margin-bottom: 30px; padding-bottom: 10px; }
+                    .question-block { margin-bottom: 25px; page-break-inside: avoid; }
+                    .def { font-weight: bold; font-size: 1.1em; margin-bottom: 10px; }
+                    .options { list-style: none; padding: 0; margin-top: 5px; }
+                    .options li { display: inline-block; margin-right: 20px; margin-bottom: 5px; }
+                    .blank-line { display: inline-block; border-bottom: 1px solid #000; width: 150px; height: 1.2em; vertical-align: bottom; }
+                    .answer-section { margin-top: 10px; color: #d9534f; display: ${answerDisplay}; font-size: 0.95em; background: #f9f9f9; padding: 10px; border-radius: 5px; }
+                    .rationale { color: #0275d8; font-style: italic; display: block; margin-top: 5px; }
+                    @media print { .no-print { display: none; } button { display: none; } }
+                </style></head><body>
+                <div class="header">
+                    <h1>영단어 퀴즈 (${typeLabel})</h1>
+                    <p>문항 수: ${vocab_quizWords.length}문항 | 제한 시간: ${selectedTimeMinutes}분</p>
+                </div>
+                <div class="no-print" style="text-align:center; margin-bottom:20px;">
+                    <button onclick="window.print()" style="padding:10px 20px; cursor:pointer; background:#4f46e5; color:white; border:none; border-radius:5px; font-weight:bold;">인쇄 / PDF 저장</button>
+                    ${includeAnswers ? '<button onclick="toggleAnswers()" style="padding:10px 20px; cursor:pointer; background:#6b7280; color:white; border:none; border-radius:5px; margin-left:10px;">정답 숨기기/보기</button>' : ''}
+                </div>`;
+
+                vocab_quizWords.forEach((wordObj, index) => {
+                    quizHtml += `<div class="question-block">
+                        <div class="def">${index + 1}. ${escapeHTML(wordObj.definition)}</div>`;
+                    
+                    if (currentType === 'fill_in_blank') {
+                        quizHtml += `<div>답: <div class="blank-line"></div></div>`;
+                    } else {
+                        const distractors = shuffleArray(allWords.filter(word => word !== wordObj.word));
+                        const options = shuffleArray([wordObj.word, ...distractors.slice(0, 4)]);
+                        quizHtml += `<ul class="options">${options.map((opt, i) => `<li>(${String.fromCharCode(65+i)}) ${escapeHTML(opt)}</li>`).join('')}</ul>`;
+                    }
+                    
+                    if (includeAnswers) {
+                        quizHtml += `<div class="answer-section" id="ans-${index}">
+                            <strong>정답: ${escapeHTML(wordObj.word)}</strong>
+                            <span class="rationale">해설: ${escapeHTML(wordObj.rationale)}</span>
+                        </div>`;
+                    }
+                    quizHtml += `</div>`;
+                });
+                
+                quizHtml += `
+                <script>
+                    function toggleAnswers() { 
+                        document.querySelectorAll('.answer-section').forEach(el => { 
+                            el.style.display = el.style.display === 'none' ? 'block' : 'none'; 
+                        }); 
+                    } 
+                <\/script></body></html>`;
+                
+                const win = window.open('', '_blank'); 
+                win.document.write(quizHtml); 
+                win.document.close();
+            } 
+            // ----------------------------------------------------------------
+            // Case B: 대화형 HTML 저장 (Interactive) - [수정됨]
+            // ----------------------------------------------------------------
+            else if (type === 'html') {
+                // 내보낼 HTML 템플릿 생성
+                const interactiveHtml = `
+                <!DOCTYPE html><html lang="ko">
+                <head>
+                    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>영단어 퀴즈 (${currentType === 'fill_in_blank' ? '주관식' : '객관식'})</title>
+                    <script src="https://cdn.tailwindcss.com"><\/script>
+                    <script src="https://unpkg.com/lucide@latest"><\/script>
+                    <style>
+                        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+                        .option-btn { transition: all 0.2s; cursor: pointer; text-align: left; }
+                        .option-btn:hover:not(:disabled) { background-color: #e5e7eb; }
+                        .selected { background-color: #3b82f6 !important; color: white !important; border-color: #2563eb !important; }
+                        .correct { background-color: #d1fae5 !important; border-color: #10b981 !important; color: #065f46 !important; }
+                        .incorrect { background-color: #fee2e2 !important; border-color: #ef4444 !important; color: #991b1b !important; }
+                        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+                        .blinking { animation: blink 0.5s step-end infinite; }
+                    </style>
+                </head>
+                <body class="min-h-screen flex justify-center p-4">
+                    <div class="w-full max-w-2xl bg-white rounded-xl shadow-xl p-6 space-y-6">
+                        <div class="bg-gray-100 p-4 rounded-lg flex justify-between items-center sticky top-0 z-10 shadow-sm">
+                            <div>
+                                <h1 class="text-xl font-bold text-indigo-700">AI 영단어 퀴즈</h1>
+                                <span class="text-xs font-semibold text-gray-500">${currentType === 'fill_in_blank' ? '주관식 입력' : '객관식 선택'}</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <i data-lucide="clock" class="h-5 w-5 text-red-500"></i>
+                                <span class="text-xl font-mono font-bold text-red-600" id="timer">00:00</span>
+                            </div>
+                        </div>
+
+                        <div id="quiz-list" class="space-y-6"></div>
+
+                        <div class="pt-6 border-t border-gray-200">
+                            <p id="result-msg" class="text-center text-lg font-bold mb-4 h-8"></p>
+                            <button id="submit-btn" onclick="submitQuiz()" class="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition shadow-lg">
+                                정답 확인 및 채점
+                            </button>
+                            <button id="retry-btn" onclick="location.reload()" class="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition shadow-lg hidden">
+                                다시 풀기
+                            </button>
+                        </div>
+                    </div>
+
+                    <script>
+                        // 데이터 및 설정 주입
+                        const quizData = ${JSON.stringify(vocab_quizWords)};
+                        const allWords = ${JSON.stringify(allWords)};
+                        const questionType = "${currentType}";
+                        const totalTime = ${selectedTimeMinutes * 60};
+                        
+                        let timerInterval;
+                        let timeLeft = totalTime;
+                        let userAnswers = {};
+                        let isSubmitted = false;
+
+                        // 셔플 함수
+                        function shuffle(arr) { return arr.sort(() => Math.random() - 0.5); }
+
+                        // 초기화 및 렌더링
+                        window.onload = function() {
+                            lucide.createIcons();
+                            renderQuiz();
+                            startTimer();
+                        };
+
+                        function renderQuiz() {
+                            const list = document.getElementById('quiz-list');
+                            quizData.forEach((item, index) => {
+                                const qId = index;
+                                const div = document.createElement('div');
+                                div.className = 'border border-gray-200 rounded-lg p-4 shadow-sm';
+                                div.id = 'q-' + qId;
+                                
+                                let content = \`<p class="font-semibold text-gray-800 mb-3"><span class="text-indigo-600">\${index + 1}.</span> \${item.definition}</p>\`;
+
+                                if (questionType === 'fill_in_blank') {
+                                    // 주관식 렌더링
+                                    content += \`<input type="text" id="input-\${qId}" oninput="userAnswers[\${qId}] = this.value.trim()" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="답을 입력하세요" autocomplete="off">\`;
+                                } else {
+                                    // 객관식 렌더링
+                                    const distractors = shuffle(allWords.filter(w => w !== item.word)).slice(0, 4);
+                                    const options = shuffle([item.word, ...distractors]);
+                                    content += \`<div class="space-y-2">\`;
+                                    options.forEach((opt, i) => {
+                                        content += \`<button onclick="selectOption(\${qId}, '\${opt}', this)" class="option-btn w-full p-3 border border-gray-300 rounded text-gray-700 font-medium" data-val="\${opt}">\${String.fromCharCode(65+i)}. \${opt}</button>\`;
+                                    });
+                                    content += \`</div>\`;
+                                }
+                                content += \`<div id="res-\${qId}" class="mt-2 text-sm font-bold"></div>\`;
+                                div.innerHTML = content;
+                                list.appendChild(div);
+                            });
+                        }
+
+                        function selectOption(qId, val, btn) {
+                            if(isSubmitted) return;
+                            userAnswers[qId] = val;
+                            const buttons = document.querySelectorAll(\`#q-\${qId} .option-btn\`);
+                            buttons.forEach(b => b.classList.remove('selected'));
+                            btn.classList.add('selected');
+                        }
+
+                        function startTimer() {
+                            updateTimer();
+                            timerInterval = setInterval(() => {
+                                timeLeft--;
+                                updateTimer();
+                                if(timeLeft <= 0) { clearInterval(timerInterval); submitQuiz(true); }
+                            }, 1000);
+                        }
+
+                        function updateTimer() {
+                            const m = Math.floor(timeLeft / 60);
+                            const s = timeLeft % 60;
+                            const tEl = document.getElementById('timer');
+                            tEl.innerText = \`\${m.toString().padStart(2,'0')}:\${s.toString().padStart(2,'0')}\`;
+                            if(timeLeft < 10) tEl.classList.add('blinking');
+                        }
+
+                        function submitQuiz(timeExpired = false) {
+                            if(isSubmitted) return;
+                            isSubmitted = true;
+                            clearInterval(timerInterval);
+                            
+                            let score = 0;
+                            quizData.forEach((item, index) => {
+                                const ans = (userAnswers[index] || "").toLowerCase().trim();
+                                const correct = item.word.toLowerCase().trim();
+                                const div = document.getElementById('q-' + index);
+                                const res = document.getElementById('res-' + index);
+                                
+                                if(ans === correct) {
+                                    score++;
+                                    div.classList.add('border-green-400', 'bg-green-50');
+                                    res.innerHTML = '<span class="text-green-600">✅ 정답!</span>';
+                                    if(questionType === 'fill_in_blank') {
+                                        document.getElementById('input-' + index).classList.add('border-green-500', 'bg-green-100');
+                                    }
+                                } else {
+                                    div.classList.add('border-red-400', 'bg-red-50');
+                                    res.innerHTML = \`<span class="text-red-600">❌ 오답 (내 답: \${ans || '없음'})</span><br><span class="text-gray-600">정답: \${item.word}</span><p class="text-xs text-indigo-600 mt-1">💡 \${item.rationale}</p>\`;
+                                    if(questionType === 'fill_in_blank') {
+                                        document.getElementById('input-' + index).classList.add('border-red-500', 'bg-red-100');
+                                    }
+                                }
+
+                                // 객관식 정답 표시
+                                if(questionType === 'multiple_choice') {
+                                    const btns = div.querySelectorAll('.option-btn');
+                                    btns.forEach(b => {
+                                        b.disabled = true;
+                                        if(b.dataset.val.toLowerCase() === correct) b.classList.add('correct');
+                                        else if(b.dataset.val.toLowerCase() === ans) b.classList.add('incorrect');
+                                    });
+                                } else {
+                                    document.getElementById('input-' + index).disabled = true;
+                                }
+                            });
+
+                            document.getElementById('submit-btn').classList.add('hidden');
+                            document.getElementById('retry-btn').classList.remove('hidden');
+                            const msgEl = document.getElementById('result-msg');
+                            msgEl.innerText = \`\${timeExpired ? '⏰ 시간 종료! ' : ''}총 \${quizData.length}문제 중 \${score}점 획득!\`;
+                            msgEl.className = 'text-center text-xl font-bold text-indigo-700 mb-4';
+                            window.scrollTo(0, 0);
+                        }
+                    <\/script>
+                </body></html>`;
+
+                const blob = new Blob([interactiveHtml], { type: 'text/html' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `vocab_quiz_${currentType}.html`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+            }
+        };
+
+        async function handleGenerateVocabQuiz() {
+            const genButton = document.getElementById('vocab-generate-quiz-button');
+            const genButtonText = document.getElementById('vocab-generate-button-text');
+            const genIcon = genButton.querySelector('i[data-lucide="brain-circuit"]');
+            const aiFeedbackEl = document.getElementById('vocab-ai-feedback');
+            
+            genButton.disabled = true;
+            genButtonText.textContent = 'AI가 문제 생성 중...';
+            if (genIcon) genIcon.style.display = 'none';
+            const loader = document.createElement('span');
+            loader.className = 'loader';
+            genButton.prepend(loader);
+            aiFeedbackEl.textContent = '잠시만 기다려주세요... (최대 1분 소요)';
+            aiFeedbackEl.className = 'text-center text-sm text-indigo-600 font-medium min-h-[20px]';
+
+            const startButton = document.getElementById('vocab-start-quiz-button');
+            const startButtonText = document.getElementById('vocab-start-button-text');
+            startButton.disabled = true;
+            startButtonText.textContent = 'AI가 문제 생성 중...';
+            document.getElementById('vocab-review-area').classList.add('hidden');
+            document.getElementById('vocab-review-list').innerHTML = '';
+
+
+            try {
+                const apiKey = getAndStoreApiKey(); 
+
+                const wordListInput = document.getElementById('vocab-word-list-input').value;
+                const words = parseWordListInput(wordListInput);
+                
+                if (words.length < 5) {
+                    aiFeedbackEl.textContent = '⚠️ 퀴즈 생성을 위해 5단어 이상 입력하는 것을 권장합니다.';
+                    aiFeedbackEl.className = 'text-center text-sm text-yellow-600 font-medium min-h-[20px]';
+                    if (words.length === 0) {
+                         throw new Error("단어 목록을 입력하세요.");
+                    }
+                }
+
+                vocab_vocabulary = await generateVocabDataFromAI(words, apiKey); 
+                vocab_TOTAL_QUESTIONS = vocab_vocabulary.length;
+
+                if (vocab_TOTAL_QUESTIONS === 0) {
+                    throw new Error("AI가 입력된 단어로 문제를 생성하지 못했습니다.");
+                }
+                
+                populateVocabReviewArea(vocab_vocabulary);
+                document.getElementById('vocab-review-area').classList.remove('hidden');
+                
+                if (window.currentQuizType === 'vocab') {
+                    document.getElementById('total-questions-display').textContent = vocab_TOTAL_QUESTIONS;
+                }
+                
+                aiFeedbackEl.textContent = `✅ ${vocab_TOTAL_QUESTIONS}개의 문제 생성 완료! 검토 후 시험을 시작하세요.`;
+                aiFeedbackEl.className = 'text-center text-sm text-green-600 font-medium min-h-[20px]';
+                
+                startButton.disabled = false;
+                startButtonText.textContent = '수정 완료 및 시험 시작';
+
+            } catch (error) {
+                console.error("퀴즈 생성 오류:", error);
+                aiFeedbackEl.textContent = `❌ 오류: ${error.message}`;
+                aiFeedbackEl.className = 'text-center text-sm text-red-500 font-medium min-h-[20px]';
+                startButton.disabled = true;
+                startButtonText.textContent = 'AI 문제 생성 실패';
+                document.getElementById('vocab-review-area').classList.add('hidden');
+            } finally {
+                genButton.disabled = false;
+                genButtonText.textContent = 'AI 문제 생성';
+                if (genIcon) genIcon.style.display = 'inline-block';
+                const loaderEl = genButton.querySelector('.loader');
+                if (loaderEl) loaderEl.remove();
+            }
+        }
+        /**
+         * [수정] 영단어 시험 시작 버튼 클릭 시 호출됩니다.
+         */
+        window.handleStartVocabQuiz = () => {
+            if (!saveEditsFromVocabReviewArea()) {
+                document.getElementById('vocab-ai-feedback').textContent = '❌ 저장할 퀴즈 내용이 없습니다. AI 생성을 다시 시도하세요.';
+                document.getElementById('vocab-ai-feedback').className = 'text-center text-sm text-red-500 font-medium min-h-[20px]';
+                return; 
+            }
+
+            // [핵심 수정] 드롭다운에서 선택된 문제 유형을 전역 변수에 저장
+            const typeSelect = document.getElementById('vocab-question-type-select');
+            if (typeSelect) {
+                vocab_questionType = typeSelect.value;
+            } else {
+                vocab_questionType = 'multiple_choice'; // 기본값
+            }
+
+            const timeSelect = document.getElementById('vocab-time-select');
+            const selectedTimeMinutes = parseInt(timeSelect.value, 10);
+            totalTimeSeconds = selectedTimeMinutes * 60; 
+
+            if (isNaN(totalTimeSeconds) || totalTimeSeconds <= 0) {
+                alert('유효하지 않은 시간입니다.');
+                return;
+            }
+            
+            vocab_userAnswers = {};
+            vocab_isSubmitted = false;
+            
+            // UI 전환
+            document.getElementById('vocab-setup-container').classList.add('hidden');
+            document.getElementById('vocab-quiz-container').classList.remove('hidden');
+            document.getElementById('vocab-submission-area').classList.remove('hidden');
+            document.getElementById('vocab-submit-button').classList.remove('hidden');
+            
+            // 메시지 초기화
+            const feedbackMessageEl = document.getElementById('vocab-feedback-message');
+            feedbackMessageEl.textContent = '문제를 모두 풀고 "정답 확인" 버튼을 누르세요.';
+            feedbackMessageEl.className = 'text-center text-xl font-bold text-indigo-700 min-h-[30px]';
+            
+            // 퀴즈 생성 및 타이머 시작
+            generateVocabQuizSheet();
+            startTimer('vocab'); 
+        };
+        
+
+        /**
+         * [수정] 영단어 시험지 생성 (주관식/객관식 분기 처리)
+         */
+        function generateVocabQuizSheet() {
+            const quizListEl = document.getElementById('vocab-quiz-list');
+            quizListEl.innerHTML = ''; 
+
+            const allWords = vocab_vocabulary.map(v => v.word);
+
+            vocab_quizWords.forEach((wordObj, index) => {
+                const questionNumber = index + 1;
+                const correctWord = wordObj.word;
+                const questionId = `q${questionNumber}`;
+                
+                // 질문 블록
+                const questionBlock = document.createElement('div');
+                questionBlock.id = questionId;
+                questionBlock.className = 'border border-gray-200 rounded-lg p-4 shadow-sm space-y-3 transition-colors duration-300';
+                
+                // 정의(문제) 표시
+                const definitionHTML = `
+                    <div class="flex justify-between items-start">
+                        <p class="text-base font-semibold text-gray-700 leading-relaxed">
+                            <span class="text-indigo-600 font-bold">${questionNumber}.</span> ${escapeHTML(wordObj.definition)}
+                        </p>
+                        <span class="text-xs font-bold px-2 py-1 rounded bg-gray-100 ${vocab_questionType === 'multiple_choice' ? 'text-blue-500' : 'text-purple-500'}">
+                            ${vocab_questionType === 'multiple_choice' ? '객관식' : '주관식'}
+                        </span>
+                    </div>`;
+                
+                let answersHTML = '';
+
+                // [핵심 수정] 문제 유형에 따른 분기 처리
+                if (vocab_questionType === 'fill_in_blank') {
+                    // 주관식: 입력창 생성
+                    answersHTML = `
+                        <div class="mt-3">
+                            <input type="text" id="${questionId}-input" 
+                                data-question-id="${questionId}"
+                                oninput="handleVocabInputChange(this)"
+                                placeholder="정답을 입력하세요"
+                                class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-lg placeholder-gray-400"
+                                autocomplete="off" autocapitalize="none" spellcheck="false">
+                        </div>
+                    `;
+                } else {
+                    // 객관식: 5지 선다 버튼 생성
+                    const distractors = shuffleArray(allWords.filter(word => word !== correctWord));
+                    const optionsCount = Math.min(5, allWords.length);
+                    const options = [correctWord, ...distractors.slice(0, optionsCount - 1)]; 
+                    const shuffledOptions = shuffleArray(options);
+
+                    answersHTML = `<div class="space-y-2 mt-2">` + shuffledOptions.map((option, optionIndex) => `
+                        <button id="${questionId}-option-${optionIndex}" data-question-id="${questionId}" data-answer="${option}"
+                            onclick="handleVocabOptionSelection('${questionId}', '${option}', this)"
+                            class="option-button w-full py-3 px-4 text-left border border-gray-300 bg-white text-gray-800 rounded-lg font-medium transition-all hover:bg-gray-50 active:bg-blue-50">
+                            <span class="font-bold mr-2 text-gray-500">${String.fromCharCode(65 + optionIndex)}.</span> ${escapeHTML(option)}
+                        </button>`).join('') + `</div>`;
+                }
+
+                const resultAreaHTML = `<div id="${questionId}-result-area">
+                                            <div id="${questionId}-result" class="text-sm font-bold pt-2 min-h-[25px]"></div>
+                                        </div>`;
+
+                questionBlock.innerHTML = definitionHTML + answersHTML + resultAreaHTML;
+                quizListEl.appendChild(questionBlock);
+            });
+            
+            // 아이콘 갱신
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        // [추가] 주관식 입력 핸들러
+        window.handleVocabInputChange = (inputElement) => {
+            if (vocab_isSubmitted) return;
+            const questionId = inputElement.getAttribute('data-question-id');
+            vocab_userAnswers[questionId] = inputElement.value.trim();
+        };
+
+        // [기존] 객관식 선택 핸들러
+        window.handleVocabOptionSelection = (questionId, selectedAnswer, clickedButton) => {
+            if (vocab_isSubmitted) return;
+            vocab_userAnswers[questionId] = selectedAnswer;
+
+            const optionButtons = document.querySelectorAll(`[data-question-id="${questionId}"]`);
+            optionButtons.forEach(btn => btn.classList.remove('selected', 'bg-blue-500', 'text-white', 'font-semibold'));
+            
+            clickedButton.classList.add('selected', 'bg-blue-500', 'text-white', 'font-semibold');
+        };
+
+
+        /**
+         * [수정] 영단어 퀴즈 채점 (주관식 채점 로직 추가)
+         */
+        window.submitVocabQuiz = (isTimerExpired) => {
+            if (vocab_isSubmitted) return;
+            vocab_isSubmitted = true;
+            stopTimer(); 
+
+            document.getElementById('vocab-submit-button').classList.add('hidden');
+            document.getElementById('vocab-restart-button').classList.remove('hidden');
+
+            if (vocab_quizWords.length === 0) return;
+
+            let finalScore = 0;
+
+            vocab_quizWords.forEach((wordObj, index) => {
+                const questionId = `q${index + 1}`;
+                const correctWord = wordObj.word.toLowerCase().trim();
+                const rawUserAnswer = vocab_userAnswers[questionId] || '';
+                const userAnswer = rawUserAnswer.toLowerCase().trim();
+                
+                const resultEl = document.getElementById(`${questionId}-result`);
+                const questionBlockEl = document.getElementById(questionId);
+                const inputEl = document.getElementById(`${questionId}-input`); // 주관식 입력창
+
+                questionBlockEl.classList.remove('border-gray-200');
+                
+                // 정답 체크
+                const isCorrect = (userAnswer === correctWord);
+
+                if (isCorrect) {
+                    finalScore++;
+                    resultEl.innerHTML = '<span class="text-green-600 flex items-center"><i data-lucide="check" class="w-4 h-4 mr-1"></i>정답입니다!</span>';
+                    resultEl.className = 'text-sm font-bold pt-2 border-t border-green-200 mt-2';
+                    questionBlockEl.classList.add('border-green-400', 'bg-green-50');
+                    
+                    if (inputEl) {
+                        inputEl.classList.add('border-green-500', 'bg-green-100', 'text-green-800');
+                        inputEl.disabled = true;
+                    }
+                } else {
+                    const incorrectText = rawUserAnswer ? escapeHTML(rawUserAnswer) : '미응답';
+                    resultEl.innerHTML = `<span class="text-red-600 flex items-center"><i data-lucide="x" class="w-4 h-4 mr-1"></i>오답 (${incorrectText})</span> <span class="ml-2 text-gray-600">정답: <strong>${escapeHTML(wordObj.word)}</strong></span>`; 
+                    resultEl.className = 'text-sm font-bold pt-2 border-t border-red-200 mt-2';
+                    questionBlockEl.classList.add('border-red-400', 'bg-red-50');
+
+                    if (inputEl) {
+                        inputEl.classList.add('border-red-500', 'bg-red-100', 'text-red-800');
+                        inputEl.disabled = true;
+                    }
+
+                    // 해설 표시
+                    let rationaleEl = document.createElement('div');
+                    rationaleEl.className = 'rationale-text mt-2 text-sm';
+                    rationaleEl.innerHTML = `💡 <strong>해설:</strong> ${escapeHTML(wordObj.rationale)}`;
+                    document.getElementById(`${questionId}-result-area`).appendChild(rationaleEl);
+                }
+
+                // 객관식 버튼 처리
+                if (vocab_questionType === 'multiple_choice') {
+                    const optionButtons = document.querySelectorAll(`[data-question-id="${questionId}"]`);
+                    optionButtons.forEach(btn => {
+                        btn.disabled = true;
+                        btn.classList.remove('hover:bg-gray-50', 'active:bg-blue-50', 'selected', 'bg-blue-500', 'text-white');
+                        const optionAnswer = btn.getAttribute('data-answer').toLowerCase();
+                        
+                        if (optionAnswer === correctWord) { 
+                            btn.classList.add('bg-green-200', 'border-green-500', 'text-green-800', 'font-bold'); 
+                        } else if (optionAnswer === userAnswer && userAnswer !== correctWord) { 
+                            btn.classList.add('bg-red-200', 'border-red-500', 'text-red-800'); 
+                        } else { 
+                            btn.classList.add('bg-gray-100', 'text-gray-400', 'opacity-60'); 
+                        }
+                    });
+                }
+            });
+
+            // 점수 표시
+            const feedbackMessageEl = document.getElementById('vocab-feedback-message');
+            let message = `총 ${vocab_TOTAL_QUESTIONS}문제 중 ${finalScore}점 획득!`;
+            let messageClass = 'text-center text-xl font-bold text-indigo-700 min-h-[30px]';
+            
+            if (isTimerExpired) {
+                message = `⏰ 시간 초과! ${message}`;
+                messageClass = 'text-center text-2xl font-extrabold text-red-600 min-h-[30px]';
+            } else if (finalScore === vocab_TOTAL_QUESTIONS) {
+                    message += ' 🏆 완벽합니다!';
+            }
+
+            // 최고 점수 저장
+            if (window.db && finalScore > (window.highScores.vocab || 0)) {
+                window.saveHighScore('vocab', finalScore);
+                window.highScores.vocab = finalScore;
+                document.getElementById('high-score-display').textContent = finalScore;
+                message += ' (New High Score!)';
+            } 
+
+            feedbackMessageEl.textContent = message;
+            feedbackMessageEl.className = messageClass; 
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (window.lucide) window.lucide.createIcons();
+        };
+
+
+        // =====================================================================
+        // 2. AI 동사 변형 퀴즈 (Verb) 로직 (기존 로직 유지)
+        // =====================================================================
+
+        window.startVerbSetup = () => {
+            stopTimer();
+            verb_isSubmitted = false;
+            
+            verb_vocabulary = [];
+            verb_quizWords = [];
+            verb_userAnswers = {};
+            verb_TOTAL_QUESTIONS = 0;
+            if (window.currentQuizType === 'verbs') {
+                 document.getElementById('total-questions-display').textContent = '0';
+            }
+
+            document.getElementById('verb-review-area').classList.add('hidden');
+            document.getElementById('verb-review-list').innerHTML = '';
+
+            document.getElementById('verb-setup-container').classList.remove('hidden');
+            document.getElementById('verb-quiz-container').classList.add('hidden');
+            document.getElementById('verb-submission-area').classList.add('hidden');
+            document.getElementById('verb-restart-button').classList.add('hidden');
+            document.getElementById('verb-submit-button').classList.remove('hidden');
+            document.getElementById('verb-submit-button').disabled = false;
+            
+            document.getElementById('timer-display').textContent = '00:00';
+            document.getElementById('timer-display').classList.remove('blinking', 'text-red-700');
+            document.getElementById('timer-display').classList.add('text-red-600');
+            
+            document.getElementById('verb-feedback-message').textContent = '';
+            document.getElementById('verb-ai-feedback').textContent = '';
+
+            const startButton = document.getElementById('verb-start-quiz-button');
+            const startButtonText = document.getElementById('verb-start-button-text');
+            startButton.disabled = true;
+            startButtonText.textContent = 'AI로 동사 변형을 먼저 생성하세요';
+            
+            const genButton = document.getElementById('verb-generate-quiz-button');
+            const genButtonText = document.getElementById('verb-generate-button-text');
+            genButton.disabled = false;
+            genButtonText.textContent = 'AI 동사 변형 생성';
+            const genIcon = genButton.querySelector('i[data-lucide="list-collapse"]');
+            if (genIcon) genIcon.style.display = 'inline-block';
+            const loader = genButton.querySelector('.loader');
+            if (loader) loader.remove();
+        };
+
+        async function generateVerbDataFromAI(words, apiKey) {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+            const systemPrompt = `You are an English grammar expert. For each base verb provided by the user, generate its Past Tense (past) and Past Participle (pp).
+            - For regular verbs, add '-ed' (e.g., walk, walked, walked).
+            - For irregular verbs, provide the correct forms (e.g., go, went, gone).
+            - For verbs like 'be', list the common past form (e.g., 'was/were').
+            - The 'base', 'past', and 'pp' values must all be in lowercase.
+            Provide the output as a JSON array of objects, where each object has 'base', 'past', and 'pp' keys.`;
+            
+            const userQuery = `Generate verb forms for the following: ${words.join(', ')}`;
+
+            const responseSchema = {
+                type: "ARRAY",
+                items: {
+                    type: "OBJECT",
+                    properties: {
+                        "base": { "type": "STRING" },
+                        "past": { "type": "STRING" },
+                        "pp": { "type": "STRING" }
+                    },
+                    required: ["base", "past", "pp"]
+                }
+            };
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
+                }
+            };
+
+            const response = await fetchWithRetry(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`AI API Error ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
+            }
+
+            const result = await response.json();
+            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!text) {
+                throw new Error("AI가 유효한 응답을 생성하지 못했습니다.");
+            }
+            return JSON.parse(text);
+        }
+
+        function populateVerbReviewArea(verbData) {
+            const reviewListEl = document.getElementById('verb-review-list');
+            reviewListEl.innerHTML = '';
+
+            verbData.forEach((item, index) => {
+                const reviewId = `verb-review-item-${index}`;
+                const itemEl = document.createElement('div');
+                itemEl.className = 'p-2 bg-white border border-gray-300 rounded-lg shadow-sm verb-review-grid';
+                itemEl.dataset.index = index;
+
+                itemEl.innerHTML = `
+                    <input type="text" id="${reviewId}-base" value="${escapeHTML(item.base)}" class="bg-gray-100" title="Base (원형)">
+                    <input type="text" id="${reviewId}-past" value="${escapeHTML(item.past)}" title="Past (과거)">
+                    <input type="text" id="${reviewId}-pp" value="${escapeHTML(item.pp)}" title="PP (과거분사)">
+                `;
+                reviewListEl.appendChild(itemEl);
+            });
+        }
+
+        function saveEditsFromVerbReviewArea() {
+            const reviewItems = document.querySelectorAll('#verb-review-list > div');
+            const newVocabulary = [];
+            
+            reviewItems.forEach(itemEl => {
+                const index = itemEl.dataset.index;
+                const reviewId = `verb-review-item-${index}`;
+                
+                const base = document.getElementById(`${reviewId}-base`).value.trim().toLowerCase();
+                const past = document.getElementById(`${reviewId}-past`).value.trim().toLowerCase();
+                const pp = document.getElementById(`${reviewId}-pp`).value.trim().toLowerCase();
+                
+                if (base && past && pp) {
+                    newVocabulary.push({ base, past, pp });
+                }
+            });
+
+            if (newVocabulary.length === 0) {
+                console.error("저장 중 오류: 수정된 동사 목록이 비어있습니다.");
+                return false; 
+            }
+
+            verb_vocabulary = newVocabulary;
+            verb_quizWords = shuffleArray(verb_vocabulary); 
+            verb_TOTAL_QUESTIONS = verb_vocabulary.length;
+            
+            if (window.currentQuizType === 'verbs') {
+                document.getElementById('total-questions-display').textContent = verb_TOTAL_QUESTIONS;
+            }
+            
+            console.log("수정된 동사 퀴즈 데이터 저장 완료:", verb_vocabulary);
+            return true;
+        }
+
+        function exportVerbQuiz(type, includeAnswers = false) {
+            if (!saveEditsFromVerbReviewArea()) {
+                alert("내보낼 퀴즈 데이터가 없습니다. AI로 문제를 먼저 생성해주세요.");
+                return;
+            }
+
+            // 설정 읽기
+            const selectedQuestionType = document.getElementById('verb-question-type-select').value;
+            // 간단하게 인쇄 기능만 복구 (HTML 내보내기는 Vocab과 유사하므로 생략)
+            if (type === 'print') {
+                const answerDisplay = includeAnswers ? 'block' : 'none';
+                let quizHtml = `<!DOCTYPE html><html><head><style>body{padding:20px;font-family:sans-serif;} .q-block{margin-bottom:15px;border-bottom:1px solid #ccc;padding-bottom:10px;} .ans{color:red;display:${answerDisplay}}</style></head><body><h1>동사 변형 퀴즈</h1>`;
+                
+                verb_vocabulary.forEach((v,i) => {
+                     quizHtml += `<div class="q-block"><strong>${i+1}. ${v.base}</strong><br>Past: _________ / PP: _________ <div class="ans">정답: ${v.past} / ${v.pp}</div></div>`;
+                });
+                quizHtml += `</body></html>`;
+                const win = window.open('','_blank'); win.document.write(quizHtml); win.document.close();
+            } else {
+                 alert("HTML 내보내기는 현재 지원하지 않습니다. (인쇄 기능을 사용하세요)");
+            }
+        }
+
+        async function handleGenerateVerbQuiz() {
+            const genButton = document.getElementById('verb-generate-quiz-button');
+            const genButtonText = document.getElementById('verb-generate-button-text');
+            const genIcon = genButton.querySelector('i[data-lucide="list-collapse"]');
+            const aiFeedbackEl = document.getElementById('verb-ai-feedback');
+            
+            genButton.disabled = true;
+            genButtonText.textContent = 'AI가 생성 중...';
+            if (genIcon) genIcon.style.display = 'none';
+            const loader = document.createElement('span');
+            loader.className = 'loader';
+            genButton.prepend(loader);
+            aiFeedbackEl.textContent = '동사 변형 생성 중... (최대 1분 소요)';
+            aiFeedbackEl.className = 'text-center text-sm text-teal-600 font-medium min-h-[20px]';
+
+            const startButton = document.getElementById('verb-start-quiz-button');
+            const startButtonText = document.getElementById('verb-start-button-text');
+            startButton.disabled = true;
+            startButtonText.textContent = 'AI가 생성 중...';
+            document.getElementById('verb-review-area').classList.add('hidden');
+            document.getElementById('verb-review-list').innerHTML = '';
+
+            try {
+                const apiKey = getAndStoreApiKey(); 
+
+                const wordListInput = document.getElementById('verb-word-list-input').value;
+                const words = parseWordListInput(wordListInput);
+                
+                if (words.length === 0) {
+                    throw new Error("동사 목록을 입력하세요.");
+                }
+                if (words.length < 5) {
+                    aiFeedbackEl.textContent = '⚠️ 퀴즈 생성을 위해 5단어 이상 입력하는 것을 권장합니다.';
+                    aiFeedbackEl.className = 'text-center text-sm text-yellow-600 font-medium min-h-[20px]';
+                }
+
+                verb_vocabulary = await generateVerbDataFromAI(words, apiKey); 
+                verb_TOTAL_QUESTIONS = verb_vocabulary.length;
+
+                if (verb_TOTAL_QUESTIONS === 0) {
+                    throw new Error("AI가 입력된 동사로 변형을 생성하지 못했습니다.");
+                }
+                
+                populateVerbReviewArea(verb_vocabulary); 
+                document.getElementById('verb-review-area').classList.remove('hidden');
+                
+                if (window.currentQuizType === 'verbs') {
+                    document.getElementById('total-questions-display').textContent = verb_TOTAL_QUESTIONS;
+                }
+                
+                aiFeedbackEl.textContent = `✅ ${verb_TOTAL_QUESTIONS}개의 동사 변형 완료! 검토 후 시험을 시작하세요.`;
+                aiFeedbackEl.className = 'text-center text-sm text-green-600 font-medium min-h-[20px]';
+                
+                startButton.disabled = false;
+                startButtonText.textContent = '수정 완료 및 시험 시작';
+
+            } catch (error) {
+                console.error("동사 퀴즈 생성 오류:", error);
+                aiFeedbackEl.textContent = `❌ 오류: ${error.message}`;
+                aiFeedbackEl.className = 'text-center text-sm text-red-500 font-medium min-h-[20px]';
+                startButton.disabled = true;
+                startButtonText.textContent = 'AI 생성 실패';
+                document.getElementById('verb-review-area').classList.add('hidden');
+            } finally {
+                genButton.disabled = false;
+                genButtonText.textContent = 'AI 동사 변형 생성';
+                if (genIcon) genIcon.style.display = 'inline-block';
+                const loaderEl = genButton.querySelector('.loader');
+                if (loaderEl) loaderEl.remove();
+            }
+        }
+
+        window.handleStartVerbQuiz = () => {
+            if (!saveEditsFromVerbReviewArea()) {
+                document.getElementById('verb-ai-feedback').textContent = '❌ 저장할 퀴즈 내용이 없습니다. AI 생성을 다시 시도하세요.';
+                document.getElementById('verb-ai-feedback').className = 'text-center text-sm text-red-500 font-medium min-h-[20px]';
+                return; 
+            }
+
+            verb_questionType = document.getElementById('verb-question-type-select').value;
+            const timeSelect = document.getElementById('verb-time-select');
+            const selectedTimeMinutes = parseInt(timeSelect.value, 10);
+            totalTimeSeconds = selectedTimeMinutes * 60; 
+
+            if (isNaN(totalTimeSeconds) || totalTimeSeconds <= 0) {
+                document.getElementById('verb-ai-feedback').textContent = '❌ 유효하지 않은 시간입니다. 페이지를 새로고침하세요.';
+                return;
+            }
+            
+            verb_userAnswers = {};
+            verb_isSubmitted = false;
+            
+            document.getElementById('verb-setup-container').classList.add('hidden');
+            document.getElementById('verb-quiz-container').classList.remove('hidden');
+            document.getElementById('verb-submission-area').classList.remove('hidden');
+            document.getElementById('verb-submit-button').classList.remove('hidden');
+            
+            const feedbackMessageEl = document.getElementById('verb-feedback-message');
+            feedbackMessageEl.textContent = '문제를 모두 풀고 "정답 확인" 버튼을 누르세요.';
+            feedbackMessageEl.className = 'text-center text-xl font-bold text-teal-700 min-h-[30px]';
+            
+            generateVerbQuizSheet();
+            startTimer('verbs'); 
+        };
+        
+
+        function generateVerbQuizSheet() {
+            const quizListEl = document.getElementById('verb-quiz-list');
+            quizListEl.innerHTML = '';
+
+            const allPastForms = shuffleArray([...new Set(verb_vocabulary.map(v => v.past))]);
+            const allPPForms = shuffleArray([...new Set(verb_vocabulary.map(v => v.pp))]);
+
+            verb_quizWords.forEach((verb, index) => {
+                const questionNumber = index + 1;
+                const questionId = `q${questionNumber}`;
+
+                verb_userAnswers[questionId] = { past: null, pp: null };
+
+                let currentQType = verb_questionType;
+                if (currentQType === 'mixed') {
+                    currentQType = (index % 2 === 0) ? 'fill_in_blank' : 'multiple_choice';
+                }
+
+                const questionBlock = document.createElement('div');
+                questionBlock.id = questionId;
+                questionBlock.className = 'border border-gray-200 rounded-lg p-4 shadow-sm space-y-3 transition-colors duration-300';
+
+                const definitionHTML = `
+                    <div class="flex justify-between items-center">
+                        <p class="text-lg font-bold text-gray-800">
+                            ${questionNumber}. ${escapeHTML(verb.base)}
+                        </p>
+                        <span class="text-sm font-bold ${currentQType === 'multiple_choice' ? 'text-blue-600' : 'text-orange-600'}">
+                            ${currentQType === 'multiple_choice' ? '객관식' : '주관식'}
+                        </span>
+                    </div>`;
+
+                let answersHTML = '';
+                if (currentQType === 'fill_in_blank') {
+                    answersHTML = `
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                                <label for="${questionId}-past-input" class="block text-sm font-medium text-gray-500">Past (과거)</label>
+                                <input type="text" id="${questionId}-past-input" data-question-id="${questionId}" data-type="past"
+                                    oninput="handleVerbInputChange(this)"
+                                    class="verb-input mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-lg lowercase"
+                                    autocapitalize="none" autocomplete="off" spellcheck="false">
+                                <div id="${questionId}-past-result" class="text-sm font-bold pt-1 min-h-[20px]"></div>
+                            </div>
+                            <div>
+                                <label for="${questionId}-pp-input" class="block text-sm font-medium text-gray-500">Past Participle (과거분사)</label>
+                                <input type="text" id="${questionId}-pp-input" data-question-id="${questionId}" data-type="pp"
+                                    oninput="handleVerbInputChange(this)"
+                                    class="verb-input mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-lg lowercase"
+                                    autocapitalize="none" autocomplete="off" spellcheck="false">
+                                <div id="${questionId}-pp-result" class="text-sm font-bold pt-1 min-h-[20px]"></div>
+                            </div>
+                        </div>`;
+                } else {
+                    const pastDistractors = allPastForms.filter(f => f !== verb.past).slice(0, 3);
+                    const pastOptions = shuffleArray([verb.past, ...pastDistractors]);
+                    
+                    const ppDistractors = allPPForms.filter(f => f !== verb.pp).slice(0, 3);
+                    const ppOptions = shuffleArray([verb.pp, ...ppDistractors]);
+
+                    const pastOptionsHTML = pastOptions.map((option, optIndex) => `
+                        <button id="${questionId}-past-option-${optIndex}" data-question-id="${questionId}" data-type="past" data-answer="${option}"
+                            onclick="handleVerbOptionSelection(this)"
+                            class="option-button w-full py-2 px-3 text-left border border-gray-300 bg-white text-gray-800 rounded-md font-medium transition-all text-sm">
+                            ${escapeHTML(option)}
+                        </button>`).join('');
+
+                    const ppOptionsHTML = ppOptions.map((option, optIndex) => `
+                        <button id="${questionId}-pp-option-${optIndex}" data-question-id="${questionId}" data-type="pp" data-answer="${option}"
+                            onclick="handleVerbOptionSelection(this)"
+                            class="option-button w-full py-2 px-3 text-left border border-gray-300 bg-white text-gray-800 rounded-md font-medium transition-all text-sm">
+                            ${escapeHTML(option)}
+                        </button>`).join('');
+                    
+                    answersHTML = `
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-500 mb-1">Past (과거)</label>
+                                <div class="space-y-2">${pastOptionsHTML}</div>
+                                <div id="${questionId}-past-result" class="text-sm font-bold pt-1 min-h-[20px]"></div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-500 mb-1">Past Participle (과거분사)</label>
+                                <div class="space-y-2">${ppOptionsHTML}</div>
+                                <div id="${questionId}-pp-result" class="text-sm font-bold pt-1 min-h-[20px]"></div>
+                            </div>
+                        </div>`;
+                }
+
+                questionBlock.innerHTML = definitionHTML + answersHTML;
+                quizListEl.appendChild(questionBlock);
+            });
+
+            lucide.createIcons();
+        }
+
+        window.handleVerbInputChange = (inputEl) => {
+            if (verb_isSubmitted) return;
+            const questionId = inputEl.dataset.questionId;
+            const type = inputEl.dataset.type; // 'past' or 'pp'
+            const value = inputEl.value.trim().toLowerCase();
+            verb_userAnswers[questionId][type] = value;
+        };
+        
+        window.handleVerbOptionSelection = (clickedButton) => {
+            if (verb_isSubmitted) return;
+            
+            const questionId = clickedButton.dataset.questionId;
+            const type = clickedButton.dataset.type; // 'past' or 'pp'
+            const selectedAnswer = clickedButton.dataset.answer;
+
+            verb_userAnswers[questionId][type] = selectedAnswer;
+
+            const optionButtons = document.querySelectorAll(`[data-question-id="${questionId}"][data-type="${type}"]`);
+            optionButtons.forEach(btn => btn.classList.remove('selected', 'bg-blue-500', 'text-white', 'font-semibold'));
+            clickedButton.classList.add('selected', 'bg-blue-500', 'text-white', 'font-semibold');
+        };
+
+        window.submitVerbQuiz = (isTimerExpired) => {
+            try {
+                if (verb_isSubmitted) { return; }
+                verb_isSubmitted = true;
+                stopTimer(); 
+
+                document.getElementById('verb-submit-button').classList.add('hidden');
+                document.getElementById('verb-restart-button').classList.remove('hidden');
+
+                if (verb_quizWords.length === 0) {
+                     return;
+                }
+
+                let finalScore = 0; 
+                const scorePerPart = 0.5;
+
+                verb_quizWords.forEach((verb, index) => {
+                    const questionId = `q${index + 1}`;
+                    
+                    const correctPast = verb.past.split('/');
+                    const correctPP = verb.pp.split('/');
+                    
+                    const userPast = verb_userAnswers[questionId]?.past;
+                    const userPP = verb_userAnswers[questionId]?.pp;
+
+                    const questionBlockEl = document.getElementById(questionId);
+                    questionBlockEl.classList.remove('border-gray-200');
+
+                    let questionScore = 0;
+
+                    // 1. 과거(Past) 채점
+                    const pastResultEl = document.getElementById(`${questionId}-past-result`);
+                    const pastInputEl = document.getElementById(`${questionId}-past-input`);
+                    
+                    if (userPast && correctPast.includes(userPast)) {
+                        questionScore += scorePerPart;
+                        if (pastResultEl) {
+                            pastResultEl.textContent = '✅ 정답!';
+                            pastResultEl.className = 'text-sm font-bold pt-1 text-green-600 min-h-[20px]';
+                        }
+                        if (pastInputEl) {
+                            pastInputEl.classList.add('border-green-500', 'bg-green-50');
+                        }
+                    } else {
+                        if (pastResultEl) {
+                            pastResultEl.textContent = `❌ 오답 (정답: ${verb.past})`;
+                            pastResultEl.className = 'text-sm font-bold pt-1 text-red-600 min-h-[20px]';
+                        }
+                        if (pastInputEl) {
+                            pastInputEl.classList.add('border-red-500', 'bg-red-50');
+                        }
+                    }
+
+                    // 2. 과거분사(PP) 채점
+                    const ppResultEl = document.getElementById(`${questionId}-pp-result`);
+                    const ppInputEl = document.getElementById(`${questionId}-pp-input`);
+                    
+                    if (userPP && correctPP.includes(userPP)) {
+                        questionScore += scorePerPart;
+                        if (ppResultEl) {
+                            ppResultEl.textContent = '✅ 정답!';
+                            ppResultEl.className = 'text-sm font-bold pt-1 text-green-600 min-h-[20px]';
+                        }
+                        if (ppInputEl) {
+                            ppInputEl.classList.add('border-green-500', 'bg-green-50');
+                        }
+                    } else {
+                        if (ppResultEl) {
+                            ppResultEl.textContent = `❌ 오답 (정답: ${verb.pp})`;
+                            ppResultEl.className = 'text-sm font-bold pt-1 text-red-600 min-h-[20px]';
+                        }
+                        if (ppInputEl) {
+                            ppInputEl.classList.add('border-red-500', 'bg-red-50');
+                        }
+                    }
+                    
+                    if (questionScore === 1) {
+                        questionBlockEl.classList.add('border-green-400', 'bg-green-50');
+                    } else if (questionScore > 0) { 
+                        questionBlockEl.classList.add('border-yellow-400', 'bg-yellow-50');
+                    } else { 
+                        questionBlockEl.classList.add('border-red-400', 'bg-red-50');
+                    }
+                    finalScore += questionScore;
+
+                    // 버튼 피드백 (객관식)
+                    const pastOptionButtons = document.querySelectorAll(`[data-question-id="${questionId}"][data-type="past"]`);
+                    pastOptionButtons.forEach(btn => {
+                        btn.disabled = true;
+                        btn.classList.remove('selected', 'bg-blue-500', 'text-white', 'font-semibold', 'bg-white');
+                        const optionAnswer = btn.dataset.answer;
+                        if (correctPast.includes(optionAnswer)) { btn.classList.add('bg-green-200', 'border-green-500', 'text-green-800'); }
+                        else if (optionAnswer === userPast) { btn.classList.add('bg-red-200', 'border-red-500', 'text-red-800'); }
+                        else { btn.classList.add('bg-gray-100', 'text-gray-500'); }
+                    });
+                    
+                    const ppOptionButtons = document.querySelectorAll(`[data-question-id="${questionId}"][data-type="pp"]`);
+                    ppOptionButtons.forEach(btn => {
+                        btn.disabled = true;
+                        btn.classList.remove('selected', 'bg-blue-500', 'text-white', 'font-semibold', 'bg-white');
+                        const optionAnswer = btn.dataset.answer;
+                        if (correctPP.includes(optionAnswer)) { btn.classList.add('bg-green-200', 'border-green-500', 'text-green-800'); }
+                        else if (optionAnswer === userPP) { btn.classList.add('bg-red-200', 'border-red-500', 'text-red-800'); }
+                        else { btn.classList.add('bg-gray-100', 'text-gray-500'); }
+                    });
+
+                    if (pastInputEl) pastInputEl.disabled = true;
+                    if (ppInputEl) ppInputEl.disabled = true;
+                });
+
+                const feedbackMessageEl = document.getElementById('verb-feedback-message');
+                let message = `총 ${verb_TOTAL_QUESTIONS}문제 중 ${finalScore}점 획득!`;
+                let messageClass = 'text-center text-xl font-bold text-teal-700 min-h-[30px]';
+                
+                if (isTimerExpired) {
+                    message = `⏰ 시간 초과! ${message}`;
+                    messageClass = 'text-center text-2xl font-extrabold text-red-600 min-h-[30px]';
+                } else if (finalScore === verb_TOTAL_QUESTIONS) {
+                     message += ' 🏆 만점입니다! 완벽해요!';
+                }
+
+                if (window.db && finalScore > (window.highScores.verbs || 0)) {
+                    message += ' 🎉 새로운 최고 점수를 달성했습니다! (자동 저장)';
+                    messageClass = 'text-center text-2xl font-extrabold text-pink-600 min-h-[30px]';
+                    window.saveHighScore('verbs', finalScore);
+                    window.highScores.verbs = finalScore;
+                    document.getElementById('high-score-display').textContent = finalScore;
+                } 
+
+                feedbackMessageEl.textContent = message;
+                feedbackMessageEl.className = messageClass; 
+
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                
+            } catch (error) {
+                console.error("Error during submitVerbQuiz:", error);
+            }
+        };
+
+
+        // =====================================================================
+        // 3. 공통 타이머 로직
+        // =====================================================================
+
+        function updateTimerDisplay(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            const timeString = `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+            
+            const timerEl = document.getElementById('timer-display');
+            timerEl.textContent = timeString;
+
+            if (seconds < 10 && seconds > 0) {
+                timerEl.classList.add('blinking', 'text-red-700');
+                timerEl.classList.remove('text-red-600');
+            } else if (seconds === 0) {
+                timerEl.classList.remove('blinking', 'text-red-600');
+                timerEl.classList.add('text-red-700');
+            } else {
+                timerEl.classList.remove('blinking', 'text-red-700');
+                timerEl.classList.add('text-red-600');
+            }
+        }
+
+        function startTimer(quizType) {
+            stopTimer(); 
+            updateTimerDisplay(totalTimeSeconds);
+            currentTimerType = quizType; 
+
+            document.getElementById('tab-vocab').disabled = true;
+            document.getElementById('tab-verbs').disabled = true;
+
+            timerInterval = setInterval(() => {
+                totalTimeSeconds--;
+                updateTimerDisplay(totalTimeSeconds);
+
+                if (totalTimeSeconds <= 0) {
+                    stopTimer(); 
+                    
+                    if (currentTimerType === 'vocab') {
+                        window.submitVocabQuiz(true); 
+                    } else if (currentTimerType === 'verbs') {
+                        window.submitVerbQuiz(true);
+                    }
+                    currentTimerType = null; 
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            document.getElementById('tab-vocab').disabled = false;
+            document.getElementById('tab-verbs').disabled = false;
+            currentTimerType = null; 
+        }
+
+        // =====================================================================
+        // 초기화
+        // =====================================================================
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
+    </script>
+</body>
+</html>

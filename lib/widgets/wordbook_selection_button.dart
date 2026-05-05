@@ -1,9 +1,7 @@
 // lib/widgets/wordbook_selection_button.dart (신규 파일)
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../models/wordbook_model.dart';
-import '../providers/wordbook_manager.dart';
 import 'glassmorphic_card.dart';
 import 'wordbook_selection_dialog.dart';
 

@@ -3,10 +3,12 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart' as gemini;
+import 'package:http/http.dart' as http;
 
 import '../models/ai_quiz_model.dart';
 import '../models/grammar_curriculum.dart';
 import '../models/word_model.dart';
+import '../providers/ai_settings_provider.dart';
 import 'api_key_service.dart';
 
 class CustomApiException implements Exception {
@@ -17,14 +19,32 @@ class CustomApiException implements Exception {
   String toString() => message;
 }
 
+class AiFallbackResult<T> {
+  final T value;
+  final AiRequestOption usedOption;
+  final List<String> attempts;
+
+  const AiFallbackResult({
+    required this.value,
+    required this.usedOption,
+    required this.attempts,
+  });
+}
+
 class AiService {
   final ApiKeyService _apiKeyService;
   AiService(this._apiKeyService);
 
-  Future<String?> generateExampleSentence(String word, String meaning, String modelName) async {
-    final apiKey = await _apiKeyService.getApiKey(AiProvider.gemini);
+  Future<String?> generateExampleSentence(
+    String word,
+    String meaning,
+    String modelName, {
+    AiProvider provider = AiProvider.gemini,
+    String? endpoint,
+  }) async {
+    final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
-      throw CustomApiException('api_key_missing', 'Gemini API 키가 등록되지 않았습니다.');
+      throw CustomApiException('api_key_missing', '${provider.label} API 키가 등록되지 않았습니다.');
     }
     final prompt = """
     Create a simple and natural example sentence using the English word "$word".
@@ -32,11 +52,18 @@ class AiService {
     Respond with only the sentence itself, without any additional explanations or quotation marks.
     """;
     try {
-      final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey);
-      final response = await model.generateContent([gemini.Content.text(prompt)]);
-      return response.text?.trim().replaceAll('"', '');
+      final responseText = await _sendPrompt(
+        provider: provider,
+        modelName: modelName,
+        apiKey: apiKey,
+        prompt: prompt,
+        endpoint: endpoint,
+      );
+      return responseText?.trim().replaceAll('"', '');
+    } on CustomApiException {
+      rethrow;
     } on Exception catch (e) {
-      debugPrint('Gemini 예문 생성 오류: $e');
+      debugPrint('${provider.label} 예문 생성 오류: $e');
       throw CustomApiException('sentence_generation_failed', '예문 생성에 실패했습니다.');
     }
   }
@@ -44,11 +71,13 @@ class AiService {
   // ▼▼▼ [수정] 전체 메서드 수정
   Future<Map<String, Map<String, String>>> generateSentencesForWords(
     List<Word> words,
+    AiProvider provider,
     String modelName,
+    String? endpoint,
   ) async {
-    final apiKey = await _apiKeyService.getApiKey(AiProvider.gemini);
+    final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
-      throw CustomApiException('api_key_missing', 'Gemini API 키가 등록되지 않았습니다.');
+      throw CustomApiException('api_key_missing', '${provider.name} API 키가 등록되지 않았습니다.');
     }
     final wordListJson = jsonEncode(
       words.map((w) => {'word': w.word, 'meaning': w.meaning}).toList(),
@@ -71,10 +100,15 @@ class AiService {
     }
     """;
     try {
-      final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey);
-      final response = await model.generateContent([gemini.Content.text(prompt)]);
-      final responseText = response.text ?? '{}';
-      final cleanedJson = responseText.replaceAll(RegExp(r'```json|```'), '').trim();
+      final responseText = await _sendPrompt(
+            provider: provider,
+            modelName: modelName,
+            apiKey: apiKey,
+            prompt: prompt,
+            endpoint: endpoint,
+          ) ??
+          '{}';
+      final cleanedJson = _cleanModelText(responseText);
       final decodedJson = jsonDecode(cleanedJson) as Map<String, dynamic>;
 
       return decodedJson.map((key, value) {
@@ -84,9 +118,27 @@ class AiService {
           "translation": valueMap['translation']?.toString() ?? '',
         });
       });
+    } on CustomApiException {
+      rethrow;
     } catch (e) {
       throw CustomApiException('sentence_generation_failed', '일괄 예문 생성에 실패했습니다.');
     }
+  }
+
+  Future<AiFallbackResult<Map<String, Map<String, String>>>> generateSentencesForWordsWithFallback(
+    List<Word> words,
+    List<AiRequestOption> options,
+  ) async {
+    return _runWithFallback<Map<String, Map<String, String>>>(
+      options: options,
+      run:
+          (option) => generateSentencesForWords(
+            words,
+            option.provider,
+            option.modelName,
+            option.endpoint,
+          ),
+    );
   }
 
   Future<AiQuizResponse?> generateGrammarQuiz({
@@ -98,6 +150,7 @@ class AiService {
     required String difficulty,
     required bool includeExplanation,
     required String questionLanguage,
+    String? endpoint,
   }) async {
     final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
@@ -113,18 +166,48 @@ class AiService {
     );
     try {
       String? responseText;
-      if (provider == AiProvider.gemini) {
-        final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey);
-        final response = await model.generateContent([gemini.Content.text(prompt)]);
-        responseText = response.text;
-      }
+      responseText = await _sendPrompt(
+        provider: provider,
+        modelName: modelName,
+        apiKey: apiKey,
+        prompt: prompt,
+        endpoint: endpoint,
+      );
       if (responseText != null) {
-        return AiQuizResponse.parse(responseText);
+        return AiQuizResponse.parse(_cleanModelText(responseText));
       }
       return null;
+    } on CustomApiException {
+      rethrow;
     } on Exception catch (e) {
       throw CustomApiException('unknown_error', '알 수 없는 오류가 발생했습니다: ${e.toString()}');
     }
+  }
+
+  Future<AiFallbackResult<AiQuizResponse?>> generateGrammarQuizWithFallback({
+    required List<AiRequestOption> options,
+    required GrammarCategory category,
+    required List<GrammarChapter> chapters,
+    required int questionCount,
+    required String difficulty,
+    required bool includeExplanation,
+    required String questionLanguage,
+  }) async {
+    return _runWithFallback<AiQuizResponse?>(
+      options: options,
+      run:
+          (option) => generateGrammarQuiz(
+            provider: option.provider,
+            modelName: option.modelName,
+            category: category,
+            chapters: chapters,
+            questionCount: questionCount,
+            difficulty: difficulty,
+            includeExplanation: includeExplanation,
+            questionLanguage: questionLanguage,
+            endpoint: option.endpoint,
+          ),
+    );
   }
 
   Future<AiQuizResponse?> generateQuiz({
@@ -136,6 +219,7 @@ class AiService {
     required int questionCount,
     required bool includeExplanation,
     required String questionLanguage,
+    String? endpoint,
   }) async {
     final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
@@ -151,25 +235,263 @@ class AiService {
     );
     try {
       String? responseText;
-      if (provider == AiProvider.gemini) {
-        final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey);
-        final response = await model.generateContent([gemini.Content.text(prompt)]);
-        responseText = response.text;
-      }
+      responseText = await _sendPrompt(
+        provider: provider,
+        modelName: modelName,
+        apiKey: apiKey,
+        prompt: prompt,
+        endpoint: endpoint,
+      );
       if (responseText != null) {
-        final cleanedText = responseText.replaceAll('**', '');
+        final cleanedText = _cleanModelText(responseText);
         return AiQuizResponse.parse(cleanedText);
       }
       return null;
+    } on CustomApiException {
+      rethrow;
     } on Exception catch (e) {
       if (e.toString().contains('overloaded') || e.toString().contains('503')) {
         throw CustomApiException('server_overloaded', 'AI 서버가 현재 바쁩니다. 잠시 후 다시 시도해주세요.');
       } else if (e.toString().contains('quota') || e.toString().contains('429')) {
         throw CustomApiException('quota_exceeded', 'API 사용량 한도를 초과했습니다.');
+      } else if (e.toString().contains('TimeoutException')) {
+        throw CustomApiException('request_timeout', 'AI 요청 시간이 초과되었습니다.');
+      } else if (e.toString().contains('SocketException')) {
+        throw CustomApiException('network_error', '네트워크 연결을 확인해주세요.');
       } else {
         throw CustomApiException('unknown_error', '알 수 없는 오류가 발생했습니다: ${e.toString()}');
       }
     }
+  }
+
+  Future<AiFallbackResult<AiQuizResponse?>> generateQuizWithFallback({
+    required List<AiRequestOption> options,
+    required List<Word> selectedWords,
+    required String quizType,
+    required String difficulty,
+    required int questionCount,
+    required bool includeExplanation,
+    required String questionLanguage,
+  }) async {
+    return _runWithFallback<AiQuizResponse?>(
+      options: options,
+      run:
+          (option) => generateQuiz(
+            provider: option.provider,
+            modelName: option.modelName,
+            selectedWords: selectedWords,
+            quizType: quizType,
+            difficulty: difficulty,
+            questionCount: questionCount,
+            includeExplanation: includeExplanation,
+            questionLanguage: questionLanguage,
+            endpoint: option.endpoint,
+          ),
+    );
+  }
+
+  Future<AiFallbackResult<T>> _runWithFallback<T>({
+    required List<AiRequestOption> options,
+    required Future<T> Function(AiRequestOption option) run,
+  }) async {
+    if (options.isEmpty) {
+      throw CustomApiException('api_key_missing', '사용 가능한 AI 제공자가 없습니다.');
+    }
+
+    final attempts = <String>[];
+    CustomApiException? lastFallbackError;
+
+    for (final option in options) {
+      final apiKey = await _apiKeyService.getApiKey(option.provider);
+      if (apiKey == null || apiKey.isEmpty) {
+        attempts.add('${option.provider.shortLabel}: API 키 없음');
+        continue;
+      }
+      if (option.provider == AiProvider.customOpenAI &&
+          (option.endpoint == null || option.endpoint!.isEmpty)) {
+        attempts.add('${option.provider.shortLabel}: 엔드포인트 없음');
+        continue;
+      }
+
+      try {
+        final value = await run(option);
+        return AiFallbackResult<T>(
+          value: value,
+          usedOption: option,
+          attempts: [...attempts, '${option.provider.shortLabel}: 성공'],
+        );
+      } on CustomApiException catch (e) {
+        attempts.add('${option.provider.shortLabel}: ${e.message}');
+        if (_isFallbackCandidate(e)) {
+          lastFallbackError = e;
+          continue;
+        }
+        rethrow;
+      }
+    }
+
+    if (lastFallbackError != null) {
+      throw CustomApiException(
+        'fallback_exhausted',
+        '등록된 AI 제공자를 모두 시도했지만 실패했습니다.\n${attempts.join('\n')}',
+      );
+    }
+    throw CustomApiException(
+      'api_key_missing',
+      '사용 가능한 API 키가 없습니다. AI 설정에서 API 키를 등록해주세요.',
+    );
+  }
+
+  bool _isFallbackCandidate(CustomApiException error) {
+    return {
+      'quota_exceeded',
+      'server_overloaded',
+      'request_timeout',
+      'network_error',
+      'openai_request_failed',
+      'anthropic_request_failed',
+    }.contains(error.code);
+  }
+
+  Future<String?> _sendPrompt({
+    required AiProvider provider,
+    required String modelName,
+    required String apiKey,
+    required String prompt,
+    String? endpoint,
+  }) async {
+    switch (provider) {
+      case AiProvider.gemini:
+        final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey);
+        final response = await model.generateContent([gemini.Content.text(prompt)]);
+        return response.text;
+      case AiProvider.anthropic:
+        return _sendAnthropicPrompt(modelName: modelName, apiKey: apiKey, prompt: prompt);
+      case AiProvider.openAI:
+      case AiProvider.groq:
+      case AiProvider.openRouter:
+      case AiProvider.mistral:
+      case AiProvider.deepSeek:
+      case AiProvider.xAI:
+      case AiProvider.perplexity:
+      case AiProvider.together:
+      case AiProvider.fireworks:
+      case AiProvider.customOpenAI:
+        return _sendOpenAiCompatiblePrompt(
+          provider: provider,
+          modelName: modelName,
+          apiKey: apiKey,
+          prompt: prompt,
+          endpoint: endpoint,
+        );
+    }
+  }
+
+  Future<String?> _sendOpenAiCompatiblePrompt({
+    required AiProvider provider,
+    required String modelName,
+    required String apiKey,
+    required String prompt,
+    String? endpoint,
+  }) async {
+    final resolvedEndpoint =
+        provider == AiProvider.customOpenAI ? endpoint?.trim() : provider.chatCompletionsEndpoint;
+    if (resolvedEndpoint == null || resolvedEndpoint.isEmpty) {
+      throw CustomApiException('endpoint_missing', '${provider.label} 엔드포인트를 입력해주세요.');
+    }
+
+    final response = await http.post(
+      Uri.parse(resolvedEndpoint),
+      headers: {
+        'Authorization': 'Bearer $apiKey',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'model': modelName,
+        'messages': [
+          {
+            'role': 'system',
+            'content': 'Return only valid JSON. Do not wrap the response in markdown.',
+          },
+          {'role': 'user', 'content': prompt},
+        ],
+        'temperature': 0.7,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = utf8.decode(response.bodyBytes);
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        throw CustomApiException('api_key_invalid', '${provider.label} API 키를 확인해주세요.');
+      }
+      if (response.statusCode == 429) {
+        throw CustomApiException('quota_exceeded', 'API 사용량 한도를 초과했습니다.');
+      }
+      if (response.statusCode == 503 || response.statusCode == 529) {
+        throw CustomApiException('server_overloaded', '${provider.label} 서버가 현재 바쁩니다.');
+      }
+      throw CustomApiException('openai_request_failed', '${provider.label} 요청에 실패했습니다. ($body)');
+    }
+
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final choices = decoded['choices'] as List<dynamic>?;
+    if (choices == null || choices.isEmpty) return null;
+    final message = choices.first['message'] as Map<String, dynamic>?;
+    return message?['content']?.toString();
+  }
+
+  Future<String?> _sendAnthropicPrompt({
+    required String modelName,
+    required String apiKey,
+    required String prompt,
+  }) async {
+    final response = await http.post(
+      Uri.parse('https://api.anthropic.com/v1/messages'),
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'model': modelName,
+        'max_tokens': 4096,
+        'temperature': 0.7,
+        'system': 'Return only valid JSON. Do not wrap the response in markdown.',
+        'messages': [
+          {'role': 'user', 'content': prompt},
+        ],
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = utf8.decode(response.bodyBytes);
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        throw CustomApiException('api_key_invalid', 'Anthropic API 키를 확인해주세요.');
+      }
+      if (response.statusCode == 429) {
+        throw CustomApiException('quota_exceeded', 'API 사용량 한도를 초과했습니다.');
+      }
+      if (response.statusCode == 503 || response.statusCode == 529) {
+        throw CustomApiException('server_overloaded', 'Anthropic 서버가 현재 바쁩니다.');
+      }
+      throw CustomApiException('anthropic_request_failed', 'Anthropic 요청에 실패했습니다. ($body)');
+    }
+
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final content = decoded['content'] as List<dynamic>?;
+    if (content == null || content.isEmpty) return null;
+    final firstText = content.firstWhere(
+      (item) => item is Map<String, dynamic> && item['type'] == 'text',
+      orElse: () => null,
+    );
+    if (firstText is Map<String, dynamic>) {
+      return firstText['text']?.toString();
+    }
+    return null;
+  }
+
+  String _cleanModelText(String text) {
+    return text.replaceAll(RegExp(r'```(?:json)?|```'), '').replaceAll('**', '').trim();
   }
 
   String _buildGrammarPrompt(

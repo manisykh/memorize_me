@@ -72,7 +72,7 @@ class _SelectSpreadsheetScreenState extends State<SelectSpreadsheetScreen> {
                       ),
                     );
 
-                    if (result == true && mounted) {
+                    if (result == true && context.mounted) {
                       Navigator.of(context).pop();
                     }
                   } else {

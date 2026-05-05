@@ -6,6 +6,7 @@ import '../models/ai_quiz_model.dart';
 import '../models/grammar_curriculum.dart';
 import '../providers/ai_settings_provider.dart';
 import '../services/ai_service.dart';
+import '../services/api_key_service.dart';
 import '../widgets/glassmorphic_card.dart';
 import 'ai_quiz_player_screen.dart';
 import 'app_settings_screen.dart';
@@ -59,9 +60,10 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       final difficultyIndex = (_difficulty.round() - 1).clamp(0, 6);
       final difficultyText = difficultyLabels[difficultyIndex];
 
-      final AiQuizResponse? quizResponse = await aiService.generateGrammarQuiz(
-        provider: aiSettings.selectedProvider,
-        modelName: aiSettings.selectedModel,
+      final fallbackResult = await aiService.generateGrammarQuizWithFallback(
+        options: aiSettings.requestOptions(
+          fallbackEnabled: aiSettings.autoFallbackEnabled,
+        ),
         category: selectedCategory,
         chapters: _selectedChapters.toList(),
         questionCount: _questionCount.round(),
@@ -69,9 +71,19 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
         includeExplanation: _includeExplanation,
         questionLanguage: _questionLanguage,
       );
+      final AiQuizResponse? quizResponse = fallbackResult.value;
 
       if (mounted) {
         if (quizResponse != null && quizResponse.questions.isNotEmpty) {
+          if (fallbackResult.usedOption.provider != aiSettings.selectedProvider) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '${fallbackResult.usedOption.provider.shortLabel} ${fallbackResult.usedOption.modelName} 모델로 자동 대체했습니다.',
+                ),
+              ),
+            );
+          }
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => AiQuizPlayerScreen(quizResponse: quizResponse)),
           );

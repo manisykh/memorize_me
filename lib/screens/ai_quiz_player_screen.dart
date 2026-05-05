@@ -154,6 +154,25 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     }
   }
 
+  Future<void> _handleHtmlExport(TestSheetService service) async {
+    setState(() => _isExporting = true);
+    try {
+      await service.exportAiQuizAsInteractiveHtml(
+        questions: widget.quizResponse.questions,
+        title: _pdfTitleController.text,
+        share: true,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('HTML 생성 중 오류 발생: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -172,6 +191,12 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                     : const Icon(Icons.picture_as_pdf_outlined),
             onPressed: _isExporting ? null : _showPdfExportDialog,
             tooltip: 'PDF로 내보내기',
+          ),
+          IconButton(
+            icon: const Icon(Icons.language),
+            onPressed:
+                _isExporting ? null : () => _handleHtmlExport(context.read<TestSheetService>()),
+            tooltip: '인터랙티브 HTML로 내보내기',
           ),
           const SizedBox(width: 8),
         ],
@@ -230,7 +255,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                 children: [
                   if (localIndex > 0) const Divider(height: 32, thickness: 0.5),
                   Text(
-                    '${globalQuestionIndex + 1}. ${subQuestion.question ?? '질문 없음'}',
+                    '${globalQuestionIndex + 1}. ${subQuestion.question}',
                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 16),
@@ -238,7 +263,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                     (option) => _buildOptionTile(
                       optionText: option,
                       questionIndex: globalQuestionIndex,
-                      correctAnswer: subQuestion.answer ?? '',
+                      correctAnswer: subQuestion.answer,
                       explanation: subQuestion.explanation,
                     ),
                   ),
@@ -286,7 +311,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.5),
+        color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Theme.of(context).dividerColor),
       ),
@@ -332,7 +357,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     final theme = Theme.of(context);
     final userAnswer = _userAnswers[questionIndex];
     Color? backgroundColor;
-    Color borderColor = theme.dividerColor.withOpacity(0.5);
+    Color borderColor = theme.dividerColor.withValues(alpha: 0.5);
     bool isSelected = (userAnswer == optionText);
     if (_isSubmitted) {
       if (optionText == correctAnswer) {
@@ -343,7 +368,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
         borderColor = Colors.red;
       }
     } else if (isSelected) {
-      backgroundColor = theme.primaryColor.withOpacity(0.1);
+      backgroundColor = theme.primaryColor.withValues(alpha: 0.1);
       borderColor = theme.primaryColor;
     }
     return Column(

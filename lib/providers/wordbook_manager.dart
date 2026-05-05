@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:path/path.dart' as p;
@@ -11,12 +10,14 @@ import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 import '../services/database_service.dart';
 import '../services/sheets_service.dart';
+import '../services/srs_service.dart';
 import 'word_list_provider.dart';
 
 class WordbookManager extends ChangeNotifier {
   final DatabaseService _dbService;
   final SheetsService _sheetsService;
   final WordListNotifier _wordListNotifier;
+  final SrsService _srsService = SrsService();
 
   List<Wordbook> _wordbooks = [];
   List<Wordbook> get wordbooks => _wordbooks;
@@ -26,6 +27,8 @@ class WordbookManager extends ChangeNotifier {
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
+  int _statsRevision = 0;
+  int get statsRevision => _statsRevision;
 
   WordbookManager(this._dbService, this._sheetsService, this._wordListNotifier);
 
@@ -61,6 +64,7 @@ class WordbookManager extends ChangeNotifier {
 
   Future<void> _loadWordbooks() async {
     _wordbooks = await _dbService.getWordbooks();
+    _statsRevision++;
     // loadInitialData에서 setActiveWordbook을 관리하므로 여기서는 호출하지 않습니다.
     notifyListeners();
   }
@@ -89,33 +93,24 @@ class WordbookManager extends ChangeNotifier {
       await prefs.remove('last_active_wordbook_id');
     }
 
+    _statsRevision++;
     notifyListeners();
   }
 
   List<Word> getWordsForReview() {
     if (_activeWordbook == null) return [];
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    return _wordListNotifier.words.where((word) {
-      if (word.srsLevel <= 1) return true;
-      if (word.nextReviewDate != null) {
-        try {
-          final reviewDate = DateTime.parse(word.nextReviewDate!);
-          return !reviewDate.isAfter(today);
-        } catch (e) {
-          return false;
-        }
-      }
-      return false;
-    }).toList();
+    return _srsService.dueWords(_wordListNotifier.words);
   }
 
   Future<void> updateWordsSrsData(String dbFileName, List<Word> words) async {
     await _dbService.updateWordSrsBatch(dbFileName, words);
+    _statsRevision++;
     if (_activeWordbook?.dbFileName == dbFileName) {
       await _wordListNotifier.refreshWords();
       notifyListeners();
+      return;
     }
+    notifyListeners();
   }
 
   Future<List<Word>> getAllWordsFrom(Wordbook wordbook) async {
@@ -124,16 +119,20 @@ class WordbookManager extends ChangeNotifier {
 
   Future<void> updateWordsInWordbook(Wordbook wordbook, List<Word> words) async {
     await _dbService.updateWordSrsBatch(wordbook.dbFileName, words);
+    _statsRevision++;
     if (_activeWordbook?.id == wordbook.id) {
       await _wordListNotifier.refreshWords();
     }
+    notifyListeners();
   }
 
   Future<void> deleteWordFrom(Wordbook wordbook, int wordId) async {
     await _dbService.deleteWord(wordbook.dbFileName, wordId);
+    _statsRevision++;
     if (_activeWordbook?.id == wordbook.id) {
       await _wordListNotifier.refreshWords();
     }
+    notifyListeners();
   }
 
   Future<Map<Wordbook, List<Word>>> searchAllWordbooks(String query) async {
@@ -166,8 +165,9 @@ class WordbookManager extends ChangeNotifier {
           csvTable
               .skip(1)
               .map((row) {
-                if (row.length >= 2)
+                if (row.length >= 2) {
                   return Word(word: row[0].toString().trim(), meaning: row[1].toString().trim());
+                }
                 return null;
               })
               .where((word) => word != null && word.word.isNotEmpty && word.meaning.isNotEmpty)
@@ -181,34 +181,43 @@ class WordbookManager extends ChangeNotifier {
         _setLoading(false);
         return;
       }
+      if (!context.mounted) {
+        _setLoading(false);
+        return;
+      }
       final theme = Theme.of(context);
       final nameController = TextEditingController(text: p.basenameWithoutExtension(path));
-      final String? newName = await showCupertinoDialog<String>(
+      final String? newName = await showDialog<String>(
         context: context,
         builder:
-            (dialogContext) => CupertinoAlertDialog(
+            (dialogContext) => AlertDialog(
               title: const Text('단어장 이름 지정'),
-              content: Padding(
-                padding: const EdgeInsets.only(top: 16.0),
-                child: CupertinoTextField(
-                  controller: nameController,
-                  placeholder: '단어장 이름을 입력하세요',
-                  style: TextStyle(color: theme.textTheme.bodyLarge?.color),
+              content: TextField(
+                controller: nameController,
+                autofocus: true,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: '단어장 이름',
+                  hintText: '단어장 이름을 입력하세요',
                 ),
+                style: TextStyle(color: theme.textTheme.bodyLarge?.color),
+                onSubmitted: (value) {
+                  Navigator.of(dialogContext).pop(value.trim());
+                },
               ),
               actions: [
-                CupertinoDialogAction(
+                TextButton(
                   child: const Text('취소'),
                   onPressed: () => Navigator.of(dialogContext).pop(),
                 ),
-                CupertinoDialogAction(
-                  isDefaultAction: true,
+                FilledButton(
                   child: const Text('생성'),
                   onPressed: () => Navigator.of(dialogContext).pop(nameController.text.trim()),
                 ),
               ],
             ),
       );
+      nameController.dispose();
       if (newName == null || newName.isEmpty) {
         _setLoading(false);
         return;
@@ -225,8 +234,9 @@ class WordbookManager extends ChangeNotifier {
       await setActiveWordbook(savedWordbook);
     } catch (e) {
       debugPrint("Error creating wordbook from CSV: $e");
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('파일 처리 중 오류 발생: $e')));
+      }
     } finally {
       _setLoading(false);
     }
@@ -266,19 +276,22 @@ class WordbookManager extends ChangeNotifier {
       final savedWordbook = await _dbService.addWordbook(newWordbook);
       await _dbService.addWordsInBatch(savedWordbook.dbFileName, mergedWords);
       if (context.mounted) {
-        final deleteOriginals = await showCupertinoDialog<bool>(
+        final deleteOriginals = await showDialog<bool>(
           context: context,
           builder: (dialogContext) {
-            return CupertinoAlertDialog(
+            return AlertDialog(
               title: const Text('병합 완료'),
               content: Text("새로운 단어장 '$newName'이(가) 생성되었습니다.\n병합에 사용된 기존 단어장들을 삭제하시겠습니까?"),
               actions: [
-                CupertinoDialogAction(
+                TextButton(
                   child: const Text('유지'),
                   onPressed: () => Navigator.of(dialogContext).pop(false),
                 ),
-                CupertinoDialogAction(
-                  isDestructiveAction: true,
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                    foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+                  ),
                   child: const Text('삭제'),
                   onPressed: () => Navigator.of(dialogContext).pop(true),
                 ),
@@ -293,6 +306,7 @@ class WordbookManager extends ChangeNotifier {
         }
         await _loadWordbooks();
         await setActiveWordbook(savedWordbook);
+        if (!context.mounted) return;
         Navigator.of(context).pop();
       }
     } catch (e) {

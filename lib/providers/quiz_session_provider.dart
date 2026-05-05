@@ -5,7 +5,6 @@ import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 import '../services/srs_service.dart';
 import 'wordbook_manager.dart';
-import 'dart:math';
 
 // 퀴즈 결과 저장을 위한 모델
 class QuizResult {

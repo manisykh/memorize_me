@@ -35,11 +35,15 @@ class CsvService {
                 title: const Text('가져오기 옵션'),
                 content: const Text('기존 단어장을 어떻게 처리할까요?'),
                 actions: [
-                  TextButton(
+                  OutlinedButton(
                     onPressed: () => Navigator.of(context).pop(ImportOption.append),
                     child: const Text('추가하기'),
                   ),
-                  TextButton(
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      foregroundColor: Theme.of(context).colorScheme.onError,
+                    ),
                     onPressed: () => Navigator.of(context).pop(ImportOption.replace),
                     child: const Text('새로 교체하기'),
                   ),

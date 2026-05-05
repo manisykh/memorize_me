@@ -1,0 +1,19 @@
+* text=auto working-tree-encoding=UTF-8
+
+*.dart text working-tree-encoding=UTF-8
+*.yaml text working-tree-encoding=UTF-8
+*.yml text working-tree-encoding=UTF-8
+*.json text working-tree-encoding=UTF-8
+*.md text working-tree-encoding=UTF-8
+*.html text working-tree-encoding=UTF-8
+*.xml text working-tree-encoding=UTF-8
+*.gradle text working-tree-encoding=UTF-8
+*.properties text working-tree-encoding=UTF-8
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.svg text working-tree-encoding=UTF-8
+*.ttf binary
+*.db binary
