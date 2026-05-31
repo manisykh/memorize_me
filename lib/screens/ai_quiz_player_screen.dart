@@ -86,6 +86,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
 
   Future<void> _showPdfExportDialog() async {
     PdfExportType tempSelectedType = _selectedPdfType;
+    final testSheetService = context.read<TestSheetService>();
     await showDialog(
       context: context,
       builder: (context) {
@@ -122,7 +123,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                   onPressed: () {
                     setState(() => _selectedPdfType = tempSelectedType);
                     Navigator.pop(context);
-                    _handlePdfExport(context.read<TestSheetService>());
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _handlePdfExport(testSheetService);
+                    });
                   },
                   child: const Text('내보내기'),
                 ),

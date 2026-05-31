@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
+import '../models/study_plan_model.dart';
 import '../providers/ai_settings_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/ai_service.dart';
@@ -29,8 +30,11 @@ class AiQuizSetupScreen extends StatefulWidget {
 
 class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   Wordbook? _selectedWordbook;
+  StudyPlan? _studyPlan;
   List<Word> _words = [];
   final Set<int> _selectedWordIds = {};
+  int _totalWordCount = 0;
+  int _lockedNewWordCount = 0;
 
   String _selectedQuizType = '종합';
   double _difficulty = 3.0;
@@ -56,6 +60,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     setState(() {
       _isLoading = true;
       _selectedWordbook = wordbook;
+      _studyPlan = null;
+      _totalWordCount = 0;
+      _lockedNewWordCount = 0;
       _words.clear();
       _selectedWordIds.clear();
     });
@@ -64,9 +71,15 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     final modeStateService = context.read<ModeStateService>();
     await wordbookManager.setActiveWordbook(wordbook);
 
-    final words = await wordbookManager.getAllWordsFrom(wordbook);
+    final allWords = await wordbookManager.getAllWordsFrom(wordbook);
+    final studyPlan = wordbookManager.planFor(wordbook);
+    final words = wordbookManager.wordsAvailableForPlan(allWords, plan: studyPlan);
+    final lockedNewWordCount = wordbookManager.lockedNewWordCount(allWords, plan: studyPlan);
     if (mounted) {
       setState(() {
+        _studyPlan = studyPlan;
+        _totalWordCount = allWords.length;
+        _lockedNewWordCount = lockedNewWordCount;
         _words = words;
         _selectedWordIds.addAll(words.where((word) => word.id != null).map((word) => word.id!));
         _isLoading = false;
@@ -118,7 +131,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     if (e is CustomApiException) {
       message = e.message;
       if (e.code == 'api_key_missing') {
-        await showDialog(
+        final openSettings = await showDialog<bool>(
           context: context,
           builder:
               (dialogContext) => AlertDialog(
@@ -131,14 +144,14 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                   ),
                   FilledButton(
                     child: const Text('설정으로 이동'),
-                    onPressed: () {
-                      Navigator.pop(dialogContext);
-                      _showAiSettingsSheet();
-                    },
+                    onPressed: () => Navigator.pop(dialogContext, true),
                   ),
                 ],
               ),
         );
+        if (openSettings == true && mounted) {
+          _showAiSettingsSheet();
+        }
         return;
       }
     }
@@ -177,6 +190,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         includeExplanation: _includeExplanation,
         questionLanguage: _questionLanguage,
       );
+      aiSettings.recordUsedOption(fallbackResult.usedOption);
       final quizResponse = fallbackResult.value;
 
       if (mounted) {
@@ -234,6 +248,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           fallbackEnabled: aiSettings.autoFallbackEnabled,
         ),
       );
+      aiSettings.recordUsedOption(fallbackResult.usedOption);
       final sentenceMap = fallbackResult.value;
 
       final updatedWords = <Word>[];
@@ -250,11 +265,15 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       }
 
       await wordbookManager.updateWordsInWordbook(_selectedWordbook!, updatedWords);
-      final newWords = await wordbookManager.getAllWordsFrom(_selectedWordbook!);
+      final allWords = await wordbookManager.getAllWordsFrom(_selectedWordbook!);
+      final newWords = wordbookManager.wordsAvailableForPlan(allWords, plan: _studyPlan);
 
       if (mounted) {
         setState(() {
           _words = newWords;
+          _selectedWordIds
+            ..clear()
+            ..addAll(newWords.where((word) => word.id != null).map((word) => word.id!));
         });
         ScaffoldMessenger.of(
           context,
@@ -275,6 +294,56 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         setState(() => _isGeneratingSentences = false);
       }
     }
+  }
+
+  Widget _buildLearningScopeNotice(ThemeData theme) {
+    final plan = _studyPlan;
+    if (plan == null) return const SizedBox.shrink();
+    final totalDays = plan.estimatedTotalDays();
+    final currentDay = totalDays == 0 ? 0 : plan.currentChunk().clamp(1, totalDays).toInt();
+    final taskLabel = widget.initialFocus == AiQuizSetupFocus.sentences ? '예문 생성' : 'AI 퀴즈';
+
+    return GlassmorphicCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      borderRadius: 20,
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.tertiary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(CupertinoIcons.calendar, color: theme.colorScheme.tertiary, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '현재 학습 기준 · 플랜 $currentDay/$totalDays일차',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$taskLabel는 열린 단어 ${_words.length}/$_totalWordCount개만 사용합니다. 잠긴 단어 $_lockedNewWordCount개는 아직 제외됩니다.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -298,6 +367,10 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                 onWordbookSelected: _onWordbookSelected,
                 wordCount: _words.length,
               ),
+              if (_studyPlan != null) ...[
+                const SizedBox(height: 12),
+                _buildLearningScopeNotice(theme),
+              ],
               if (widget.initialFocus == AiQuizSetupFocus.sentences) ...[
                 const SizedBox(height: 24),
                 Text('AI 예문 생성', style: theme.textTheme.titleLarge),

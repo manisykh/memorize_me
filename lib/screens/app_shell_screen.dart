@@ -1,9 +1,14 @@
+import 'dart:math';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
+import '../models/study_plan_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/word_list_provider.dart';
@@ -12,6 +17,7 @@ import '../services/srs_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/ai_settings_card.dart';
 import '../widgets/glassmorphic_card.dart';
+import '../widgets/study_guide.dart';
 import 'ai_grammar_quiz_setup_screen.dart';
 import 'ai_quiz_setup_screen.dart';
 import 'app_settings_screen.dart';
@@ -20,7 +26,7 @@ import 'quiz_screen.dart';
 import 'srs_status_screen.dart';
 import 'wordbook_management_screen.dart';
 
-enum _ShellTab { home, decks, review, stats, ai, settings }
+enum _ShellTab { home, review, stats, ai, settings }
 
 class _ShellPalette {
   final Color background;
@@ -53,55 +59,55 @@ class _ShellPalette {
 
   factory _ShellPalette.of(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
-    final isVision = theme.primaryColor == const Color(0xFF6C6048);
+    final isVision = theme.primaryColor == const Color(0xFFC76E40);
 
     if (isDark) {
       return const _ShellPalette(
-        background: Color(0xFF0F1517),
-        topBar: Color(0xFF11191B),
-        iconSurface: Color(0xFF1B2729),
-        navBackground: Color(0xFF10181A),
-        navIndicator: Color(0xFF203335),
-        border: Color(0xFF2A3B3D),
-        brand: Color(0xFF82D5C7),
-        accent: Color(0xFFE07868),
-        review: Color(0xFFE07868),
-        info: Color(0xFF86A9D3),
-        success: Color(0xFF79BF92),
-        warning: Color(0xFFD3A65B),
+        background: Color(0xFF231C16),
+        topBar: Color(0xFF2D241C),
+        iconSurface: Color(0xFF4F3F30),
+        navBackground: Color(0xFF3A2E24),
+        navIndicator: Color(0xFF604A35),
+        border: Color(0xFF604A35),
+        brand: Color(0xFFF0A866),
+        accent: Color(0xFFF0A866),
+        review: Color(0xFF7BBF8E),
+        info: Color(0xFFFAB97A),
+        success: Color(0xFF7BBF8E),
+        warning: Color(0xFFE5B36A),
       );
     }
 
     if (isVision) {
       return const _ShellPalette(
-        background: Color(0xFFF8F2E6),
-        topBar: Color(0xFFFEFAF1),
-        iconSurface: Color(0xFFEFE7D8),
-        navBackground: Color(0xFFFEFAF1),
-        navIndicator: Color(0xFFEFE4D2),
-        border: Color(0xFFE2D6C2),
-        brand: Color(0xFF6C6048),
-        accent: Color(0xFF98695A),
-        review: Color(0xFFB56557),
-        info: Color(0xFF667862),
-        success: Color(0xFF5F7657),
-        warning: Color(0xFF9A763D),
+        background: Color(0xFFF9F2E5),
+        topBar: Color(0xFFFFF8ED),
+        iconSurface: Color(0xFFF0E2CC),
+        navBackground: Color(0xFFFBF6EC),
+        navIndicator: Color(0xFFF0E2CC),
+        border: Color(0xFFE5D6BD),
+        brand: Color(0xFF8B4A32),
+        accent: Color(0xFFC76E40),
+        review: Color(0xFF5C8A6E),
+        info: Color(0xFFE08A52),
+        success: Color(0xFF5C8A6E),
+        warning: Color(0xFFD69A3F),
       );
     }
 
     return const _ShellPalette(
-      background: Color(0xFFF6F7F2),
-      topBar: Color(0xFFFBFAF5),
-      iconSurface: Color(0xFFEEF1EA),
-      navBackground: Color(0xFFFBFAF5),
-      navIndicator: Color(0xFFE6F0EA),
-      border: Color(0xFFDFE4DA),
-      brand: Color(0xFF1F6B5F),
-      accent: Color(0xFFD46A5D),
-      review: Color(0xFFD46A5D),
-      info: Color(0xFF526A86),
-      success: Color(0xFF557C63),
-      warning: Color(0xFF9A7145),
+      background: Color(0xFFF7F7F7),
+      topBar: Color(0xFFFFFFFF),
+      iconSurface: Color(0xFFEFEFF1),
+      navBackground: Color(0xFFFFFFFF),
+      navIndicator: Color(0xFFF3E2D7),
+      border: Color(0xFFDCDCE0),
+      brand: Color(0xFF8B432B),
+      accent: Color(0xFFC8612C),
+      review: Color(0xFF5C8A6E),
+      info: Color(0xFFE37E3F),
+      success: Color(0xFF5C8A6E),
+      warning: Color(0xFFD69A3F),
     );
   }
 }
@@ -114,30 +120,124 @@ class AppShellScreen extends StatefulWidget {
 }
 
 class _AppShellScreenState extends State<AppShellScreen> {
+  static const _guideSeenKey = 'memorize_me.study_guide_seen_v1';
+  static const _lastShellTabKey = 'memorize_me.last_shell_tab';
+
   final SrsService _srsService = SrsService();
   final Map<Object, Future<_DeckStats>> _deckStatsFutures = {};
   _ShellTab _currentTab = _ShellTab.home;
   int? _cachedStatsRevision;
+  bool _guideCheckStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _restoreLastTab();
+      _maybeShowFirstRunGuide();
+    });
+  }
+
+  Future<void> _restoreLastTab() async {
+    final prefs = await SharedPreferences.getInstance();
+    final tabName = prefs.getString(_lastShellTabKey);
+    if (tabName == null) return;
+
+    for (final tab in _ShellTab.values) {
+      if (tab.name == tabName) {
+        if (!mounted) return;
+        setState(() => _currentTab = tab);
+        return;
+      }
+    }
+  }
+
+  void _selectTab(int index) {
+    final nextTab = _ShellTab.values[index];
+    setState(() => _currentTab = nextTab);
+    SharedPreferences.getInstance().then(
+      (prefs) => prefs.setString(_lastShellTabKey, nextTab.name),
+    );
+  }
+
+  Future<void> _maybeShowFirstRunGuide() async {
+    if (_guideCheckStarted) return;
+    _guideCheckStarted = true;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted || prefs.getBool(_guideSeenKey) == true) return;
+
+    await prefs.setBool(_guideSeenKey, true);
+    if (!mounted) return;
+    await showStudyGuideSheet(context, StudyGuideCatalog.quickStart);
+  }
 
   Object _wordbookKey(Wordbook wordbook) => wordbook.id ?? wordbook.dbFileName;
 
   Future<_DeckStats> _statsForWordbook(WordbookManager manager, Wordbook wordbook) {
     return _deckStatsFutures.putIfAbsent(_wordbookKey(wordbook), () async {
       final words = await manager.getAllWordsFrom(wordbook);
-      final plan = _srsService.buildDailyPlan(words);
+      final studyPlan = manager.planFor(wordbook);
+      final scopedWords = manager.wordsAvailableForPlan(words, plan: studyPlan);
+      final isPlanScoped = studyPlan?.status == StudyPlanStatus.active;
+      final plan = _srsService.buildDailyPlan(scopedWords);
+      final reviewNotice = _reviewNoticeForWords(scopedWords, plan.dueWords.length);
       return _DeckStats(
-        totalCount: words.length,
+        totalCount: isPlanScoped ? scopedWords.length : words.length,
+        fullCount: words.length,
+        lockedCount:
+            isPlanScoped ? manager.lockedNewWordCount(words, plan: studyPlan) : 0,
+        isPlanScoped: isPlanScoped,
         reviewCount: plan.dueWords.length,
         newCount: plan.newWords.length,
         learningCount: plan.learningWords.length,
         matureCount: plan.matureWords.length,
+        nextReviewLabel: reviewNotice?.label,
+        hasDueReviewNotice: reviewNotice?.isDue ?? false,
+        hasOverdueReviewNotice: reviewNotice?.isOverdue ?? false,
       );
     });
   }
 
+  _DeckReviewNotice? _reviewNoticeForWords(List<Word> words, int dueCount) {
+    final today = _srsService.today();
+    DateTime? nearest;
+    var overdueCount = 0;
+
+    for (final word in words) {
+      final reviewDate = _srsService.reviewDateFor(word);
+      if (reviewDate == null) continue;
+      if (reviewDate.isBefore(today)) {
+        overdueCount++;
+        continue;
+      }
+      if (!reviewDate.isAfter(today)) continue;
+      if (nearest == null || reviewDate.isBefore(nearest!)) {
+        nearest = reviewDate;
+      }
+    }
+
+    if (overdueCount > 0) {
+      return _DeckReviewNotice(
+        label: '복습일 지난 단어 $overdueCount개',
+        isDue: true,
+        isOverdue: true,
+      );
+    }
+    if (dueCount > 0) {
+      return _DeckReviewNotice(label: '복습할 단어 $dueCount개', isDue: true);
+    }
+    if (nearest == null) return null;
+    return _DeckReviewNotice(label: '다음 복습 ${nearest.month}/${nearest.day}');
+  }
+
   void _cycleTheme() {
     final notifier = context.read<ThemeNotifier>();
-    final themes = AppThemeType.values;
+    const themes = [
+      AppThemeType.lightGreen,
+      AppThemeType.visionProtection,
+      AppThemeType.dark,
+    ];
     final currentIndex = themes.indexOf(notifier.currentTheme);
     final nextTheme = themes[(currentIndex + 1) % themes.length];
     notifier.setTheme(nextTheme);
@@ -244,8 +344,9 @@ class _AppShellScreenState extends State<AppShellScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final palette = _ShellPalette.of(theme);
+    final isDark = theme.brightness == Brightness.dark;
+    final currentTheme = context.watch<ThemeNotifier>().currentTheme;
     final manager = context.watch<WordbookManager>();
     if (_cachedStatsRevision != manager.statsRevision) {
       _deckStatsFutures.clear();
@@ -253,8 +354,23 @@ class _AppShellScreenState extends State<AppShellScreen> {
     }
     final user = context.watch<AuthProvider>().currentUser;
     final words = context.watch<WordListNotifier>().words;
-    final dailyPlan = _srsService.buildDailyPlan(words);
     final activeWordbook = manager.activeWordbook;
+    final activeStudyPlan = manager.planFor(activeWordbook);
+    final plannedWordbookDbNames =
+        manager.studyPlans
+            .where((plan) => plan.status == StudyPlanStatus.active)
+            .map((plan) => plan.dbFileName)
+            .toSet();
+    final routineWords = manager.wordsAvailableForPlan(words, plan: activeStudyPlan);
+    final dailyPlan = _srsService.buildDailyPlan(routineWords);
+    final fullDailyPlan = _srsService.buildDailyPlan(words);
+    final routineWordCount = routineWords.length;
+    final lockedNewWordCount = manager.lockedNewWordCount(words, plan: activeStudyPlan);
+    final plannedNewWordSessionCount =
+        manager.plannedNewWordSessionCount(words, plan: activeStudyPlan);
+    final newWordSessionCount =
+        manager.recommendedNewWordSessionCount(words, plan: activeStudyPlan);
+    final learningScopeSubtitle = _learningScopeSubtitle(activeWordbook, activeStudyPlan);
 
     return Scaffold(
       backgroundColor:
@@ -267,127 +383,367 @@ class _AppShellScreenState extends State<AppShellScreen> {
             DecoratedBox(
               decoration: BoxDecoration(
                 color: palette.topBar,
-                border: Border(bottom: BorderSide(color: palette.border.withValues(alpha: 0.64))),
+                border: Border(
+                  bottom: BorderSide(
+                    color: palette.border.withValues(alpha: isDark ? 0.52 : 0.78),
+                  ),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color:
+                        (isDark ? Colors.black : palette.border).withValues(
+                          alpha: isDark ? 0.24 : 0.34,
+                        ),
+                    blurRadius: 18,
+                    spreadRadius: -12,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 10),
                 child: Row(
                   children: [
-                    Tooltip(
-                      message: '테마 변경',
+                    _ThemeIconButton(
+                      currentTheme: currentTheme,
+                      palette: palette,
+                      onTap: _cycleTheme,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: _cycleTheme,
-                        child: Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            color: palette.iconSurface,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: palette.border.withValues(alpha: 0.72)),
-                          ),
-                          child: Icon(
-                            CupertinoIcons.eye,
-                            color: palette.brand,
-                            size: 21,
+                        borderRadius: BorderRadius.circular(16),
+                        onTap:
+                            () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const WordbookManagementScreen(),
+                              ),
+                            ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Memorize Me',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                  color: palette.brand,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: palette.iconSurface.withValues(alpha: isDark ? 0.72 : 0.92),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: palette.border.withValues(alpha: isDark ? 0.72 : 0.82),
+                                  ),
+                                ),
+                                child: Text(
+                                  learningScopeSubtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: palette.brand,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Memorize Me',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 17,
-                              color: palette.brand,
-                            ),
-                          ),
-                          Text(
-                            _tabSubtitle(activeWordbook?.name),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    GestureDetector(
+                    _ProfileAvatarButton(
+                      user: user,
                       onTap: () => _showProfileSheet(context, theme, manager, dailyPlan, user),
-                      child: _UserAvatar(user: user, radius: 20),
                     ),
                   ],
                 ),
               ),
             ),
             Expanded(
-              child: IndexedStack(
-                index: _ShellTab.values.indexOf(_currentTab),
-                children: [
-                  _HomeDashboardTab(
-                    dailyPlan: dailyPlan,
-                    activeWordbook: activeWordbook,
-                    wordbooks: manager.wordbooks,
-                    statsForWordbook: (wordbook) => _statsForWordbook(manager, wordbook),
-                  ),
-                  _DecksTab(
-                    activeWordbook: activeWordbook,
-                    wordbooks: manager.wordbooks,
-                    statsForWordbook: (wordbook) => _statsForWordbook(manager, wordbook),
-                  ),
-                  _ReviewTab(dailyPlan: dailyPlan),
-                  _StatsTab(dailyPlan: dailyPlan, totalWordCount: words.length),
-                  const _AiLearningTab(),
-                  const AppSettingsScreen(),
-                ],
+              child: _buildCurrentTab(
+                manager: manager,
+                dailyPlan: dailyPlan,
+                fullDailyPlan: fullDailyPlan,
+                user: user,
+                activeWordbook: activeWordbook,
+                activeStudyPlan: activeStudyPlan,
+                plannedWordbookDbNames: plannedWordbookDbNames,
+                lockedNewWordCount: lockedNewWordCount,
+                plannedNewWordSessionCount: plannedNewWordSessionCount,
+                newWordSessionCount: newWordSessionCount,
+                routineWordCount: routineWordCount,
+                totalWordCount: words.length,
+                learningScopeSubtitle: learningScopeSubtitle,
               ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: palette.navBackground,
-        indicatorColor: palette.navIndicator,
-        selectedIndex: _ShellTab.values.indexOf(_currentTab),
-        height: 72,
-        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-        onDestinationSelected:
-            (index) => setState(() => _currentTab = _ShellTab.values[index]),
-        destinations: const [
-          NavigationDestination(icon: Icon(CupertinoIcons.house), label: '홈'),
-          NavigationDestination(icon: Icon(CupertinoIcons.square_stack_3d_down_right), label: '단어장'),
-          NavigationDestination(icon: Icon(CupertinoIcons.play_circle), label: '복습'),
-          NavigationDestination(icon: Icon(CupertinoIcons.chart_bar), label: '통계'),
-          NavigationDestination(icon: Icon(CupertinoIcons.sparkles), label: 'AI 학습'),
-          NavigationDestination(icon: Icon(CupertinoIcons.settings), label: '설정'),
-        ],
+      bottomNavigationBar: DecoratedBox(
+        decoration: BoxDecoration(
+          color: palette.navBackground,
+          border: Border(
+            top: BorderSide(
+              color: palette.border.withValues(alpha: isDark ? 0.58 : 0.82),
+            ),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: (isDark ? Colors.black : palette.border).withValues(
+                alpha: isDark ? 0.30 : 0.36,
+              ),
+              blurRadius: 20,
+              spreadRadius: -10,
+              offset: const Offset(0, -8),
+            ),
+          ],
+        ),
+        child: NavigationBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          indicatorColor: palette.navIndicator,
+          selectedIndex: _ShellTab.values.indexOf(_currentTab),
+          height: 72,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          onDestinationSelected: _selectTab,
+          destinations: const [
+            NavigationDestination(icon: Icon(CupertinoIcons.house), label: '홈'),
+            NavigationDestination(icon: Icon(CupertinoIcons.play_circle), label: '복습'),
+            NavigationDestination(icon: Icon(CupertinoIcons.chart_bar), label: '통계'),
+            NavigationDestination(icon: Icon(CupertinoIcons.sparkles), label: 'AI 학습'),
+            NavigationDestination(icon: Icon(CupertinoIcons.settings), label: '설정'),
+          ],
+        ),
       ),
     );
   }
 
-  String _tabSubtitle(String? activeWordbookName) {
+  String _learningScopeSubtitle(Wordbook? activeWordbook, StudyPlan? studyPlan) {
+    if (activeWordbook == null) return '현재 학습 기준 선택 필요';
+    if (studyPlan == null || studyPlan.status != StudyPlanStatus.active) {
+      return '현재 학습 기준 · ${activeWordbook.name} 전체';
+    }
+    final totalDays = studyPlan.estimatedTotalDays();
+    final currentDay = totalDays == 0 ? 0 : studyPlan.currentChunk().clamp(1, totalDays).toInt();
+    return '현재 학습 기준 · ${activeWordbook.name} 플랜 $currentDay/$totalDays일차';
+  }
+
+  Widget _buildCurrentTab({
+    required WordbookManager manager,
+    required DailyLearningPlan dailyPlan,
+    required DailyLearningPlan fullDailyPlan,
+    required GoogleSignInAccount? user,
+    required Wordbook? activeWordbook,
+    required StudyPlan? activeStudyPlan,
+    required Set<String> plannedWordbookDbNames,
+    required int lockedNewWordCount,
+    required int plannedNewWordSessionCount,
+    required int newWordSessionCount,
+    required int routineWordCount,
+    required int totalWordCount,
+    required String learningScopeSubtitle,
+  }) {
     switch (_currentTab) {
       case _ShellTab.home:
-        return activeWordbookName == null ? '오늘의 루틴을 시작해보세요' : '현재 단어장 · $activeWordbookName';
-      case _ShellTab.decks:
-        return '단어장 흐름과 진행률을 관리하세요';
+        return _BloomHomeDashboardTab(
+          dailyPlan: dailyPlan,
+          studyDayStreak: manager.studyDayStreak,
+          studyPlan: activeStudyPlan,
+          lockedNewWordCount: lockedNewWordCount,
+          plannedNewWordSessionCount: plannedNewWordSessionCount,
+          newWordSessionCount: newWordSessionCount,
+          user: user,
+          activeWordbook: activeWordbook,
+          plannedWordbookDbNames: plannedWordbookDbNames,
+          wordbooks: manager.wordbooks,
+          statsForWordbook: (wordbook) => _statsForWordbook(manager, wordbook),
+        );
       case _ShellTab.review:
-        return '복습, 테스트, 오답 루틴을 한곳에서';
+        return _BloomReviewTab(
+          dailyPlan: dailyPlan,
+          plannedNewWordSessionCount: plannedNewWordSessionCount,
+          newWordSessionCount: newWordSessionCount,
+          learningScopeSubtitle: learningScopeSubtitle,
+        );
       case _ShellTab.stats:
-        return 'SRS 상태와 학습 추이를 확인하세요';
+        return _BloomStatsTab(
+          fullDailyPlan: fullDailyPlan,
+          planDailyPlan: dailyPlan,
+          totalWordCount: totalWordCount,
+          planWordCount: routineWordCount,
+          activeStudyPlan: activeStudyPlan,
+          lockedNewWordCount: lockedNewWordCount,
+          plannedNewWordSessionCount: plannedNewWordSessionCount,
+          newWordSessionCount: newWordSessionCount,
+          learningScopeSubtitle: learningScopeSubtitle,
+        );
       case _ShellTab.ai:
-        return 'AI 퀴즈와 문법 학습을 한곳에서';
+        return _BloomAiLearningTab(learningScopeSubtitle: learningScopeSubtitle);
       case _ShellTab.settings:
-        return '테마와 학습 환경을 조정하세요';
+        return const AppSettingsScreen();
     }
+  }
+
+  void _showDecksSheet({
+    required BuildContext context,
+    required WordbookManager manager,
+    required Wordbook? activeWordbook,
+    required StudyPlan? activeStudyPlan,
+    required Set<String> plannedWordbookDbNames,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      barrierColor: Colors.black.withValues(alpha: 0.38),
+      backgroundColor: Colors.transparent,
+      builder:
+          (sheetContext) => FractionallySizedBox(
+            heightFactor: 0.88,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  child: Material(
+                    color: _ShellPalette.of(Theme.of(sheetContext)).background,
+                    child: _BloomDecksTab(
+                      activeWordbook: activeWordbook,
+                      activeStudyPlan: activeStudyPlan,
+                      plannedWordbookDbNames: plannedWordbookDbNames,
+                      wordbooks: manager.wordbooks,
+                      statsForWordbook: (wordbook) => _statsForWordbook(manager, wordbook),
+                      onClose: () => Navigator.of(sheetContext).pop(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+    );
+  }
+}
+
+class _ThemeIconButton extends StatelessWidget {
+  final AppThemeType currentTheme;
+  final _ShellPalette palette;
+  final VoidCallback onTap;
+
+  const _ThemeIconButton({
+    required this.currentTheme,
+    required this.palette,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Tooltip(
+      message: _themeTooltip,
+      child: Semantics(
+        button: true,
+        label: _themeTooltip,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: onTap,
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface.withValues(alpha: isDark ? 0.36 : 0.72),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: palette.border.withValues(alpha: isDark ? 0.82 : 0.94),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: (isDark ? Colors.black : palette.brand).withValues(
+                      alpha: isDark ? 0.16 : 0.07,
+                    ),
+                    blurRadius: 14,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(_themeIcon, color: palette.accent, size: 23),
+                  Positioned(
+                    right: 9,
+                    bottom: 9,
+                    child: Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: palette.brand,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData get _themeIcon {
+    switch (currentTheme) {
+      case AppThemeType.lightGreen:
+        return CupertinoIcons.sun_max;
+      case AppThemeType.dark:
+        return CupertinoIcons.moon;
+      case AppThemeType.visionProtection:
+        return CupertinoIcons.eye;
+    }
+  }
+
+  String get _themeTooltip {
+    switch (currentTheme) {
+      case AppThemeType.lightGreen:
+        return '라이트 모드';
+      case AppThemeType.dark:
+        return '다크 모드';
+      case AppThemeType.visionProtection:
+        return '시력 보호 모드';
+    }
+  }
+}
+
+class _ProfileAvatarButton extends StatelessWidget {
+  final GoogleSignInAccount? user;
+  final VoidCallback onTap;
+
+  const _ProfileAvatarButton({
+    required this.user,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '프로필',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: _UserAvatar(user: user, radius: 22),
+      ),
+    );
   }
 }
 
@@ -414,10 +770,9 @@ class _UserAvatar extends StatelessWidget {
     return CircleAvatar(
       radius: radius,
       backgroundColor: palette.iconSurface,
-      child: Icon(
-        CupertinoIcons.person_crop_circle,
-        color: palette.brand,
-        size: radius + 4,
+      child: Text(
+        '🙂',
+        style: TextStyle(fontSize: radius + 2),
       ),
     );
   }
@@ -425,12 +780,14 @@ class _UserAvatar extends StatelessWidget {
 
 class _HomeDashboardTab extends StatelessWidget {
   final DailyLearningPlan dailyPlan;
+  final GoogleSignInAccount? user;
   final Wordbook? activeWordbook;
   final List<Wordbook> wordbooks;
   final Future<_DeckStats> Function(Wordbook wordbook) statsForWordbook;
 
   const _HomeDashboardTab({
     required this.dailyPlan,
+    required this.user,
     required this.activeWordbook,
     required this.wordbooks,
     required this.statsForWordbook,
@@ -563,7 +920,7 @@ class _HomeDashboardTab extends StatelessWidget {
               if (dailyPlan.hasReview) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const QuizScreen(initialMode: QuizMode.reviewSpelling),
+                    builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.review),
                   ),
                 );
                 return;
@@ -634,6 +991,7 @@ class _HomeDashboardTab extends StatelessWidget {
           _WordbookStatusPager(
             wordbooks: dashboardWordbooks,
             activeWordbook: activeWordbook,
+            plannedWordbookDbNames: const <String>{},
             statsForWordbook: statsForWordbook,
           ),
         ],
@@ -665,14 +1023,1509 @@ class _HomeDashboardTab extends StatelessWidget {
   }
 }
 
+class _BloomHomeDashboardTab extends StatefulWidget {
+  final DailyLearningPlan dailyPlan;
+  final int studyDayStreak;
+  final StudyPlan? studyPlan;
+  final int lockedNewWordCount;
+  final int plannedNewWordSessionCount;
+  final int newWordSessionCount;
+  final GoogleSignInAccount? user;
+  final Wordbook? activeWordbook;
+  final Set<String> plannedWordbookDbNames;
+  final List<Wordbook> wordbooks;
+  final Future<_DeckStats> Function(Wordbook wordbook) statsForWordbook;
+
+  const _BloomHomeDashboardTab({
+    required this.dailyPlan,
+    required this.studyDayStreak,
+    required this.studyPlan,
+    required this.lockedNewWordCount,
+    required this.plannedNewWordSessionCount,
+    required this.newWordSessionCount,
+    required this.user,
+    required this.activeWordbook,
+    required this.plannedWordbookDbNames,
+    required this.wordbooks,
+    required this.statsForWordbook,
+  });
+
+  @override
+  State<_BloomHomeDashboardTab> createState() => _BloomHomeDashboardTabState();
+}
+
+class _BloomHomeDashboardTabState extends State<_BloomHomeDashboardTab> {
+  final SrsService _srsService = SrsService();
+  int _todayWordShuffleSeed = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _ShellPalette.of(Theme.of(context));
+    final dailyPlan = widget.dailyPlan;
+    final activeWordbook = widget.activeWordbook;
+    final wordbooks = widget.wordbooks;
+    final statsForWordbook = widget.statsForWordbook;
+    final reviewCount = dailyPlan.dueWords.length;
+    final newCount = widget.newWordSessionCount;
+    final availableNewCount = dailyPlan.newWords.length;
+    final learningCount = dailyPlan.learningWords.length;
+    final matureCount = dailyPlan.matureWords.length;
+    final totalFocus = reviewCount + newCount + learningCount;
+    final totalWords = totalFocus + matureCount;
+    final reviewedTodayCount = _reviewedTodayCount(dailyPlan);
+    final remainingTodayFocus = reviewCount + widget.newWordSessionCount;
+    final todayPlanTotal = reviewedTodayCount + remainingTodayFocus;
+    final todayCompletedCount = min(reviewedTodayCount, todayPlanTotal);
+    final todayProgress =
+        todayPlanTotal == 0
+            ? (totalWords == 0 ? 0.0 : 1.0)
+            : (todayCompletedCount / todayPlanTotal).clamp(0.0, 1.0).toDouble();
+    final todayActionCount =
+        reviewCount > 0
+            ? reviewCount
+            : dailyPlan.hasNewWords
+            ? newCount
+            : 0;
+    final estimatedMinutes = _estimatedMinutes(todayActionCount);
+    final dashboardWordbooks = _prioritizeActiveWordbook(wordbooks, activeWordbook);
+    final actionTitle =
+        dailyPlan.hasReview
+            ? '오늘 복습 시작'
+            : availableNewCount > 0 && newCount > 0
+            ? '새 단어 시작'
+            : learningCount > 0
+            ? '플래시카드 점검'
+            : '전체 카드 보기';
+    final actionSubtitle =
+        dailyPlan.hasReview
+            ? '복습 $reviewCount개 · 약 $estimatedMinutes분 소요'
+            : availableNewCount > 0 && newCount > 0
+            ? _newWordActionSubtitle(newCount, widget.plannedNewWordSessionCount)
+            : learningCount > 0
+            ? '학습 중 $learningCount개를 카드로 다시 확인'
+            : '오늘 남은 학습은 없습니다. 전체 카드를 천천히 확인';
+
+    return SingleChildScrollView(
+      key: const PageStorageKey<String>('bloom-home-dashboard-v2'),
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _HomeLearningHero(
+            userName: _firstName(widget.user?.displayName),
+            remainingCount: remainingTodayFocus,
+          ),
+          const SizedBox(height: 22),
+          _TodayLearningPanel(
+            reviewCount: reviewCount,
+            newCount: newCount,
+            learningCount: learningCount,
+            completedCount: todayCompletedCount,
+            remainingCount: remainingTodayFocus,
+            totalCount: todayPlanTotal,
+            progress: todayProgress,
+            palette: palette,
+            onGuideTap: () => showStudyGuideSheet(context, StudyGuideCatalog.todayRoutine),
+          ),
+          if (widget.studyPlan != null) ...[
+            const SizedBox(height: 14),
+            _StudyPlanStatusCard(
+              plan: widget.studyPlan!,
+              lockedNewWordCount: widget.lockedNewWordCount,
+              availableNewWordCount: availableNewCount,
+              plannedNewWordCount: widget.plannedNewWordSessionCount,
+              adjustedNewWordCount: newCount,
+              palette: palette,
+              onGuideTap: () => showStudyGuideSheet(context, StudyGuideCatalog.studyPlan),
+            ),
+          ],
+          const SizedBox(height: 22),
+          _ContinueLearningCard(
+            title: actionTitle,
+            subtitle: actionSubtitle,
+            palette: palette,
+            onTap: () => _startRecommendedLearning(context),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: _StreakCard(
+                  streak: widget.studyDayStreak,
+                  palette: palette,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _WeeklyGoalCard(
+                  completed: reviewedTodayCount,
+                  remaining: remainingTodayFocus,
+                  target: todayPlanTotal,
+                  palette: palette,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          _buildTodayWordCard(palette),
+          const SizedBox(height: 26),
+          _SectionHeader(
+            title: '단어장 현황',
+            actionLabel: '전체 보기',
+            onActionTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WordbookManagementScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _WordbookStatusPager(
+            wordbooks: dashboardWordbooks,
+            activeWordbook: activeWordbook,
+            plannedWordbookDbNames: widget.plannedWordbookDbNames,
+            statsForWordbook: statsForWordbook,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startRecommendedLearning(BuildContext context) {
+    if (widget.dailyPlan.hasReview) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.review),
+        ),
+      );
+      return;
+    }
+    if (widget.dailyPlan.hasNewWords && widget.newWordSessionCount > 0) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.newWords),
+        ),
+      );
+      return;
+    }
+    if (widget.dailyPlan.learningWords.isNotEmpty) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+    );
+  }
+
+  Widget _buildTodayWordCard(_ShellPalette palette) {
+    final candidates = <_TodayWordCandidate>[
+      for (final word in widget.dailyPlan.dueWords)
+        _TodayWordCandidate(stageLabel: '오늘의 복습 단어', word: word),
+      for (final word in widget.dailyPlan.learningWords)
+        _TodayWordCandidate(stageLabel: '학습 중인 단어', word: word),
+      for (final word in widget.dailyPlan.newWords)
+        _TodayWordCandidate(stageLabel: '새로 만날 단어', word: word),
+      for (final word in widget.dailyPlan.matureWords)
+        _TodayWordCandidate(stageLabel: '안정 기억 단어', word: word),
+    ];
+
+    if (candidates.isNotEmpty) {
+      final deckKey = widget.activeWordbook?.id ?? widget.activeWordbook?.dbFileName ?? '';
+      final random = Random(Object.hash(deckKey, _todayWordShuffleSeed, DateTime.now().day));
+      final candidate = candidates[random.nextInt(candidates.length)];
+      final word = candidate.word;
+      return _TodayWordSpotlight(
+        stageLabel: candidate.stageLabel,
+        word: word.word,
+        meaning: word.meaning,
+        example: word.exampleSentence,
+        palette: palette,
+        onShuffle: candidates.length > 1 ? _shuffleTodayWord : null,
+      );
+    }
+
+    return _TodayWordSpotlight(
+      stageLabel: '오늘의 단어',
+      word: '준비 완료',
+      meaning: '지금 급한 복습 단어가 없습니다.',
+      example:
+          widget.activeWordbook == null
+              ? '단어장을 불러오면 추천 단어가 표시됩니다.'
+              : '전체 카드를 가볍게 확인해보세요.',
+      palette: palette,
+      onShuffle: null,
+    );
+  }
+
+  void _shuffleTodayWord() {
+    setState(() => _todayWordShuffleSeed++);
+  }
+
+  int _estimatedMinutes(int focusCount) {
+    if (focusCount <= 0) return 3;
+    return ((focusCount * 18) / 60).ceil().clamp(1, 45).toInt();
+  }
+
+  String _newWordActionSubtitle(int adjustedCount, int plannedCount) {
+    if (plannedCount > adjustedCount) {
+      return '복습량에 맞춰 새 단어 $plannedCount개 중 $adjustedCount개만 시작';
+    }
+    return '새 단어 $adjustedCount개부터 시작';
+  }
+
+  String _firstName(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return '학습자';
+    return trimmed.split(RegExp(r'\s+')).first;
+  }
+
+  int _reviewedTodayCount(DailyLearningPlan plan) {
+    return [
+      ...plan.dueWords,
+      ...plan.newWords,
+      ...plan.learningWords,
+      ...plan.matureWords,
+    ].where((word) => _srsService.wasReviewedToday(word)).length;
+  }
+
+  List<Wordbook> _prioritizeActiveWordbook(List<Wordbook> source, Wordbook? active) {
+    if (active == null || source.length < 2) return source;
+    var activeMatches = false;
+    final ordered = <Wordbook>[];
+    final rest = <Wordbook>[];
+
+    for (final wordbook in source) {
+      final isActive =
+          wordbook.id != null && active.id != null
+              ? wordbook.id == active.id
+              : wordbook.dbFileName == active.dbFileName;
+      if (isActive) {
+        activeMatches = true;
+        ordered.add(wordbook);
+      } else {
+        rest.add(wordbook);
+      }
+    }
+
+    if (!activeMatches) return source;
+    return [...ordered, ...rest];
+  }
+
+}
+
+class _TodayWordCandidate {
+  final String stageLabel;
+  final Word word;
+
+  const _TodayWordCandidate({
+    required this.stageLabel,
+    required this.word,
+  });
+}
+
+class _HomeLearningHero extends StatelessWidget {
+  final String userName;
+  final int remainingCount;
+
+  const _HomeLearningHero({
+    required this.userName,
+    required this.remainingCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final focusMessage =
+        remainingCount == 0
+            ? '$userName님, 오늘 필수 학습은 모두 정리됐어요.'
+            : '$userName님, 남은 학습 $remainingCount개를 이어가세요.';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '오늘의 학습',
+          style: theme.textTheme.displaySmall?.copyWith(
+            fontSize: 30,
+            height: 1.0,
+            fontWeight: FontWeight.w900,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          focusMessage,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontSize: 14,
+            height: 1.35,
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TodayLearningPanel extends StatelessWidget {
+  final int reviewCount;
+  final int newCount;
+  final int learningCount;
+  final int completedCount;
+  final int remainingCount;
+  final int totalCount;
+  final double progress;
+  final _ShellPalette palette;
+  final VoidCallback? onGuideTap;
+
+  const _TodayLearningPanel({
+    required this.reviewCount,
+    required this.newCount,
+    required this.learningCount,
+    required this.completedCount,
+    required this.remainingCount,
+    required this.totalCount,
+    required this.progress,
+    required this.palette,
+    this.onGuideTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final progressPercent = (progress * 100).round();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(34),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            palette.accent.withValues(alpha: 0.13),
+            palette.review.withValues(alpha: 0.08),
+            palette.iconSurface.withValues(alpha: 0.92),
+          ],
+        ),
+        border: Border.all(color: palette.border.withValues(alpha: 0.62)),
+        boxShadow: [
+          BoxShadow(
+            color: palette.accent.withValues(alpha: 0.12),
+            blurRadius: 32,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _LearningMetricBubble(
+                  label: '복습',
+                  value: '$reviewCount',
+                  helper: '오늘 다시 볼 단어',
+                  icon: CupertinoIcons.arrow_2_circlepath_circle_fill,
+                  accentColor: palette.accent,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _LearningMetricBubble(
+                  label: '새 단어',
+                  value: '$newCount',
+                  helper: '오늘 새로 시작',
+                  icon: CupertinoIcons.sparkles,
+                  accentColor: palette.brand,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _LearningMetricBubble(
+                  label: '학습 중',
+                  value: '$learningCount',
+                  helper: '복습일 대기',
+                  icon: CupertinoIcons.book_fill,
+                  accentColor: palette.review,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Text(
+                '오늘 처리 현황',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontSize: 14,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (onGuideTap != null) ...[
+                const SizedBox(width: 4),
+                _InlineGuideButton(onTap: onGuideTap!),
+              ],
+              const Spacer(),
+              Text(
+                remainingCount == 0 ? '완료' : '남음 $remainingCount',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontSize: 15,
+                  color: palette.accent,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '$progressPercent%',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: palette.accent,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(height: 9),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 10,
+              backgroundColor: palette.iconSurface.withValues(alpha: 0.86),
+              valueColor: AlwaysStoppedAnimation<Color>(palette.accent),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            totalCount == 0
+                ? '오늘 꼭 처리해야 할 복습과 새 단어가 없습니다.'
+                : '오늘 완료 $completedCount개 · 지금 남은 학습 $remainingCount개',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LearningMetricBubble extends StatelessWidget {
+  final String label;
+  final String value;
+  final String helper;
+  final IconData icon;
+  final Color accentColor;
+
+  const _LearningMetricBubble({
+    required this.label,
+    required this.value,
+    required this.helper,
+    required this.icon,
+    required this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      constraints: const BoxConstraints(minHeight: 104),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: accentColor.withValues(alpha: 0.13)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 13, color: accentColor),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontSize: 11,
+                    color: accentColor,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+          Text(
+            helper,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontSize: 10,
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineGuideButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _InlineGuideButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Tooltip(
+      message: '설명 보기',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: 0.08),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            CupertinoIcons.question_circle,
+            size: 17,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StudyPlanStatusCard extends StatelessWidget {
+  final StudyPlan plan;
+  final int lockedNewWordCount;
+  final int availableNewWordCount;
+  final int plannedNewWordCount;
+  final int adjustedNewWordCount;
+  final _ShellPalette palette;
+  final VoidCallback? onGuideTap;
+
+  const _StudyPlanStatusCard({
+    required this.plan,
+    required this.lockedNewWordCount,
+    required this.availableNewWordCount,
+    required this.plannedNewWordCount,
+    required this.adjustedNewWordCount,
+    required this.palette,
+    this.onGuideTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final unlocked = plan.unlockedNewLimit();
+    final scheduleProgress =
+        plan.totalWords == 0 ? 0.0 : (unlocked / plan.totalWords).clamp(0.0, 1.0).toDouble();
+    final totalDays = plan.estimatedTotalDays();
+    final currentDay = totalDays == 0 ? 0 : plan.currentChunk().clamp(1, totalDays).toInt();
+    final isAdjusted = adjustedNewWordCount < plannedNewWordCount;
+    final todayNewLabel =
+        isAdjusted
+            ? '오늘 새 단어 $adjustedNewWordCount/$plannedNewWordCount개'
+            : '오늘 새 단어 $adjustedNewWordCount개';
+
+    return GlassmorphicCard(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      borderRadius: 24,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: palette.iconSurface,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(CupertinoIcons.calendar, color: palette.brand, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '학습 플랜 적용 중',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$currentDay/$totalDays일차 · $todayNewLabel · 목표 ${_formatMonthDay(plan.targetEndDate())}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onGuideTap != null) ...[
+                const SizedBox(width: 6),
+                _InlineGuideButton(onTap: onGuideTap!),
+              ],
+              const SizedBox(width: 6),
+              _StatusBadge(text: '잠긴 단어 $lockedNewWordCount', color: palette.info),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: scheduleProgress,
+              minHeight: 8,
+              backgroundColor: palette.iconSurface,
+              valueColor: AlwaysStoppedAnimation<Color>(palette.brand),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isAdjusted
+                ? '복습 부담이 커서 새 단어를 줄였어요 · 열린 새 단어 $availableNewWordCount개'
+                : '일정상 열린 단어 $unlocked/${plan.totalWords}개 · 아직 잠긴 단어 $lockedNewWordCount개',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '새 단어는 플랜 범위 안에서 열리고, 복습량에 따라 오늘 시작 수가 조절됩니다.',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatMonthDay(DateTime date) => '${date.month}/${date.day}';
+}
+
+class _ContinueLearningCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final _ShellPalette palette;
+  final VoidCallback onTap;
+
+  const _ContinueLearningCard({
+    required this.title,
+    required this.subtitle,
+    required this.palette,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(30),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 86),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(30),
+          gradient: LinearGradient(
+            colors: [
+              palette.brand.withValues(alpha: 0.94),
+              palette.accent.withValues(alpha: 0.96),
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: palette.accent.withValues(alpha: 0.20),
+              blurRadius: 24,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.96),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(CupertinoIcons.play_fill, color: palette.brand, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontSize: 18,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontSize: 13,
+                      color: Colors.white.withValues(alpha: 0.82),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(CupertinoIcons.chevron_right, color: Colors.white.withValues(alpha: 0.86)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeInsightCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final String description;
+  final IconData icon;
+  final Color accentColor;
+
+  const _HomeInsightCard({
+    required this.label,
+    required this.value,
+    required this.description,
+    required this.icon,
+    required this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GlassmorphicCard(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      borderRadius: 28,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 132),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: accentColor, size: 18),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    label.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: accentColor,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StreakCard extends StatelessWidget {
+  final int streak;
+  final _ShellPalette palette;
+
+  const _StreakCard({
+    required this.streak,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final visibleStreak = streak == 0 ? 0 : streak.clamp(1, 7).toInt();
+
+    return GlassmorphicCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      borderRadius: 28,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 168),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(CupertinoIcons.flame_fill, color: palette.accent, size: 18),
+                const SizedBox(width: 7),
+                Text(
+                  '연속 학습',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontSize: 11,
+                    color: palette.accent,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '$streak',
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontSize: 30,
+                    height: 0.95,
+                    fontWeight: FontWeight.w900,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text(
+                    '일',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontSize: 15,
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              streak == 0 ? '학습을 시작해요' : '연속 학습 중',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 12,
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: List.generate(7, (index) {
+                final isActive = index < visibleStreak;
+                return Expanded(
+                  child: Container(
+                    height: 24,
+                    margin: EdgeInsets.only(right: index == 6 ? 0 : 5),
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? palette.accent
+                          : theme.colorScheme.onSurface.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 7),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: ['월', '화', '수', '목', '금', '토', '일']
+                  .map(
+                    (day) => Text(
+                      day,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontSize: 10,
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WeeklyGoalCard extends StatelessWidget {
+  final int completed;
+  final int remaining;
+  final int target;
+  final _ShellPalette palette;
+
+  const _WeeklyGoalCard({
+    required this.completed,
+    required this.remaining,
+    required this.target,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final safeTarget = target < 0 ? 0 : target;
+    final safeCompleted = completed.clamp(0, safeTarget == 0 ? 0 : safeTarget).toInt();
+    final safeRemaining = remaining < 0 ? 0 : remaining;
+    final progress = safeTarget == 0 ? 0.0 : safeCompleted / safeTarget;
+    final progressPercent = (progress * 100).round();
+
+    return GlassmorphicCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      borderRadius: 28,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 168),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(CupertinoIcons.scope, color: palette.accent, size: 17),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '오늘 목표',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontSize: 12,
+                      color: palette.accent,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Center(
+              child: SizedBox(
+                width: 58,
+                height: 58,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CircularProgressIndicator(
+                      value: 1,
+                      strokeWidth: 7,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        theme.colorScheme.onSurface.withValues(alpha: 0.06),
+                      ),
+                    ),
+                    CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 7,
+                      strokeCap: StrokeCap.round,
+                      valueColor: AlwaysStoppedAnimation<Color>(palette.accent),
+                    ),
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            safeTarget == 0 ? '-' : '$progressPercent%',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              safeTarget == 0
+                  ? '대기 없음'
+                  : safeRemaining == 0
+                  ? '목표 달성'
+                  : '$safeRemaining개 남음',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              safeTarget == 0 ? '오늘 꼭 처리할 단어가 없어요' : '완료 $safeCompleted / $safeTarget',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 12,
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.3,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeAchievementRow extends StatelessWidget {
+  final int streak;
+  final double progress;
+  final _ShellPalette palette;
+
+  const _HomeAchievementRow({
+    required this.streak,
+    required this.progress,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final nextTargetProgress = progress.clamp(0.0, 1.0).toDouble();
+    final nextDays = streak == 0 ? 7 : (14 - streak.clamp(0, 14)).clamp(0, 14).toInt();
+
+    return Row(
+      children: [
+        Expanded(
+          child: GlassmorphicCard(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+            borderRadius: 28,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 104),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: palette.accent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(CupertinoIcons.rosette, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '최근 뱃지',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 11,
+                            color: palette.accent,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          streak >= 7 ? '7일 연속' : '학습 시작',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          streak >= 7 ? '방금 달성' : '첫 기록 대기',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: GlassmorphicCard(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+            borderRadius: 28,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 104),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(CupertinoIcons.scope, color: palette.accent, size: 17),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          '다음 목표',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 11,
+                            color: palette.accent,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      Icon(CupertinoIcons.chevron_right, size: 15, color: theme.colorScheme.onSurfaceVariant),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    '14일 연속 학습',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: nextTargetProgress,
+                      minHeight: 7,
+                      backgroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+                      valueColor: AlwaysStoppedAnimation<Color>(palette.accent),
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    nextDays == 0 ? '목표 달성' : '$nextDays일 남음',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TodayWordSpotlight extends StatelessWidget {
+  final String stageLabel;
+  final String word;
+  final String meaning;
+  final String? example;
+  final _ShellPalette palette;
+  final VoidCallback? onShuffle;
+
+  const _TodayWordSpotlight({
+    required this.stageLabel,
+    required this.word,
+    required this.meaning,
+    required this.example,
+    required this.palette,
+    required this.onShuffle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final effectiveExample =
+        example == null || example!.trim().isEmpty ? '예문이 등록되면 이곳에 함께 표시됩니다.' : example!.trim();
+
+    return GlassmorphicCard(
+      padding: const EdgeInsets.fromLTRB(20, 20, 18, 20),
+      borderRadius: 30,
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(CupertinoIcons.sparkles, size: 17, color: palette.accent),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        stageLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontSize: 13,
+                          color: palette.accent,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  word,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  meaning,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontSize: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '"$effectiveExample"',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 18),
+          _TodayWordShuffleButton(
+            palette: palette,
+            onTap: onShuffle,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodayWordShuffleButton extends StatelessWidget {
+  final _ShellPalette palette;
+  final VoidCallback? onTap;
+
+  const _TodayWordShuffleButton({
+    required this.palette,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final enabled = onTap != null;
+
+    return Tooltip(
+      message: enabled ? '다른 단어 보기' : '추천 단어',
+      child: Semantics(
+        button: enabled,
+        label: enabled ? '다른 추천 단어 보기' : '추천 단어',
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(24),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 82,
+              height: 82,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface.withValues(alpha: enabled ? 0.82 : 0.58),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color:
+                      enabled
+                          ? palette.review.withValues(alpha: 0.38)
+                          : palette.border.withValues(alpha: 0.72),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: palette.review.withValues(alpha: enabled ? 0.18 : 0.06),
+                    blurRadius: 22,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: palette.review.withValues(alpha: enabled ? 0.16 : 0.10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(
+                        CupertinoIcons.leaf_arrow_circlepath,
+                        color: palette.review.withValues(alpha: enabled ? 0.95 : 0.62),
+                        size: 34,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final String actionLabel;
+  final VoidCallback onActionTap;
+
+  const _SectionHeader({
+    required this.title,
+    required this.actionLabel,
+    required this.onActionTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = _ShellPalette.of(theme);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: onActionTap,
+          style: TextButton.styleFrom(foregroundColor: palette.brand),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(actionLabel),
+              const SizedBox(width: 4),
+              const Icon(CupertinoIcons.arrow_right, size: 14),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _WordbookStatusPager extends StatefulWidget {
   final List<Wordbook> wordbooks;
   final Wordbook? activeWordbook;
+  final Set<String> plannedWordbookDbNames;
   final Future<_DeckStats> Function(Wordbook wordbook) statsForWordbook;
 
   const _WordbookStatusPager({
     required this.wordbooks,
     required this.activeWordbook,
+    required this.plannedWordbookDbNames,
     required this.statsForWordbook,
   });
 
@@ -681,7 +2534,7 @@ class _WordbookStatusPager extends StatefulWidget {
 }
 
 class _WordbookStatusPagerState extends State<_WordbookStatusPager> {
-  static const double _statusCardHeight = 306.0;
+  static const double _statusCardHeight = 344.0;
 
   late final PageController _pageController;
   int _currentPage = 0;
@@ -727,6 +2580,7 @@ class _WordbookStatusPagerState extends State<_WordbookStatusPager> {
         child: _WordbookStatusSlide(
           wordbook: wordbook,
           activeWordbook: widget.activeWordbook,
+          hasStudyPlan: widget.plannedWordbookDbNames.contains(wordbook.dbFileName),
           statsFuture: widget.statsForWordbook(wordbook),
           index: 0,
           totalCount: 1,
@@ -752,6 +2606,7 @@ class _WordbookStatusPagerState extends State<_WordbookStatusPager> {
                 child: _WordbookStatusSlide(
                   wordbook: wordbook,
                   activeWordbook: widget.activeWordbook,
+                  hasStudyPlan: widget.plannedWordbookDbNames.contains(wordbook.dbFileName),
                   statsFuture: widget.statsForWordbook(wordbook),
                   index: index,
                   totalCount: widget.wordbooks.length,
@@ -796,6 +2651,7 @@ class _WordbookStatusPagerState extends State<_WordbookStatusPager> {
 class _WordbookStatusSlide extends StatelessWidget {
   final Wordbook wordbook;
   final Wordbook? activeWordbook;
+  final bool hasStudyPlan;
   final Future<_DeckStats> statsFuture;
   final int index;
   final int totalCount;
@@ -803,6 +2659,7 @@ class _WordbookStatusSlide extends StatelessWidget {
   const _WordbookStatusSlide({
     required this.wordbook,
     required this.activeWordbook,
+    required this.hasStudyPlan,
     required this.statsFuture,
     required this.index,
     required this.totalCount,
@@ -823,13 +2680,13 @@ class _WordbookStatusSlide extends StatelessWidget {
     final manager = context.read<WordbookManager>();
 
     return GlassmorphicCard(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 12),
       borderRadius: 24,
       onTap: () async {
         await manager.setActiveWordbook(wordbook);
         if (!context.mounted) return;
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const WordbookManagementScreen()),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('대시보드 기준 단어장을 ${wordbook.name}(으)로 바꿨습니다.')),
         );
       },
       child: FutureBuilder<_DeckStats>(
@@ -837,12 +2694,14 @@ class _WordbookStatusSlide extends StatelessWidget {
         builder: (context, snapshot) {
           final stats = snapshot.data;
           final totalWords = stats?.totalCount ?? 0;
-          final masteryRatio =
-              stats == null || stats.totalCount == 0
-                  ? 0.0
-                  : stats.matureCount / stats.totalCount;
-          final focusCount =
-              stats == null ? 0 : stats.reviewCount + stats.newCount + stats.learningCount;
+          final masteryRatio = stats?.masteryRatio ?? 0.0;
+          final focusCount = stats?.focusCount ?? 0;
+          final totalLabel =
+              stats == null
+                  ? '현황 불러오는 중'
+                  : stats.isPlanScoped
+                  ? '플랜 ${stats.totalCount}/${stats.fullCount}개 · 잠김 ${stats.lockedCount}개'
+                  : '전체 $totalWords개 · 집중 $focusCount개';
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -877,11 +2736,15 @@ class _WordbookStatusSlide extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.w900,
-                                  fontSize: 16,
+                                  fontSize: 15,
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
+                            if (hasStudyPlan) ...[
+                              _PlanBadge(palette: palette),
+                              const SizedBox(width: 6),
+                            ],
                             _StatusBadge(
                               text: _isActive ? '현재' : '${index + 1}/$totalCount',
                               color: _isActive ? palette.brand : palette.info,
@@ -890,10 +2753,11 @@ class _WordbookStatusSlide extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          stats == null ? '현황 불러오는 중' : '전체 $totalWords개 · 집중 $focusCount개',
+                          stats?.isPlanScoped == true ? '$totalLabel · 집중 $focusCount개' : totalLabel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 12,
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
@@ -902,12 +2766,13 @@ class _WordbookStatusSlide extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Text(
-                    '암기율',
+                    stats?.isPlanScoped == true ? '플랜 안정 기억률' : '안정 기억률',
                     style: theme.textTheme.labelLarge?.copyWith(
+                      fontSize: 13,
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
@@ -915,14 +2780,24 @@ class _WordbookStatusSlide extends StatelessWidget {
                   Text(
                     stats == null ? '-' : '${(masteryRatio * 100).round()}%',
                     style: theme.textTheme.titleLarge?.copyWith(
-                      fontSize: 24,
+                      fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      color: palette.brand,
+                      color: palette.success,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 7),
+              Text(
+                stats?.isPlanScoped == true ? '안정 기억 단계 / 현재 플랜 기준' : '안정 기억 단계 / 전체 단어 기준',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: 11,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 7),
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child:
@@ -932,22 +2807,23 @@ class _WordbookStatusSlide extends StatelessWidget {
                           value: masteryRatio.clamp(0.0, 1.0),
                           minHeight: 10,
                           backgroundColor: palette.iconSurface,
-                          valueColor: AlwaysStoppedAnimation<Color>(palette.brand),
+                          valueColor: AlwaysStoppedAnimation<Color>(palette.success),
                         ),
               ),
-              const SizedBox(height: 10),
+              if (stats?.nextReviewLabel != null) ...[
+                const SizedBox(height: 7),
+                _ReviewAlertChip(
+                  label: stats!.nextReviewLabel!,
+                  isDue: stats.hasDueReviewNotice,
+                  isOverdue: stats.hasOverdueReviewNotice,
+                  palette: palette,
+                ),
+              ],
+              const SizedBox(height: 8),
               _MemoryDistributionBar(stats: stats),
-              const SizedBox(height: 12),
+              const SizedBox(height: 9),
               Row(
                 children: [
-                  Expanded(
-                    child: _StatusMetricPill(
-                      label: '복습',
-                      value: stats?.reviewCount,
-                      color: palette.review,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: _StatusMetricPill(
                       label: '새 단어',
@@ -955,16 +2831,24 @@ class _WordbookStatusSlide extends StatelessWidget {
                       color: palette.info,
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _StatusMetricPill(
                       label: '학습 중',
                       value: stats?.learningCount,
                       color: palette.warning,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 7),
+              Row(
+                children: [
+                  Expanded(
+                    child: _StatusMetricPill(
+                      label: '복습 필요',
+                      value: stats?.reviewCount,
+                      color: palette.review,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -980,6 +2864,70 @@ class _WordbookStatusSlide extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _ReviewAlertChip extends StatelessWidget {
+  final String label;
+  final bool isDue;
+  final bool isOverdue;
+  final _ShellPalette palette;
+
+  const _ReviewAlertChip({
+    required this.label,
+    required this.isDue,
+    required this.isOverdue,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color =
+        isOverdue
+            ? theme.colorScheme.error
+            : isDue
+            ? palette.review
+            : palette.success;
+    final icon =
+        isOverdue
+            ? CupertinoIcons.exclamationmark_triangle_fill
+            : isDue
+            ? CupertinoIcons.bell_fill
+            : CupertinoIcons.calendar;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isOverdue ? 0.18 : 0.11),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: color.withValues(alpha: isOverdue ? 0.46 : 0.16),
+          width: isOverdue ? 1.4 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 15,
+            color: color,
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1006,9 +2954,9 @@ class _MemoryDistributionBar extends StatelessWidget {
     }
 
     final segments = [
-      _BarSegment(count: data.reviewCount, color: palette.review),
       _BarSegment(count: data.newCount, color: palette.info),
       _BarSegment(count: data.learningCount, color: palette.warning),
+      _BarSegment(count: data.reviewCount, color: palette.review),
       _BarSegment(count: data.matureCount, color: palette.success),
     ].where((segment) => segment.count > 0).toList();
 
@@ -1057,7 +3005,7 @@ class _StatusMetricPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      height: 42,
+      height: 38,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
@@ -1072,6 +3020,7 @@ class _StatusMetricPill extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelSmall?.copyWith(
+                fontSize: 11,
                 color: color,
                 fontWeight: FontWeight.w800,
               ),
@@ -1079,10 +3028,11 @@ class _StatusMetricPill extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Text(
-            value == null ? '-' : '$value',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
+          value == null ? '-' : '$value',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+          ),
           ),
         ],
       ),
@@ -1112,6 +3062,47 @@ class _StatusBadge extends StatelessWidget {
           color: color,
           fontWeight: FontWeight.w900,
         ),
+      ),
+    );
+  }
+}
+
+class _PlanBadge extends StatelessWidget {
+  final _ShellPalette palette;
+
+  const _PlanBadge({required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: palette.success.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.success.withValues(alpha: 0.34)),
+        boxShadow: [
+          BoxShadow(
+            color: palette.success.withValues(alpha: 0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(CupertinoIcons.rectangle_badge_checkmark, size: 12, color: palette.success),
+          const SizedBox(width: 4),
+          Text(
+            '플랜',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: palette.success,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1164,6 +3155,1846 @@ class _BarSegment {
   final Color color;
 
   const _BarSegment({required this.count, required this.color});
+}
+
+class _BloomDecksTab extends _DecksTab {
+  final StudyPlan? activeStudyPlan;
+  final Set<String> plannedWordbookDbNames;
+  final VoidCallback? onClose;
+
+  const _BloomDecksTab({
+    required Wordbook? activeWordbook,
+    required this.activeStudyPlan,
+    required this.plannedWordbookDbNames,
+    this.onClose,
+    required List<Wordbook> wordbooks,
+    required Future<_DeckStats> Function(Wordbook wordbook) statsForWordbook,
+  }) : super(
+         activeWordbook: activeWordbook,
+         wordbooks: wordbooks,
+         statsForWordbook: statsForWordbook,
+       );
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _ShellPalette.of(Theme.of(context));
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _DeckLibrarySheetHeader(
+            activeWordbookName: activeWordbook?.name,
+            palette: palette,
+            onClose: onClose,
+          ),
+          const SizedBox(height: 18),
+          _DecksSummaryPanel(
+            activeWordbookName: activeWordbook?.name,
+            activeStudyPlan: activeStudyPlan,
+            deckCount: wordbooks.length,
+            palette: palette,
+            onManageTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WordbookManagementScreen()),
+              );
+            },
+            onPlanTap: () => _showStudyPlanBuilder(context),
+          ),
+          const SizedBox(height: 24),
+          _SectionHeader(
+            title: '불러온 단어장',
+            actionLabel: '관리',
+            onActionTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WordbookManagementScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          if (wordbooks.isEmpty)
+            const _EmptyWordbookStatusCard()
+          else
+            ...wordbooks.map(
+              (wordbook) => Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: _BloomDeckPreviewCard(
+                  wordbook: wordbook,
+                  isActive: _isActiveWordbook(wordbook),
+                  hasStudyPlan: plannedWordbookDbNames.contains(wordbook.dbFileName),
+                  statsFuture: statsForWordbook(wordbook),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  bool _isActiveWordbook(Wordbook wordbook) {
+    if (activeWordbook == null) return false;
+    if (wordbook.id != null && activeWordbook!.id != null) {
+      return wordbook.id == activeWordbook!.id;
+    }
+    return wordbook.dbFileName == activeWordbook!.dbFileName;
+  }
+
+  Future<void> _showStudyPlanBuilder(BuildContext context) async {
+    final parentContext = context;
+    final manager = context.read<WordbookManager>();
+    final messenger = ScaffoldMessenger.of(parentContext);
+    final wordbook = activeWordbook;
+    if (wordbook == null) {
+      messenger.showSnackBar(const SnackBar(content: Text('먼저 학습 기준 단어장을 선택해주세요.')));
+      return;
+    }
+
+    final words = await manager.getAllWordsFrom(wordbook);
+    if (!parentContext.mounted) return;
+    if (words.isEmpty) {
+      messenger.showSnackBar(const SnackBar(content: Text('플랜을 만들 단어가 없습니다.')));
+      return;
+    }
+
+    final existingPlan = manager.planFor(wordbook);
+    final presets = _StudyPlanPreset.presetsFor(words.length);
+    final initialDailyTarget = existingPlan?.dailyNewTarget ?? _defaultDailyTarget(words.length);
+
+    await showModalBottomSheet<void>(
+      context: parentContext,
+      isScrollControlled: true,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder:
+          (_) => _StudyPlanBuilderSheet(
+            manager: manager,
+            messenger: messenger,
+            wordbook: wordbook,
+            words: words,
+            existingPlan: existingPlan,
+            presets: presets,
+            initialDailyTarget: initialDailyTarget,
+            formatPlanDate: _formatPlanDate,
+          ),
+    );
+  }
+
+  int _defaultDailyTarget(int totalWords) {
+    if (totalWords >= 500) return 30;
+    if (totalWords >= 200) return 20;
+    return 15;
+  }
+
+  String _formatPlanDate(DateTime date) => '${date.month}/${date.day}';
+}
+
+class _StudyPlanBuilderSheet extends StatefulWidget {
+  final WordbookManager manager;
+  final ScaffoldMessengerState messenger;
+  final Wordbook wordbook;
+  final List<Word> words;
+  final StudyPlan? existingPlan;
+  final List<_StudyPlanPreset> presets;
+  final int initialDailyTarget;
+  final String Function(DateTime date) formatPlanDate;
+
+  const _StudyPlanBuilderSheet({
+    required this.manager,
+    required this.messenger,
+    required this.wordbook,
+    required this.words,
+    required this.existingPlan,
+    required this.presets,
+    required this.initialDailyTarget,
+    required this.formatPlanDate,
+  });
+
+  @override
+  State<_StudyPlanBuilderSheet> createState() => _StudyPlanBuilderSheetState();
+}
+
+class _StudyPlanBuilderSheetState extends State<_StudyPlanBuilderSheet> {
+  late final TextEditingController _dailyController;
+  late final TextEditingController _targetDaysController;
+  late String _selectedPresetId;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final initialDailyTarget = widget.initialDailyTarget.clamp(1, widget.words.length).toInt();
+    _dailyController = TextEditingController(text: '$initialDailyTarget');
+    _targetDaysController = TextEditingController(
+      text: '${(widget.words.length / initialDailyTarget).ceil()}',
+    );
+    _selectedPresetId = widget.existingPlan == null ? 'balanced' : 'custom';
+  }
+
+  @override
+  void dispose() {
+    _dailyController.dispose();
+    _targetDaysController.dispose();
+    super.dispose();
+  }
+
+  int _parseValue(TextEditingController controller, int fallback) {
+    final value = int.tryParse(controller.text.trim());
+    if (value == null || value <= 0) return fallback;
+    return value;
+  }
+
+  void _setControllerText(TextEditingController controller, String text) {
+    controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
+  int get _dailyTarget => _parseValue(_dailyController, 20).clamp(1, widget.words.length).toInt();
+  int get _estimatedDays => (widget.words.length / _dailyTarget).ceil();
+  int get _estimatedChunks => _estimatedDays;
+  DateTime get _targetDate => DateTime.now().add(Duration(days: max(_estimatedDays - 1, 0)));
+
+  Future<void> _deletePlan() async {
+    final existingPlan = widget.existingPlan;
+    if (_isSaving || existingPlan == null) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _isSaving = true);
+    await widget.manager.deleteStudyPlan(existingPlan);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    widget.messenger.showSnackBar(
+      const SnackBar(content: Text('학습 플랜을 해제했습니다.')),
+    );
+  }
+
+  Future<void> _savePlan() async {
+    if (_isSaving) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    final dailyTarget = _dailyTarget;
+    final estimatedDays = _estimatedDays;
+    setState(() => _isSaving = true);
+    await widget.manager.createStudyPlanForWordbook(
+      widget.wordbook,
+      chunkSize: dailyTarget,
+      dailyNewTarget: dailyTarget,
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    widget.messenger.showSnackBar(
+      SnackBar(content: Text('하루 $dailyTarget개, $estimatedDays일 플랜을 저장했습니다.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    final dailyTarget = _dailyTarget;
+    final estimatedDays = _estimatedDays;
+    final estimatedChunks = _estimatedChunks;
+    final targetDate = _targetDate;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: viewInsets.bottom),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: GlassmorphicCard(
+              borderRadius: 30,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.existingPlan == null ? '학습 플랜 만들기' : '학습 플랜 수정',
+                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${widget.wordbook.name} · 새 단어를 며칠 동안 나눠서 SRS에 넣을지 정합니다. 복습 단어는 잠기지 않고, 새 단어만 일정에 맞춰 열립니다.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    '추천 속도',
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 10),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final itemWidth =
+                          constraints.maxWidth < 520
+                              ? (constraints.maxWidth - 10) / 2
+                              : (constraints.maxWidth - 20) / 3;
+                      return Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children:
+                            widget.presets.map((preset) {
+                              return SizedBox(
+                                width: itemWidth,
+                                child: _PlanPresetChip(
+                                  preset: preset,
+                                  selected: _selectedPresetId == preset.id,
+                                  onTap:
+                                      _isSaving
+                                          ? null
+                                          : () {
+                                            _setControllerText(
+                                              _dailyController,
+                                              '${preset.dailyTarget}',
+                                            );
+                                            _setControllerText(
+                                              _targetDaysController,
+                                              '${(widget.words.length / preset.dailyTarget).ceil()}',
+                                            );
+                                            setState(() => _selectedPresetId = preset.id);
+                                          },
+                                ),
+                              );
+                            }).toList(),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _targetDaysController,
+                    enabled: !_isSaving,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '새 단어를 며칠 동안 나눌까요?',
+                      prefixIcon: Icon(CupertinoIcons.flag),
+                      suffixText: '일',
+                    ),
+                    onChanged: (_) {
+                      final targetDays =
+                          _parseValue(_targetDaysController, estimatedDays)
+                              .clamp(1, widget.words.length)
+                              .toInt();
+                      final nextDailyTarget =
+                          (widget.words.length / targetDays).ceil().clamp(1, widget.words.length).toInt();
+                      _setControllerText(_dailyController, '$nextDailyTarget');
+                      setState(() => _selectedPresetId = 'custom');
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _dailyController,
+                    enabled: !_isSaving,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '하루에 새로 시작할 단어',
+                      prefixIcon: Icon(CupertinoIcons.calendar_badge_plus),
+                      suffixText: '개',
+                    ),
+                    onChanged: (_) {
+                      final nextDailyTarget =
+                          _parseValue(_dailyController, 20).clamp(1, widget.words.length).toInt();
+                      _setControllerText(
+                        _targetDaysController,
+                        '${(widget.words.length / nextDailyTarget).ceil()}',
+                      );
+                      setState(() => _selectedPresetId = 'custom');
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  _PlanPreviewStrip(
+                    days: estimatedDays,
+                    chunks: estimatedChunks,
+                    dailyTarget: dailyTarget,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '예상 완료일 ${widget.formatPlanDate(targetDate)} · $estimatedDays일 계획은 $estimatedChunks개 일일 묶음으로 진행됩니다.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      if (widget.existingPlan != null) ...[
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isSaving ? null : _deletePlan,
+                            icon: const Icon(CupertinoIcons.trash, size: 17),
+                            label: const Text('해제'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                      Expanded(
+                        flex: 2,
+                        child: FilledButton.icon(
+                          onPressed: _isSaving ? null : _savePlan,
+                          icon:
+                              _isSaving
+                                  ? const SizedBox(
+                                    width: 17,
+                                    height: 17,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                  : const Icon(CupertinoIcons.check_mark, size: 17),
+                          label: Text(_isSaving ? '저장 중' : '저장'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StudyPlanPreset {
+  final String id;
+  final String title;
+  final String description;
+  final int dailyTarget;
+
+  const _StudyPlanPreset({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.dailyTarget,
+  });
+
+  static List<_StudyPlanPreset> presetsFor(int totalWords) {
+    final gentleDaily = _dailyFor(totalWords, small: 8, medium: 12, large: 18);
+    final balancedDaily = _dailyFor(totalWords, small: 15, medium: 20, large: 30);
+    final focusDaily = _dailyFor(totalWords, small: 20, medium: 30, large: 45);
+
+    return [
+      _StudyPlanPreset(
+        id: 'gentle',
+        title: '천천히',
+        description: '부담을 줄이고 꾸준히',
+        dailyTarget: gentleDaily,
+      ),
+      _StudyPlanPreset(
+        id: 'balanced',
+        title: '균형',
+        description: '가장 무난한 추천',
+        dailyTarget: balancedDaily,
+      ),
+      _StudyPlanPreset(
+        id: 'focus',
+        title: '집중',
+        description: '짧게 몰아서 끝내기',
+        dailyTarget: focusDaily,
+      ),
+    ];
+  }
+
+  static int _dailyFor(int totalWords, {required int small, required int medium, required int large}) {
+    if (totalWords >= 500) return min(large, totalWords);
+    if (totalWords >= 200) return min(medium, totalWords);
+    return min(small, totalWords);
+  }
+}
+
+class _PlanPresetChip extends StatelessWidget {
+  final _StudyPlanPreset preset;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _PlanPresetChip({
+    required this.preset,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = _ShellPalette.of(theme);
+    final color = selected ? palette.brand : theme.colorScheme.onSurfaceVariant;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color:
+              selected
+                  ? palette.brand.withValues(alpha: 0.12)
+                  : palette.iconSurface.withValues(alpha: 0.56),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected ? palette.brand : palette.border.withValues(alpha: 0.52),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  selected ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
+                  size: 16,
+                  color: color,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    preset.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              preset.description,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '하루 ${preset.dailyTarget}개',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurface,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BloomReviewTab extends _ReviewTab {
+  final int plannedNewWordSessionCount;
+  final int newWordSessionCount;
+  final String learningScopeSubtitle;
+
+  const _BloomReviewTab({
+    required DailyLearningPlan dailyPlan,
+    required this.plannedNewWordSessionCount,
+    required this.newWordSessionCount,
+    required this.learningScopeSubtitle,
+  }) : super(dailyPlan: dailyPlan);
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _ShellPalette.of(Theme.of(context));
+    final reviewCount = dailyPlan.dueWords.length;
+    final newCount = dailyPlan.newWords.length;
+    final todayNewCount = min(newWordSessionCount, newCount);
+    final hasTodayNewWords = todayNewCount > 0;
+    final learningCount = dailyPlan.learningWords.length;
+    final weakReviewCount =
+        dailyPlan.dueWords
+            .where((word) => word.incorrectCount > 0 || word.correctStreak == 0)
+            .length;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TabIntroHeader(
+            eyebrow: 'STUDY FLOW',
+            title: '복습',
+            subtitle: '$learningScopeSubtitle 기준으로 오늘 필요한 복습과 테스트를 시작합니다.',
+            icon: CupertinoIcons.play_circle_fill,
+            palette: palette,
+          ),
+          const SizedBox(height: 22),
+          _ContinueLearningCard(
+            title:
+                dailyPlan.hasReview
+                    ? '오늘 복습부터'
+                    : hasTodayNewWords
+                    ? '새 단어 시작'
+                    : '가볍게 점검',
+            subtitle:
+                dailyPlan.hasReview
+                    ? '복습 $reviewCount개 · 약 ${((reviewCount * 18) / 60).ceil().clamp(1, 45)}분 소요'
+                    : hasTodayNewWords
+                    ? '복습 큐가 비어 있어 새 단어 $todayNewCount개를 시작합니다.'
+                    : '급한 복습과 새 단어가 없으니 전체 카드를 확인해보세요.',
+            palette: palette,
+            onTap: () {
+              if (dailyPlan.hasReview) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.review),
+                  ),
+                );
+                return;
+              }
+              if (hasTodayNewWords) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.newWords),
+                  ),
+                );
+                return;
+              }
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              Expanded(
+                child: _HomeInsightCard(
+                  label: '복습 대기',
+                  value: '$reviewCount개',
+                  description: reviewCount == 0 ? '오늘은 안정적이에요' : '먼저 고정할 단어',
+                  icon: CupertinoIcons.flame_fill,
+                  accentColor: palette.accent,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _HomeInsightCard(
+                  label: '새 단어',
+                  value: '$todayNewCount개',
+                  description:
+                      plannedNewWordSessionCount > todayNewCount
+                          ? '오늘 시작 $todayNewCount/$plannedNewWordSessionCount\n학습 중 $learningCount개는 복습일 대기'
+                          : '오늘 시작할 단어\n학습 중 $learningCount개는 복습일 대기',
+                  icon: CupertinoIcons.layers_alt_fill,
+                  accentColor: palette.review,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          _SectionHeader(
+            title: '학습 방식',
+            actionLabel: 'SRS',
+            onActionTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SrsStatusScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _BloomFeatureCard(
+            title: '플래시카드',
+            subtitle: '의미를 확인하며 기억 단계를 천천히 올립니다.',
+            icon: CupertinoIcons.layers_alt_fill,
+            accentColor: palette.brand,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _BloomFeatureCard(
+            title: '셀프 테스트',
+            subtitle: '객관식과 스펠링 테스트로 바로 떠오르는지 확인합니다.',
+            icon: CupertinoIcons.pencil_outline,
+            accentColor: palette.info,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const QuizScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _BloomFeatureCard(
+            title: '오답/복습 재확인',
+            subtitle:
+                reviewCount == 0
+                    ? '틀린 단어가 복습일에 도달하면 활성화됩니다.'
+                    : weakReviewCount == 0
+                    ? '복습 대기 $reviewCount개를 다시 확인합니다.'
+                    : '오답 이력 단어 $weakReviewCount개를 포함해 복습합니다.',
+            icon: CupertinoIcons.arrow_2_circlepath_circle_fill,
+            accentColor: palette.warning,
+            onTap: () => _startWeakReview(context, reviewCount),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startWeakReview(BuildContext context, int reviewCount) {
+    if (reviewCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('오답 복습은 틀린 단어가 다시 복습 대기로 들어왔을 때 시작할 수 있습니다.'),
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const QuizScreen(initialMode: QuizMode.reviewSpelling),
+      ),
+    );
+  }
+}
+
+class _BloomStatsTab extends StatefulWidget {
+  final DailyLearningPlan fullDailyPlan;
+  final DailyLearningPlan planDailyPlan;
+  final int totalWordCount;
+  final int planWordCount;
+  final StudyPlan? activeStudyPlan;
+  final int lockedNewWordCount;
+  final int plannedNewWordSessionCount;
+  final int newWordSessionCount;
+  final String learningScopeSubtitle;
+
+  const _BloomStatsTab({
+    required this.fullDailyPlan,
+    required this.planDailyPlan,
+    required this.totalWordCount,
+    required this.planWordCount,
+    required this.activeStudyPlan,
+    required this.lockedNewWordCount,
+    required this.plannedNewWordSessionCount,
+    required this.newWordSessionCount,
+    required this.learningScopeSubtitle,
+  });
+
+  @override
+  State<_BloomStatsTab> createState() => _BloomStatsTabState();
+}
+
+class _BloomStatsTabState extends State<_BloomStatsTab> {
+  bool _showPlanScope = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _ShellPalette.of(Theme.of(context));
+    final hasPlan = widget.activeStudyPlan != null;
+    final usePlanScope = hasPlan && _showPlanScope;
+    final dailyPlan = usePlanScope ? widget.planDailyPlan : widget.fullDailyPlan;
+    final totalWordCount = usePlanScope ? widget.planWordCount : widget.totalWordCount;
+    final matureCount = dailyPlan.matureWords.length;
+    final mastery =
+        totalWordCount == 0 ? 0.0 : (matureCount / totalWordCount).clamp(0.0, 1.0).toDouble();
+    final scopeLabel = usePlanScope ? '현재 플랜' : '전체 단어장';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TabIntroHeader(
+            eyebrow: 'MEMORY PULSE',
+            title: '통계',
+            subtitle: '$scopeLabel · ${widget.learningScopeSubtitle}',
+            icon: CupertinoIcons.chart_bar_alt_fill,
+            palette: palette,
+          ),
+          const SizedBox(height: 22),
+          if (hasPlan) ...[
+            _StatsScopeSwitch(
+              usePlanScope: usePlanScope,
+              onChanged: (value) => setState(() => _showPlanScope = value),
+              palette: palette,
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (usePlanScope) ...[
+            _PlanStatsSummaryCard(
+              plan: widget.activeStudyPlan!,
+              openedWordCount: widget.planWordCount,
+              lockedNewWordCount: widget.lockedNewWordCount,
+              plannedNewWordSessionCount: widget.plannedNewWordSessionCount,
+              newWordSessionCount: widget.newWordSessionCount,
+              palette: palette,
+            ),
+            const SizedBox(height: 14),
+          ],
+          _MasteryOverviewCard(
+            progress: mastery,
+            totalWordCount: totalWordCount,
+            matureCount: matureCount,
+            palette: palette,
+          ),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              Expanded(
+                child: _HomeInsightCard(
+                  label: '오늘 복습',
+                  value: '${dailyPlan.dueWords.length}개',
+                  description: '지금 볼 단어',
+                  icon: CupertinoIcons.flame_fill,
+                  accentColor: palette.accent,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _HomeInsightCard(
+                  label: '새 단어',
+                  value: '${dailyPlan.newWords.length}개',
+                  description: '첫 학습 대기',
+                  icon: CupertinoIcons.sparkles,
+                  accentColor: palette.brand,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _HomeInsightCard(
+                  label: '학습 중',
+                  value: '${dailyPlan.learningWords.length}개',
+                  description: '다음 복습 예정',
+                  icon: CupertinoIcons.book_fill,
+                  accentColor: palette.warning,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _HomeInsightCard(
+                  label: '안정 기억',
+                  value: '$matureCount개',
+                  description: '긴 간격 복습',
+                  icon: CupertinoIcons.check_mark_circled_solid,
+                  accentColor: palette.review,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          _BloomFeatureCard(
+            title: usePlanScope ? '플랜 기준 SRS 현황' : 'SRS 학습 현황',
+            subtitle:
+                usePlanScope
+                    ? '잠긴 단어를 제외하고 열린 플랜 단어만 자세히 확인합니다.'
+                    : '예정 복습, 단계별 분포, 세부 상태를 더 자세히 확인합니다.',
+            icon: CupertinoIcons.chart_bar_alt_fill,
+            accentColor: palette.info,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => SrsStatusScreen(initialPlanScope: usePlanScope),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsScopeSwitch extends StatelessWidget {
+  final bool usePlanScope;
+  final ValueChanged<bool> onChanged;
+  final _ShellPalette palette;
+
+  const _StatsScopeSwitch({
+    required this.usePlanScope,
+    required this.onChanged,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: palette.iconSurface.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.border.withValues(alpha: 0.64)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _StatsScopeButton(
+              label: '전체 단어장',
+              selected: !usePlanScope,
+              color: palette.brand,
+              onTap: () => onChanged(false),
+            ),
+          ),
+          Expanded(
+            child: _StatsScopeButton(
+              label: '현재 학습 기준',
+              selected: usePlanScope,
+              color: palette.accent,
+              onTap: () => onChanged(true),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsScopeButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _StatsScopeButton({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.16) : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: selected ? color : Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanStatsSummaryCard extends StatelessWidget {
+  final StudyPlan plan;
+  final int openedWordCount;
+  final int lockedNewWordCount;
+  final int plannedNewWordSessionCount;
+  final int newWordSessionCount;
+  final _ShellPalette palette;
+
+  const _PlanStatsSummaryCard({
+    required this.plan,
+    required this.openedWordCount,
+    required this.lockedNewWordCount,
+    required this.plannedNewWordSessionCount,
+    required this.newWordSessionCount,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final progress =
+        plan.totalWords == 0 ? 0.0 : (openedWordCount / plan.totalWords).clamp(0.0, 1.0).toDouble();
+    final adjusted = newWordSessionCount < plannedNewWordSessionCount;
+
+    return GlassmorphicCard(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      borderRadius: 26,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(CupertinoIcons.calendar, color: palette.accent, size: 19),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '플랜 통계 범위',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                ),
+              ),
+              _StatusBadge(text: '플랜 적용', color: palette.accent),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 9,
+              backgroundColor: palette.iconSurface,
+              valueColor: AlwaysStoppedAnimation<Color>(palette.accent),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '열린 단어 $openedWordCount/${plan.totalWords}개 · 잠긴 단어 $lockedNewWordCount개',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            adjusted
+                ? '오늘 새 단어는 복습 부담 때문에 $plannedNewWordSessionCount개 중 $newWordSessionCount개만 표시합니다.'
+                : '오늘 새 단어 목표는 $newWordSessionCount개입니다.',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BloomAiLearningTab extends _AiLearningTab {
+  final String learningScopeSubtitle;
+
+  const _BloomAiLearningTab({required this.learningScopeSubtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _ShellPalette.of(Theme.of(context));
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TabIntroHeader(
+            eyebrow: 'AI STUDY',
+            title: 'AI 학습',
+            subtitle: '$learningScopeSubtitle 기준으로 예문과 문제를 생성합니다.',
+            icon: CupertinoIcons.sparkles,
+            palette: palette,
+          ),
+          const SizedBox(height: 22),
+          _AiLearningHeroCard(palette: palette),
+          const SizedBox(height: 22),
+          _BloomFeatureCard(
+            title: 'AI 퀴즈 생성',
+            subtitle: '단어장에 맞춘 개인화 문제로 기억을 점검합니다.',
+            icon: CupertinoIcons.sparkles,
+            accentColor: palette.review,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AiQuizSetupScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _BloomFeatureCard(
+            title: 'AI 예문 생성',
+            subtitle: '단어장을 선택해 예문과 번역을 만들고 학습 자료에 연결합니다.',
+            icon: CupertinoIcons.doc_text,
+            accentColor: palette.info,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder:
+                      (_) => const AiQuizSetupScreen(
+                        initialFocus: AiQuizSetupFocus.sentences,
+                      ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _BloomFeatureCard(
+            title: 'AI 문법 체크',
+            subtitle: '문법 범위를 지정해 추가 연습 문제를 생성합니다.',
+            icon: CupertinoIcons.text_cursor,
+            accentColor: palette.accent,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AiGrammarQuizSetupScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          const _SectionTitle(title: 'AI 설정'),
+          const SizedBox(height: 12),
+          const AiSettingsCard(),
+        ],
+      ),
+    );
+  }
+}
+
+class _TabIntroHeader extends StatelessWidget {
+  final String eyebrow;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final _ShellPalette palette;
+
+  const _TabIntroHeader({
+    required this.eyebrow,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: palette.iconSurface,
+                shape: BoxShape.circle,
+                border: Border.all(color: palette.border.withValues(alpha: 0.68)),
+              ),
+              child: Icon(icon, color: palette.brand, size: 21),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                eyebrow,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: palette.brand,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          title,
+          style: theme.textTheme.displaySmall?.copyWith(
+            fontSize: 30,
+            height: 1.04,
+            fontWeight: FontWeight.w900,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          subtitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            height: 1.42,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DeckLibrarySheetHeader extends StatelessWidget {
+  final String? activeWordbookName;
+  final _ShellPalette palette;
+  final VoidCallback? onClose;
+
+  const _DeckLibrarySheetHeader({
+    required this.activeWordbookName,
+    required this.palette,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: palette.iconSurface,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: palette.border.withValues(alpha: 0.72)),
+          ),
+          child: Icon(CupertinoIcons.book_fill, color: palette.brand, size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '단어장',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                activeWordbookName == null
+                    ? '오늘 학습 기준을 선택하세요'
+                    : '현재 학습 기준 · $activeWordbookName',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        IconButton.filledTonal(
+          tooltip: '닫기',
+          onPressed: onClose,
+          icon: const Icon(CupertinoIcons.xmark, size: 18),
+        ),
+      ],
+    );
+  }
+}
+
+class _DecksSummaryPanel extends StatelessWidget {
+  final String? activeWordbookName;
+  final StudyPlan? activeStudyPlan;
+  final int deckCount;
+  final _ShellPalette palette;
+  final VoidCallback onManageTap;
+  final VoidCallback onPlanTap;
+
+  const _DecksSummaryPanel({
+    required this.activeWordbookName,
+    required this.activeStudyPlan,
+    required this.deckCount,
+    required this.palette,
+    required this.onManageTap,
+    required this.onPlanTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return GlassmorphicCard(
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+      borderRadius: 32,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  activeWordbookName ?? '단어장을 불러와주세요',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              _StatusBadge(text: '$deckCount개', color: palette.brand),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            activeWordbookName == null
+                ? '학습을 시작하려면 먼저 사용할 단어장을 선택해야 합니다.'
+                : activeStudyPlan == null
+                ? '홈과 복습 루틴은 이 단어장을 기준으로 계산됩니다.'
+                : '학습 플랜으로 새 단어 노출을 나눠서 진행 중입니다.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onManageTap,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  icon: const Icon(CupertinoIcons.slider_horizontal_3, size: 18),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('관리'),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onPlanTap,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  icon: const Icon(CupertinoIcons.calendar_badge_plus, size: 18),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(activeStudyPlan == null ? '플랜 만들기' : '플랜 수정'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (activeStudyPlan != null) ...[
+            const SizedBox(height: 14),
+            _PlanPreviewStrip(
+              days: activeStudyPlan!.estimatedTotalDays(),
+              chunks: activeStudyPlan!.chunkCount,
+              dailyTarget: activeStudyPlan!.dailyNewTarget,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanPreviewStrip extends StatelessWidget {
+  final int days;
+  final int chunks;
+  final int dailyTarget;
+
+  const _PlanPreviewStrip({
+    required this.days,
+    required this.chunks,
+    required this.dailyTarget,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _ShellPalette.of(Theme.of(context));
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: palette.iconSurface.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: palette.border.withValues(alpha: 0.58)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final itemWidth =
+              constraints.maxWidth < 380
+                  ? (constraints.maxWidth - 12) / 2
+                  : (constraints.maxWidth - 24) / 3;
+          return Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            children: [
+              SizedBox(
+                width: itemWidth,
+                child: _PlanPreviewMetric(
+                  label: '예상 기간',
+                  value: '$days일',
+                  color: palette.brand,
+                ),
+              ),
+              SizedBox(
+                width: itemWidth,
+                child: _PlanPreviewMetric(
+                  label: '일일 묶음',
+                  value: '$chunks일',
+                  color: palette.info,
+                ),
+              ),
+              SizedBox(
+                width: itemWidth,
+                child: _PlanPreviewMetric(
+                  label: '하루 목표',
+                  value: '$dailyTarget개',
+                  color: palette.review,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PlanPreviewMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _PlanPreviewMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BloomDeckPreviewCard extends StatelessWidget {
+  final Wordbook wordbook;
+  final bool isActive;
+  final bool hasStudyPlan;
+  final Future<_DeckStats> statsFuture;
+
+  const _BloomDeckPreviewCard({
+    required this.wordbook,
+    required this.isActive,
+    required this.hasStudyPlan,
+    required this.statsFuture,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = _ShellPalette.of(theme);
+    final manager = context.read<WordbookManager>();
+
+    return GlassmorphicCard(
+      borderRadius: 30,
+      isActive: isActive,
+      onTap: () async {
+        await manager.setActiveWordbook(wordbook);
+        if (!context.mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const WordbookManagementScreen()),
+        );
+      },
+      child: FutureBuilder<_DeckStats>(
+        future: statsFuture,
+        builder: (context, snapshot) {
+          final stats = snapshot.data;
+          final total = stats?.totalCount ?? 0;
+          final focus = stats?.focusCount ?? 0;
+          final mastery = stats?.masteryRatio ?? 0.0;
+          final masteryPercent = (mastery * 100).round();
+          final countLabel =
+              stats == null
+                  ? '현황을 불러오는 중'
+                  : stats.isPlanScoped
+                  ? '플랜 ${stats.totalCount}/${stats.fullCount}개 · 집중 $focus개'
+                  : '전체 $total개 · 집중 $focus개';
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: palette.iconSurface,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Icon(CupertinoIcons.book_fill, color: palette.brand, size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          wordbook.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          countLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (hasStudyPlan) ...[
+                    _PlanBadge(palette: palette),
+                    const SizedBox(width: 8),
+                  ],
+                  if (isActive) ...[
+                    _StatusBadge(text: '현재', color: palette.brand),
+                    const SizedBox(width: 8),
+                  ],
+                  Icon(CupertinoIcons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      stats?.isPlanScoped == true ? '플랜 안정 기억률' : '안정 기억률',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    stats == null ? '-' : '$masteryPercent%',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: palette.brand,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: mastery.clamp(0.0, 1.0),
+                  minHeight: 9,
+                  backgroundColor: palette.iconSurface,
+                  valueColor: AlwaysStoppedAnimation<Color>(palette.accent),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _InlineStat(label: '복습', value: '${stats?.reviewCount ?? 0}'),
+                  _InlineStat(label: '새 단어', value: '${stats?.newCount ?? 0}'),
+                  _InlineStat(label: '학습 중', value: '${stats?.learningCount ?? 0}'),
+                  _InlineStat(label: '안정 기억', value: '${stats?.matureCount ?? 0}'),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _BloomFeatureCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _BloomFeatureCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return GlassmorphicCard(
+      borderRadius: 28,
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: accentColor, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 17,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.42,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Icon(CupertinoIcons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
+        ],
+      ),
+    );
+  }
+}
+
+class _MasteryOverviewCard extends StatelessWidget {
+  final double progress;
+  final int totalWordCount;
+  final int matureCount;
+  final _ShellPalette palette;
+
+  const _MasteryOverviewCard({
+    required this.progress,
+    required this.totalWordCount,
+    required this.matureCount,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final percent = (progress * 100).round();
+
+    return GlassmorphicCard(
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+      borderRadius: 32,
+      child: Column(
+        children: [
+          Text(
+            '전체 암기율',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '안정 기억 단계 / 전체 단어',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: 156,
+            height: 156,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CircularProgressIndicator(
+                  value: 1,
+                  strokeWidth: 10,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    palette.iconSurface.withValues(alpha: 0.86),
+                  ),
+                ),
+                CircularProgressIndicator(
+                  value: progress,
+                  strokeWidth: 10,
+                  strokeCap: StrokeCap.round,
+                  valueColor: AlwaysStoppedAnimation<Color>(palette.review),
+                ),
+                Center(
+                  child: Text(
+                    '$percent%',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: palette.brand,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              Expanded(
+                child: _CompactMetricTile(
+                  label: '전체 단어',
+                  value: '$totalWordCount',
+                  accentColor: palette.brand,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _CompactMetricTile(
+                  label: '안정 기억',
+                  value: '$matureCount',
+                  accentColor: palette.review,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiLearningHeroCard extends StatelessWidget {
+  final _ShellPalette palette;
+
+  const _AiLearningHeroCard({required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(34),
+        gradient: LinearGradient(
+          colors: [
+            palette.review.withValues(alpha: 0.18),
+            palette.accent.withValues(alpha: 0.12),
+            palette.iconSurface.withValues(alpha: 0.90),
+          ],
+        ),
+        border: Border.all(color: palette.border.withValues(alpha: 0.58)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 70,
+            height: 70,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface.withValues(alpha: 0.92),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(CupertinoIcons.sparkles, color: palette.brand, size: 30),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '단어장을 AI 자료로 확장',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  'API 한도에 도달하면 설정된 대체 모델로 이어서 시도합니다.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.42,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final String title;
+
+  const _SectionTitle({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+        fontSize: 18,
+        fontWeight: FontWeight.w900,
+      ),
+    );
+  }
 }
 
 class _DecksTab extends StatelessWidget {
@@ -1274,7 +5105,7 @@ class _ReviewTab extends StatelessWidget {
           const SizedBox(height: 12),
           _ActionCard(
             title: 'Flashcards',
-            subtitle: '전체 카드 또는 새 단어 루틴으로 이어집니다.',
+            subtitle: '전체 카드 또는 새 단어 카드 학습으로 이어집니다.',
             icon: CupertinoIcons.layers_alt_fill,
             accentColor: palette.brand,
             onTap:
@@ -1809,18 +5640,45 @@ class _TagChip extends StatelessWidget {
   }
 }
 
+class _DeckReviewNotice {
+  final String label;
+  final bool isDue;
+  final bool isOverdue;
+
+  const _DeckReviewNotice({
+    required this.label,
+    this.isDue = false,
+    this.isOverdue = false,
+  });
+}
+
 class _DeckStats {
   final int totalCount;
+  final int fullCount;
+  final int lockedCount;
+  final bool isPlanScoped;
   final int reviewCount;
   final int newCount;
   final int learningCount;
   final int matureCount;
+  final String? nextReviewLabel;
+  final bool hasDueReviewNotice;
+  final bool hasOverdueReviewNotice;
 
   const _DeckStats({
     required this.totalCount,
+    this.fullCount = 0,
+    this.lockedCount = 0,
+    this.isPlanScoped = false,
     required this.reviewCount,
     required this.newCount,
     required this.learningCount,
     required this.matureCount,
+    this.nextReviewLabel,
+    this.hasDueReviewNotice = false,
+    this.hasOverdueReviewNotice = false,
   });
+
+  int get focusCount => reviewCount + newCount + learningCount;
+  double get masteryRatio => totalCount == 0 ? 0.0 : matureCount / totalCount;
 }

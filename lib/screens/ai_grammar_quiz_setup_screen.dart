@@ -71,6 +71,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
         includeExplanation: _includeExplanation,
         questionLanguage: _questionLanguage,
       );
+      aiSettings.recordUsedOption(fallbackResult.usedOption);
       final AiQuizResponse? quizResponse = fallbackResult.value;
 
       if (mounted) {
@@ -105,7 +106,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   Future<void> _handleApiError(CustomApiException e) async {
     if (!mounted) return;
     if (e.code == 'api_key_missing') {
-      await showDialog(
+      final openSettings = await showDialog<bool>(
         context: context,
         builder:
             (dialogContext) => AlertDialog(
@@ -115,16 +116,14 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                 TextButton(child: const Text('취소'), onPressed: () => Navigator.pop(dialogContext)),
                 FilledButton(
                   child: const Text('설정으로 이동'),
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                    Navigator.of(
-                      context,
-                    ).push(MaterialPageRoute(builder: (_) => const AppSettingsScreen()));
-                  },
+                  onPressed: () => Navigator.pop(dialogContext, true),
                 ),
               ],
             ),
       );
+      if (openSettings == true && mounted) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AppSettingsScreen()));
+      }
     } else {
       setState(() => _errorMessage = e.message);
     }

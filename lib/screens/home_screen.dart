@@ -195,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ? '새 단어 ${dailyPlan.newWords.length}개 중 ${newWordSessionCount}개부터 시작합니다'
                             : '새로 SRS에 넣을 단어가 없습니다',
                     icon: CupertinoIcons.plus_circle_fill,
-                    color: const Color(0xFF0EA5E9),
+                    color: AppTheme.primaryGreen,
                     actionLabel: dailyPlan.hasNewWords ? '$newWordSessionCount개 익히기' : '완료',
                     enabled: dailyPlan.hasNewWords,
                     onTap:
@@ -219,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ? '오늘 기억한 단어를 떠올릴 수 있는지 확인합니다'
                             : '복습이나 학습 중인 단어가 생기면 추천됩니다',
                     icon: CupertinoIcons.pencil_outline,
-                    color: const Color(0xFF4F46E5),
+                    color: AppTheme.brandBrown,
                     actionLabel: dailyPlan.canTakeQuiz ? '퀴즈 시작' : '대기',
                     enabled: dailyPlan.canTakeQuiz,
                     onTap:
@@ -268,7 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: '셀프 테스트',
                     subtitle: '직접 써보며 확인',
                     icon: CupertinoIcons.pencil_outline,
-                    accentColor: const Color(0xFF4F46E5),
+                    accentColor: AppTheme.brandBrown,
                     onTap:
                         () => Navigator.of(
                           context,
@@ -279,7 +279,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: '내 단어장',
                     subtitle: '단어 추가와 정리',
                     icon: CupertinoIcons.book_fill,
-                    accentColor: const Color(0xFF0EA5E9),
+                    accentColor: AppTheme.primaryGreen,
                     onTap:
                         () => Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => const WordbookManagementScreen()),
@@ -328,7 +328,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: 'AI 퀴즈',
                     subtitle: '선택한 단어로 실전 문제를 생성합니다',
                     icon: CupertinoIcons.sparkles,
-                    color: const Color(0xFF7C3AED),
+                    color: AppTheme.primaryGreen,
                     onTap:
                         () => Navigator.of(
                           context,
@@ -339,7 +339,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: 'AI 문법',
                     subtitle: '문법 범위와 난이도를 골라 문제를 만듭니다',
                     icon: CupertinoIcons.text_cursor,
-                    color: const Color(0xFFDB2777),
+                    color: AppTheme.accentCoral,
                     onTap:
                         () => Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => const AiGrammarQuizSetupScreen()),
@@ -390,7 +390,7 @@ class _HomePalette {
   factory _HomePalette.of(ThemeData theme) {
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final isVision = theme.primaryColor == const Color(0xFF6C6048);
+    final isVision = theme.primaryColor == const Color(0xFFC76E40);
 
     if (isDark) {
       return _HomePalette(
@@ -417,14 +417,14 @@ class _HomePalette {
         surface: scheme.surface,
         surfaceVariant: scheme.surfaceContainerHighest,
         outline: scheme.outline,
-        shadow: const Color(0xFF4A3821),
-        iconButtonSurface: const Color(0xFFFFF9EC),
-        statusFront: const Color(0xFFFFF9EC),
-        statusBackPrimary: const Color(0xFFF1E4CF),
+        shadow: const Color(0xFF3C2B23),
+        iconButtonSurface: const Color(0xFFFFF8ED),
+        statusFront: const Color(0xFFFFF8ED),
+        statusBackPrimary: const Color(0xFFF0E3D4),
         statusBackSecondary: const Color(0xFFE8D9BF),
-        statusChip: const Color(0xFFF1E4CF),
-        statusStat: const Color(0xFFF6EBD8),
-        disabledButton: const Color(0xFFE9DCC7),
+        statusChip: const Color(0xFFF0E3D4),
+        statusStat: const Color(0xFFF5EBDC),
+        disabledButton: const Color(0xFFE6D5C1),
       );
     }
 
@@ -435,13 +435,13 @@ class _HomePalette {
       surfaceVariant: scheme.surfaceContainerHighest,
       outline: scheme.outline.withValues(alpha: 0.46),
       shadow: scheme.shadow,
-      iconButtonSurface: Colors.white.withValues(alpha: 0.82),
-      statusFront: const Color(0xFFFFFCF6),
-      statusBackPrimary: const Color(0xFFF1E8DA),
-      statusBackSecondary: const Color(0xFFE7EEE7),
-      statusChip: const Color(0xFFE7EEE7),
-      statusStat: const Color(0xFFF4EFE7),
-      disabledButton: const Color(0xFFE2E8E5),
+      iconButtonSurface: Colors.white.withValues(alpha: 0.86),
+      statusFront: const Color(0xFFFFFFFF),
+      statusBackPrimary: const Color(0xFFF4ECE7),
+      statusBackSecondary: const Color(0xFFE8F0E3),
+      statusChip: const Color(0xFFE8F0E3),
+      statusStat: const Color(0xFFF4EFEA),
+      disabledButton: const Color(0xFFE8E0DA),
     );
   }
 }
@@ -846,9 +846,9 @@ class _RoutineFocusCard extends StatelessWidget {
         recommendation.focus == LearningFocus.review
             ? AppTheme.accentCoral
             : recommendation.focus == LearningFocus.newWords
-            ? const Color(0xFF0EA5E9)
+            ? AppTheme.primaryGreen
             : recommendation.focus == LearningFocus.quiz
-            ? const Color(0xFF4F46E5)
+            ? AppTheme.brandBrown
             : AppTheme.primaryGreen;
 
     return InkWell(

@@ -7,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../themes/app_theme.dart';
 import '../widgets/glassmorphic_card.dart';
+import '../widgets/study_guide.dart';
 import 'tts_settings_screen.dart';
 
 class AppSettingsScreen extends StatefulWidget {
@@ -26,23 +27,42 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       appBar: AppBar(title: const Text('앱 설정'), automaticallyImplyLeading: true),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('계정', style: theme.textTheme.titleLarge),
-              const SizedBox(height: 10),
+              _buildSectionTitle(theme, '계정'),
+              const SizedBox(height: 12),
               _buildAuthSection(context),
 
               const SizedBox(height: 24),
-              Text('디자인', style: theme.textTheme.titleLarge),
-              const SizedBox(height: 10),
+              _buildSectionTitle(theme, '디자인'),
+              const SizedBox(height: 12),
               _buildThemeSettingsSection(context),
 
               const SizedBox(height: 24),
-              Text('소리', style: theme.textTheme.titleLarge),
-              const SizedBox(height: 10),
+              _buildSectionTitle(theme, '가이드'),
+              const SizedBox(height: 12),
               GlassmorphicCard(
+                borderRadius: 28,
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  leading: const Icon(CupertinoIcons.question_circle_fill),
+                  title: const Text('사용 가이드'),
+                  subtitle: const Text('오늘 학습, 학습 플랜, SRS 기준을 다시 보기'),
+                  trailing: const Icon(CupertinoIcons.right_chevron),
+                  onTap:
+                      () => Navigator.of(
+                        context,
+                      ).push(MaterialPageRoute(builder: (_) => const StudyGuideScreen())),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+              _buildSectionTitle(theme, '소리'),
+              const SizedBox(height: 12),
+              GlassmorphicCard(
+                borderRadius: 28,
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
                   leading: const Icon(CupertinoIcons.speaker_2_fill),
@@ -68,6 +88,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     if (authProvider.isLoading) return const Center(child: CircularProgressIndicator());
 
     return GlassmorphicCard(
+      borderRadius: 28,
       child: user != null ? _buildLoggedInUser(context, user) : _buildLoginButton(context),
     );
   }
@@ -110,6 +131,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   Widget _buildThemeSettingsSection(BuildContext context) {
     final themeNotifier = context.watch<ThemeNotifier>();
     return GlassmorphicCard(
+      borderRadius: 28,
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Column(
         children: [
@@ -159,6 +181,16 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(ThemeData theme, String title) {
+    return Text(
+      title,
+      style: theme.textTheme.titleLarge?.copyWith(
+        fontSize: 18,
+        fontWeight: FontWeight.w900,
       ),
     );
   }

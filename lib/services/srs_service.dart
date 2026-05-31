@@ -44,7 +44,7 @@ class DailyLearningPlan {
   bool get hasReview => dueWords.isNotEmpty;
   bool get hasNewWords => newWords.isNotEmpty;
   bool get canTakeQuiz => dueWords.isNotEmpty || learningWords.isNotEmpty;
-  int get suggestedNewWordBatchSize => min(5, newWords.length);
+  int get suggestedNewWordBatchSize => newWords.length;
 }
 
 class SrsService {
@@ -66,6 +66,26 @@ class SrsService {
     } catch (_) {
       return null;
     }
+  }
+
+  DateTime? lastReviewedAtFor(Word word) {
+    final value = word.lastReviewedAt;
+    if (value == null || value.isEmpty) return null;
+    try {
+      final parsed = DateTime.parse(value);
+      return DateTime(parsed.year, parsed.month, parsed.day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool wasReviewedToday(Word word, {DateTime? baseDate}) {
+    final reviewedAt = lastReviewedAtFor(word);
+    if (reviewedAt == null) return false;
+    final targetDate = baseDate ?? today();
+    return reviewedAt.year == targetDate.year &&
+        reviewedAt.month == targetDate.month &&
+        reviewedAt.day == targetDate.day;
   }
 
   bool isNewWord(Word word) {
@@ -222,7 +242,7 @@ class SrsService {
 
     return const LearningFocusRecommendation(
       focus: LearningFocus.rest,
-      title: '오늘 루틴은 깔끔하게 비었습니다',
+      title: '오늘 학습은 깔끔하게 비었습니다',
       description: '지금은 급한 복습이 없어요. 새 단어장을 보거나 전체 카드를 가볍게 훑어보는 정도면 충분합니다.',
       actionLabel: '전체 카드 보기',
     );
@@ -260,6 +280,7 @@ class SrsService {
     return word.copyWith(
       srsLevel: newSrsLevel,
       nextReviewDate: DateFormat('yyyy-MM-dd').format(nextReviewDate),
+      lastReviewedAt: DateFormat('yyyy-MM-dd').format(DateTime.now()),
       correctStreak: newCorrectStreak,
       incorrectCount: newIncorrectCount,
     );

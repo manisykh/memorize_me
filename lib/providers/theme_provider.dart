@@ -11,7 +11,7 @@ class ThemeNotifier extends ChangeNotifier {
   late int _eyeCareLevel;
 
   ThemeNotifier() {
-    _currentTheme = AppThemeType.lightGreen;
+    _currentTheme = AppThemeType.visionProtection;
     _eyeCareLevel = 1;
     _loadFromPrefs();
   }
@@ -30,7 +30,7 @@ class ThemeNotifier extends ChangeNotifier {
     String? themeName = _prefs!.getString(_themeKey);
     _currentTheme = AppThemeType.values.firstWhere(
       (e) => e.name == themeName,
-      orElse: () => AppThemeType.lightGreen,
+      orElse: () => AppThemeType.visionProtection,
     );
     _eyeCareLevel = _prefs!.getInt(_levelKey) ?? 1;
     notifyListeners();

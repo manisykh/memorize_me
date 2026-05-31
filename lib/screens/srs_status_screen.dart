@@ -4,18 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../models/study_plan_model.dart';
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/mode_state_service.dart';
 import '../services/srs_service.dart';
+import '../themes/app_theme.dart';
 import '../widgets/glassmorphic_card.dart';
 import '../widgets/wordbook_selection_button.dart';
 import 'quiz_screen.dart';
 
 class SrsStatusScreen extends StatefulWidget {
-  const SrsStatusScreen({super.key});
+  final bool initialPlanScope;
+
+  const SrsStatusScreen({super.key, this.initialPlanScope = false});
 
   @override
   State<SrsStatusScreen> createState() => _SrsStatusScreenState();
@@ -24,6 +28,9 @@ class SrsStatusScreen extends StatefulWidget {
 class _SrsStatusScreenState extends State<SrsStatusScreen> {
   Wordbook? _selectedWordbook;
   List<Word> _words = [];
+  List<Word> _scopedWords = [];
+  StudyPlan? _studyPlan;
+  bool _showPlanScope = false;
   bool _isLoading = true;
   final SrsService _srsService = SrsService();
 
@@ -34,11 +41,13 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
   int _dueToday = 0;
   int _dueTomorrow = 0;
   int _dueThisWeek = 0;
+  int _lockedNewWordCount = 0;
   Map<String, double> _forecastData = {};
 
   @override
   void initState() {
     super.initState();
+    _showPlanScope = widget.initialPlanScope;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
     });
@@ -49,8 +58,8 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
     final modeStateService = context.read<ModeStateService>();
 
     final lastUsedId = await modeStateService.getLastUsedWordbookId(LearningMode.srsStatus);
-    Wordbook? initialWordbook = wordbookManager.getWordbookById(lastUsedId ?? -1);
-    initialWordbook ??= wordbookManager.activeWordbook;
+    Wordbook? initialWordbook = wordbookManager.activeWordbook;
+    initialWordbook ??= wordbookManager.getWordbookById(lastUsedId ?? -1);
 
     if (initialWordbook != null) {
       await _onWordbookSelected(initialWordbook);
@@ -72,9 +81,19 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
 
     if (mounted) {
       final words = wordListNotifier.words;
+      final studyPlan = wordbookManager.planFor(wordbook);
+      final showPlanScope = studyPlan != null;
+      final scopedWords =
+          showPlanScope ? wordbookManager.wordsAvailableForPlan(words, plan: studyPlan) : words;
+      final lockedNewWordCount =
+          studyPlan == null ? 0 : wordbookManager.lockedNewWordCount(words, plan: studyPlan);
       setState(() {
         _selectedWordbook = wordbook;
         _words = words;
+        _studyPlan = studyPlan;
+        _showPlanScope = showPlanScope;
+        _scopedWords = scopedWords;
+        _lockedNewWordCount = lockedNewWordCount;
         _calculateStatistics();
         _isLoading = false;
       });
@@ -102,7 +121,7 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
       forecastData[DateFormat('MM/dd').format(date)] = 0;
     }
 
-    for (final word in _words) {
+    for (final word in _scopedWords) {
       final stage = _srsService.stageFor(word, baseDate: today);
       switch (stage) {
         case SrsStage.newWord:
@@ -151,6 +170,21 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
     _forecastData = forecastData;
   }
 
+  void _setScope(bool usePlanScope) {
+    final studyPlan = _studyPlan;
+    final wordbookManager = context.read<WordbookManager>();
+    final scopedWords =
+        usePlanScope && studyPlan != null
+            ? wordbookManager.wordsAvailableForPlan(_words, plan: studyPlan)
+            : _words;
+
+    setState(() {
+      _showPlanScope = usePlanScope && studyPlan != null;
+      _scopedWords = scopedWords;
+      _calculateStatistics();
+    });
+  }
+
   IconData _iconForStage(SrsStage stage) {
     switch (stage) {
       case SrsStage.newWord:
@@ -167,9 +201,9 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
   Color _colorForStage(SrsStage stage) {
     switch (stage) {
       case SrsStage.newWord:
-        return const Color(0xFF0EA5E9);
+        return AppTheme.primaryGreen;
       case SrsStage.due:
-        return Colors.deepOrange;
+        return AppTheme.accentCoral;
       case SrsStage.learning:
         return Colors.amber.shade800;
       case SrsStage.mature:
@@ -180,14 +214,14 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final sortedWords = List<Word>.from(_words)
+    final sortedWords = List<Word>.from(_scopedWords)
       ..sort((a, b) => _srsService.reviewPriority(b).compareTo(_srsService.reviewPriority(a)));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('SRS 학습 현황')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -202,7 +236,15 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
             else if (_selectedWordbook == null)
               const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('현황을 보려면 단어장을 선택해 주세요.')))
             else ...[
+              if (_studyPlan != null) ...[
+                _buildScopeControl(theme),
+                const SizedBox(height: 16),
+              ],
               _buildSectionTitle('학습 현황 요약', theme),
+              if (_showPlanScope && _studyPlan != null) ...[
+                _buildPlanScopeCard(theme),
+                const SizedBox(height: 16),
+              ],
               _buildReviewMotivationCard(theme),
               const SizedBox(height: 16),
               _buildSummarySection(theme),
@@ -230,9 +272,143 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
     );
   }
 
+  Widget _buildScopeControl(ThemeData theme) {
+    return GlassmorphicCard(
+      padding: const EdgeInsets.all(6),
+      borderRadius: 24,
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildScopeButton(
+              theme: theme,
+              label: '전체 단어장',
+              selected: !_showPlanScope,
+              color: theme.colorScheme.primary,
+              onTap: () => _setScope(false),
+            ),
+          ),
+          Expanded(
+            child: _buildScopeButton(
+              theme: theme,
+              label: '현재 학습 기준',
+              selected: _showPlanScope,
+              color: AppTheme.accentCoral,
+              onTap: () => _setScope(true),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScopeButton({
+    required ThemeData theme,
+    required String label,
+    required bool selected,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: selected ? color : theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlanScopeCard(ThemeData theme) {
+    final plan = _studyPlan;
+    if (plan == null) return const SizedBox.shrink();
+    final opened = _scopedWords.length;
+    final progress =
+        plan.totalWords == 0 ? 0.0 : (opened / plan.totalWords).clamp(0.0, 1.0).toDouble();
+    final totalDays = plan.estimatedTotalDays();
+    final currentDay = totalDays == 0 ? 0 : plan.currentChunk().clamp(1, totalDays).toInt();
+
+    return GlassmorphicCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppTheme.accentCoral.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(CupertinoIcons.calendar, color: AppTheme.accentCoral, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '현재 학습 기준 · 플랜 $currentDay/$totalDays일차',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                ),
+              ),
+              _buildSmallBadge(theme, '플랜 적용', AppTheme.accentCoral),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 9,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accentCoral),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '열린 단어 $opened/${plan.totalWords}개 · 잠긴 단어 $_lockedNewWordCount개',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmallBadge(ThemeData theme, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
   Widget _buildReviewMotivationCard(ThemeData theme) {
     final hasDue = _dueToday > 0;
-    final accentColor = hasDue ? Colors.deepOrange : Colors.green;
+    final accentColor = hasDue ? AppTheme.accentCoral : AppTheme.primaryGreen;
     final title = hasDue ? '지금 복습하면 기억이 다시 또렷해집니다' : '오늘 급한 복습은 비어 있습니다';
     final message =
         hasDue
@@ -274,9 +450,9 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(child: _buildTinyStat(theme, '오늘 복습', '$_dueToday', Colors.deepOrange)),
+              Expanded(child: _buildTinyStat(theme, '오늘 복습', '$_dueToday', AppTheme.accentCoral)),
               const SizedBox(width: 8),
-              Expanded(child: _buildTinyStat(theme, '내일', '$_dueTomorrow', const Color(0xFF0EA5E9))),
+              Expanded(child: _buildTinyStat(theme, '내일', '$_dueTomorrow', AppTheme.primaryGreen)),
               const SizedBox(width: 8),
               Expanded(child: _buildTinyStat(theme, '이번 주', '$_dueThisWeek', theme.colorScheme.primary)),
             ],
@@ -503,7 +679,7 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
                         barRods: [
                           BarChartRodData(
                             toY: entry.value,
-                            color: const Color(0xFF0EA5E9),
+                            color: AppTheme.primaryGreen,
                             width: 20,
                             borderRadius: BorderRadius.circular(4),
                           ),

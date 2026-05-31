@@ -14,8 +14,10 @@ class WordListNotifier extends ChangeNotifier {
   WordListNotifier(this._databaseService);
 
   List<Word> get words => _words;
+  String? get activeDbFileName => _activeDbFileName;
 
-  Future<void> loadWords(String dbFileName) async {
+  Future<void> loadWords(String dbFileName, {bool force = false}) async {
+    if (!force && _activeDbFileName == dbFileName) return;
     _activeDbFileName = dbFileName;
     _words = await _databaseService.getAllWords(dbFileName);
     notifyListeners();
@@ -23,7 +25,7 @@ class WordListNotifier extends ChangeNotifier {
 
   Future<void> refreshWords() async {
     if (_activeDbFileName != null) {
-      await loadWords(_activeDbFileName!);
+      await loadWords(_activeDbFileName!, force: true);
     }
   }
 
@@ -36,19 +38,19 @@ class WordListNotifier extends ChangeNotifier {
   Future<void> addWord(Word word) async {
     if (_activeDbFileName == null) return;
     await _databaseService.addWord(_activeDbFileName!, word);
-    await loadWords(_activeDbFileName!);
+    await loadWords(_activeDbFileName!, force: true);
   }
 
   Future<void> updateWord(Word word) async {
     if (_activeDbFileName == null) return;
     await _databaseService.updateWord(_activeDbFileName!, word);
-    await loadWords(_activeDbFileName!);
+    await loadWords(_activeDbFileName!, force: true);
   }
 
   Future<void> deleteWord(int id) async {
     if (_activeDbFileName == null) return;
     await _databaseService.deleteWord(_activeDbFileName!, id);
-    await loadWords(_activeDbFileName!);
+    await loadWords(_activeDbFileName!, force: true);
   }
 
   Future<void> generateAndUpdateAllSentences(
@@ -67,6 +69,7 @@ class WordListNotifier extends ChangeNotifier {
         fallbackEnabled: aiSettings.autoFallbackEnabled,
       ),
     );
+    aiSettings.recordUsedOption(fallbackResult.usedOption);
     final sentenceMap = fallbackResult.value;
 
     for (final word in wordsToUpdate) {
@@ -79,6 +82,6 @@ class WordListNotifier extends ChangeNotifier {
         await _databaseService.updateWord(_activeDbFileName!, updatedWord);
       }
     }
-    await loadWords(_activeDbFileName!);
+    await loadWords(_activeDbFileName!, force: true);
   }
 }

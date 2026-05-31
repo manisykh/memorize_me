@@ -9,6 +9,7 @@ import '../models/wordbook_model.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/database_service.dart';
 import '../services/srs_service.dart';
+import '../themes/app_theme.dart';
 import 'add_edit_word_screen.dart';
 
 class ManageWordsScreen extends StatefulWidget {
@@ -351,7 +352,7 @@ class _ManageWordsScreenState extends State<ManageWordsScreen> {
       case SrsStage.newWord:
         return Colors.blueGrey;
       case SrsStage.due:
-        return Colors.deepOrange;
+        return AppTheme.accentCoral;
       case SrsStage.learning:
         return Colors.amber.shade800;
       case SrsStage.mature:

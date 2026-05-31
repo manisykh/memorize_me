@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import '../models/study_plan_model.dart';
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 
@@ -33,7 +34,7 @@ class DatabaseService {
   Future<Database> _initMetaDB() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, "meta.db");
-    return await openDatabase(path, version: 3, onCreate: _createMetaDB, onUpgrade: _onUpgrade);
+    return await openDatabase(path, version: 4, onCreate: _createMetaDB, onUpgrade: _onUpgrade);
   }
 
   Future<void> _createMetaDB(Database db, int version) async {
@@ -43,6 +44,7 @@ class DatabaseService {
     await db.execute(
       'CREATE TABLE incorrect_words(id INTEGER PRIMARY KEY AUTOINCREMENT, wordbookName TEXT, word TEXT, meaning TEXT)',
     );
+    await _createStudyPlansTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -67,7 +69,25 @@ class DatabaseService {
           debugPrint("Error adding column: $e");
         }
         break;
+      case 4:
+        await _createStudyPlansTable(db);
+        break;
     }
+  }
+
+  Future<void> _createStudyPlansTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS study_plans(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        wordbookId INTEGER,
+        dbFileName TEXT NOT NULL UNIQUE,
+        wordbookName TEXT NOT NULL,
+        totalWords INTEGER NOT NULL DEFAULT 0,
+        chunkSize INTEGER NOT NULL DEFAULT 20,
+        dailyNewTarget INTEGER NOT NULL DEFAULT 20,
+        startDate TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        createdAt TEXT NOT NULL
+      )''');
   }
 
   Future<List<Wordbook>> getWordbooks() async {
@@ -89,6 +109,7 @@ class DatabaseService {
   Future<void> deleteWordbook(int id, String dbFileName) async {
     final db = await _metaDatabase;
     await db.delete('wordbooks', where: 'id = ?', whereArgs: [id]);
+    await db.delete('study_plans', where: 'dbFileName = ?', whereArgs: [dbFileName]);
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, dbFileName);
     final file = File(path);
@@ -139,13 +160,36 @@ class DatabaseService {
     await db.delete('incorrect_words', where: 'wordbookName = ?', whereArgs: [wordbookName]);
   }
 
+  Future<List<StudyPlan>> getStudyPlans() async {
+    final db = await _metaDatabase;
+    final maps = await db.query('study_plans', orderBy: 'createdAt DESC');
+    return maps.map(StudyPlan.fromMap).toList();
+  }
+
+  Future<StudyPlan> saveStudyPlan(StudyPlan plan) async {
+    final db = await _metaDatabase;
+    final map = plan.toMap();
+    map.remove('id');
+    final id = await db.insert(
+      'study_plans',
+      map,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return plan.copyWith(id: id);
+  }
+
+  Future<void> deleteStudyPlan(int id) async {
+    final db = await _metaDatabase;
+    await db.delete('study_plans', where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<Database> _openWordDB(String dbFileName) async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, dbFileName);
     return await openDatabase(
       path,
       singleInstance: false,
-      version: 5, // ▼▼▼ [수정] DB 버전 5로 변경
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE words(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,6 +199,7 @@ class DatabaseService {
             exampleSentenceTranslation TEXT, -- ▼▼▼ [추가]
             srsLevel INTEGER NOT NULL DEFAULT 0,
             nextReviewDate TEXT,
+            lastReviewedAt TEXT,
             incorrectCount INTEGER NOT NULL DEFAULT 0,
             correctStreak INTEGER NOT NULL DEFAULT 0
           )''');
@@ -180,6 +225,9 @@ class DatabaseService {
       if (version == 5) {
         // ▼▼▼ [추가] 버전 5에 대한 스키마 업그레이드
         await db.execute('ALTER TABLE words ADD COLUMN exampleSentenceTranslation TEXT');
+      }
+      if (version == 6) {
+        await db.execute('ALTER TABLE words ADD COLUMN lastReviewedAt TEXT');
       }
     } catch (e) {
       debugPrint("Error upgrading WordDB to v$version: $e. It might already exist.");

@@ -8,6 +8,7 @@ class Word {
   final String? exampleSentenceTranslation; // ▼▼▼ [추가] 예문 번역 필드
   final int srsLevel;
   final String? nextReviewDate;
+  final String? lastReviewedAt;
   final int incorrectCount;
   final int correctStreak;
 
@@ -19,6 +20,7 @@ class Word {
     this.exampleSentenceTranslation, // ▼▼▼ [추가]
     this.srsLevel = 0,
     this.nextReviewDate,
+    this.lastReviewedAt,
     this.incorrectCount = 0,
     this.correctStreak = 0,
   });
@@ -32,6 +34,7 @@ class Word {
       'exampleSentenceTranslation': exampleSentenceTranslation, // ▼▼▼ [추가]
       'srsLevel': srsLevel,
       'nextReviewDate': nextReviewDate,
+      'lastReviewedAt': lastReviewedAt,
       'incorrectCount': incorrectCount,
       'correctStreak': correctStreak,
     };
@@ -52,6 +55,7 @@ class Word {
       exampleSentenceTranslation: map['exampleSentenceTranslation'], // ▼▼▼ [추가]
       srsLevel: map['srsLevel'] ?? 0,
       nextReviewDate: map['nextReviewDate'],
+      lastReviewedAt: map['lastReviewedAt'],
       incorrectCount: map['incorrectCount'] ?? 0,
       correctStreak: map['correctStreak'] ?? 0,
     );
@@ -65,6 +69,7 @@ class Word {
     String? exampleSentenceTranslation, // ▼▼▼ [추가]
     int? srsLevel,
     String? nextReviewDate,
+    String? lastReviewedAt,
     int? incorrectCount,
     int? correctStreak,
   }) {
@@ -77,6 +82,7 @@ class Word {
           exampleSentenceTranslation ?? this.exampleSentenceTranslation, // ▼▼▼ [추가]
       srsLevel: srsLevel ?? this.srsLevel,
       nextReviewDate: nextReviewDate ?? this.nextReviewDate,
+      lastReviewedAt: lastReviewedAt ?? this.lastReviewedAt,
       incorrectCount: incorrectCount ?? this.incorrectCount,
       correctStreak: correctStreak ?? this.correctStreak,
     );

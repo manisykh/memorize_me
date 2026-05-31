@@ -1,6 +1,7 @@
 // lib/main.dart (수정된 전체 코드)
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'providers/ai_settings_provider.dart';
@@ -88,27 +89,70 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ThemeNotifier>(
       builder: (context, themeNotifier, child) {
+        final theme = themeNotifier.getTheme();
         return MaterialApp(
           title: 'Memorize Me',
-          theme: themeNotifier.getTheme(),
+          theme: theme,
           debugShowCheckedModeBanner: false,
           builder: (context, child) {
             final currentThemeType = themeNotifier.currentTheme;
-            if (currentThemeType == AppThemeType.lightGreen) {
-              return GradientBackground(child: child!);
-            }
+            final content = child ?? const SizedBox.shrink();
             Color backgroundColor;
-            if (currentThemeType == AppThemeType.visionProtection) {
+            if (currentThemeType == AppThemeType.lightGreen) {
+              backgroundColor = theme.scaffoldBackgroundColor;
+              return AnnotatedRegion<SystemUiOverlayStyle>(
+                value: _systemUiOverlayStyle(theme, currentThemeType, backgroundColor),
+                child: GradientBackground(child: content),
+              );
+            } else if (currentThemeType == AppThemeType.visionProtection) {
               int levelIndex = (themeNotifier.eyeCareLevel - 1).clamp(0, 4);
               backgroundColor = AppTheme.visionProtectionColors[levelIndex];
             } else {
-              backgroundColor = Theme.of(context).scaffoldBackgroundColor;
+              backgroundColor = theme.scaffoldBackgroundColor;
             }
-            return Container(color: backgroundColor, child: child);
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: _systemUiOverlayStyle(theme, currentThemeType, backgroundColor),
+              child: Container(color: backgroundColor, child: content),
+            );
           },
           home: const AppInitializer(),
         );
       },
+    );
+  }
+
+  SystemUiOverlayStyle _systemUiOverlayStyle(
+    ThemeData theme,
+    AppThemeType themeType,
+    Color fallbackSurfaceColor,
+  ) {
+    final isDark = theme.brightness == Brightness.dark;
+    final statusBarColor = switch (themeType) {
+      AppThemeType.lightGreen => Colors.white,
+      AppThemeType.dark => const Color(0xFF2D241C),
+      AppThemeType.visionProtection => const Color(0xFFFFF8ED),
+    };
+    final navigationBarColor = switch (themeType) {
+      AppThemeType.lightGreen => Colors.white,
+      AppThemeType.dark => const Color(0xFF3A2E24),
+      AppThemeType.visionProtection => const Color(0xFFFBF6EC),
+    };
+    final dividerColor = switch (themeType) {
+      AppThemeType.lightGreen => const Color(0xFFDCDCE0),
+      AppThemeType.dark => const Color(0xFF604A35),
+      AppThemeType.visionProtection => const Color(0xFFE5D6BD),
+    };
+
+    return SystemUiOverlayStyle(
+      statusBarColor:
+          statusBarColor == Colors.transparent ? fallbackSurfaceColor : statusBarColor,
+      systemNavigationBarColor: navigationBarColor,
+      systemNavigationBarDividerColor: dividerColor,
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      systemStatusBarContrastEnforced: true,
+      systemNavigationBarContrastEnforced: true,
     );
   }
 }

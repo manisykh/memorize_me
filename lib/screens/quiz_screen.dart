@@ -11,11 +11,13 @@ import 'package:provider/provider.dart';
 
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
+import '../models/study_plan_model.dart';
 import '../providers/settings_provider.dart';
 import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/srs_service.dart';
 import '../services/test_sheet_service.dart';
+import '../themes/app_theme.dart';
 import '../widgets/glassmorphic_card.dart';
 import '../widgets/wordbook_selection_button.dart';
 import 'flashcard_screen.dart';
@@ -56,8 +58,11 @@ class QuizScreen extends StatefulWidget {
 
 class _QuizScreenState extends State<QuizScreen> {
   Wordbook? _selectedWordbook;
+  StudyPlan? _studyPlan;
   List<Word> _words = [];
   List<Word> _reviewWords = [];
+  int _totalWordCount = 0;
+  int _lockedNewWordCount = 0;
   bool _isLoading = false;
   bool _isScreenLoading = true;
   late QuizMode _currentMode;
@@ -79,8 +84,8 @@ class _QuizScreenState extends State<QuizScreen> {
     final wordbookManager = context.read<WordbookManager>();
     final modeStateService = context.read<ModeStateService>();
     final lastUsedId = await modeStateService.getLastUsedWordbookId(LearningMode.quiz);
-    Wordbook? initialWordbook = wordbookManager.getWordbookById(lastUsedId ?? -1);
-    initialWordbook ??= wordbookManager.activeWordbook;
+    Wordbook? initialWordbook = wordbookManager.activeWordbook;
+    initialWordbook ??= wordbookManager.getWordbookById(lastUsedId ?? -1);
     initialWordbook ??= wordbookManager.wordbooks.firstOrNull;
     if (initialWordbook != null) {
       await _onWordbookSelected(initialWordbook);
@@ -98,20 +103,44 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   Future<void> _onWordbookSelected(Wordbook wordbook) async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _studyPlan = null;
+      _totalWordCount = 0;
+      _lockedNewWordCount = 0;
+    });
     final wordbookManager = context.read<WordbookManager>();
     final modeStateService = context.read<ModeStateService>();
     await wordbookManager.setActiveWordbook(wordbook);
     if (mounted) {
       final wordListNotifier = context.read<WordListNotifier>();
+      final plan = wordbookManager.planFor(wordbook);
+      final allWords = wordListNotifier.words;
+      final routineWords = wordbookManager.wordsAvailableForPlan(
+        allWords,
+        plan: plan,
+      );
+      final lockedNewWordCount = wordbookManager.lockedNewWordCount(allWords, plan: plan);
       setState(() {
         _selectedWordbook = wordbook;
-        _words = wordListNotifier.words;
+        _studyPlan = plan;
+        _totalWordCount = allWords.length;
+        _lockedNewWordCount = lockedNewWordCount;
+        _words = routineWords;
         // ▼▼▼ [수정] 예문 존재 여부 확인 로직
         _canDoSentenceCompletion = _words.any(
           (w) => w.exampleSentence != null && w.exampleSentence!.isNotEmpty,
         );
         _reviewWords = wordbookManager.getWordsForReview();
+        if (_currentMode == QuizMode.reviewSpelling && _reviewWords.isEmpty) {
+          _currentMode = QuizMode.none;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('지금은 복습 대기 단어가 없습니다.')),
+            );
+          });
+        }
         _isLoading = false;
       });
     }
@@ -129,6 +158,12 @@ class _QuizScreenState extends State<QuizScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('선택된 단어장에 단어가 없습니다.')));
+      return;
+    }
+    if (newMode == QuizMode.reviewSpelling && _reviewWords.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('지금은 복습 대기 단어가 없습니다.')));
       return;
     }
     setState(() => _currentMode = newMode);
@@ -340,6 +375,7 @@ class _QuizScreenState extends State<QuizScreen> {
             selectedWordbook: _selectedWordbook!,
             sessionLabel: '뜻 고르기',
             sessionHint: '의미를 빠르게 구분하며 오늘 기억을 점검하는 단계입니다.',
+            onContinueSpelling: () => _changeMode(QuizMode.spelling),
             onFinish: _finishActiveMode,
           ),
           QuizMode.spelling =>
@@ -384,19 +420,24 @@ class _QuizScreenState extends State<QuizScreen> {
       case QuizMode.exportSheet:
         return '시험지 생성';
       case QuizMode.multipleChoice:
-        return '객관식 퀴즈 - ${_selectedWordbook?.name}';
+        return '객관식 퀴즈 - ${_currentScopeName()}';
       case QuizMode.spelling:
-        return '스펠링 퀴즈 - ${_selectedWordbook?.name}';
+        return '스펠링 퀴즈 - ${_currentScopeName()}';
       case QuizMode.reviewSpelling:
-        return '오답/복습 퀴즈 - ${_selectedWordbook?.name}';
+        return '오답/복습 퀴즈 - ${_currentScopeName()}';
     }
+  }
+
+  String _currentScopeName() {
+    final name = _selectedWordbook?.name ?? '단어장';
+    return _studyPlan == null ? name : '$name 플랜';
   }
 
   Widget _buildModeSelectionUI(ThemeData theme) {
     final canStartMcq = _words.length >= 4;
     final reviewEnabled = _reviewWords.isNotEmpty && _selectedWordbook != null;
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
       children: [
         const SizedBox(height: 16),
         WordbookSelectionButton(
@@ -404,8 +445,13 @@ class _QuizScreenState extends State<QuizScreen> {
           onWordbookSelected: _onWordbookSelected,
           wordCount: _words.length,
         ),
+        if (_studyPlan != null) ...[
+          const SizedBox(height: 12),
+          _buildLearningScopeNotice(theme),
+        ],
         const SizedBox(height: 18),
         GlassmorphicCard(
+          borderRadius: 28,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -460,7 +506,7 @@ class _QuizScreenState extends State<QuizScreen> {
                       theme,
                       '오늘 복습',
                       '${_reviewWords.length}개',
-                      Colors.deepOrange,
+                      AppTheme.accentCoral,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -469,7 +515,7 @@ class _QuizScreenState extends State<QuizScreen> {
                       theme,
                       '진입 추천',
                       reviewEnabled ? '복습' : '전체',
-                      const Color(0xFF0EA5E9),
+                      AppTheme.primaryGreen,
                     ),
                   ),
                 ],
@@ -484,7 +530,7 @@ class _QuizScreenState extends State<QuizScreen> {
           description: '헷갈린 단어부터 다시 꺼내 보며 오늘 복습 큐를 줄입니다.',
           cta: reviewEnabled ? '복습 시작' : '복습 없음',
           icon: CupertinoIcons.flame_fill,
-          accentColor: Colors.deepOrange,
+          accentColor: AppTheme.accentCoral,
           countText: '${_reviewWords.length}개',
           enabled: reviewEnabled,
           onTap: reviewEnabled ? () => _changeMode(QuizMode.reviewSpelling) : null,
@@ -496,7 +542,7 @@ class _QuizScreenState extends State<QuizScreen> {
           description: '뜻을 보고 철자를 직접 꺼내며 기억을 더 단단하게 고정합니다.',
           cta: '바로 시작',
           icon: CupertinoIcons.pencil_outline,
-          accentColor: const Color(0xFF0EA5E9),
+          accentColor: AppTheme.primaryGreen,
           countText: '${_words.length}개',
           enabled: _words.isNotEmpty,
           onTap: () => _changeMode(QuizMode.spelling),
@@ -533,6 +579,55 @@ class _QuizScreenState extends State<QuizScreen> {
             child: Center(child: Text('웹에서는 지원되지 않는 기능입니다.', style: theme.textTheme.bodySmall)),
           ),
       ],
+    );
+  }
+
+  Widget _buildLearningScopeNotice(ThemeData theme) {
+    final plan = _studyPlan;
+    if (plan == null) return const SizedBox.shrink();
+    final totalDays = plan.estimatedTotalDays();
+    final currentDay = totalDays == 0 ? 0 : plan.currentChunk().clamp(1, totalDays).toInt();
+
+    return GlassmorphicCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      borderRadius: 20,
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.tertiary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(CupertinoIcons.calendar, color: theme.colorScheme.tertiary, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '현재 학습 기준 · 플랜 $currentDay/$totalDays일차',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '퀴즈는 열린 단어 ${_words.length}/$_totalWordCount개만 사용합니다. 잠긴 단어 $_lockedNewWordCount개는 아직 출제하지 않습니다.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -867,11 +962,11 @@ class _QuizScreenState extends State<QuizScreen> {
     );
   }
 
-  Future<void> _showWordCountInputDialog(
-    BuildContext context,
-    int currentCount,
-    int maxCount,
-  ) async {
+  Future<void> _showWordCountInputDialog({
+    required int currentCount,
+    required int maxCount,
+    required SettingsNotifier settingsNotifier,
+  }) async {
     var inputValue = '$currentCount';
     final result = await showDialog<int>(
       context: context,
@@ -911,12 +1006,9 @@ class _QuizScreenState extends State<QuizScreen> {
             ],
           ),
     );
-    if (result == null) return;
+    if (result == null || !mounted) return;
     final nextCount = result.clamp(1, maxCount).toInt();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      context.read<SettingsNotifier>().setWordCount(nextCount);
-    });
+    settingsNotifier.setWordCount(nextCount);
   }
 
   Widget _buildWordCountControl({
@@ -968,9 +1060,9 @@ class _QuizScreenState extends State<QuizScreen> {
                     borderRadius: BorderRadius.circular(14),
                     onTap:
                         () => _showWordCountInputDialog(
-                          context,
-                          currentCount,
-                          maxCount,
+                          currentCount: currentCount,
+                          maxCount: maxCount,
+                          settingsNotifier: settingsNotifier,
                         ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1380,6 +1472,7 @@ class _MultipleChoiceQuizView extends StatefulWidget {
   final Wordbook selectedWordbook;
   final String sessionLabel;
   final String sessionHint;
+  final VoidCallback onContinueSpelling;
   final VoidCallback onFinish;
 
   const _MultipleChoiceQuizView({
@@ -1388,6 +1481,7 @@ class _MultipleChoiceQuizView extends StatefulWidget {
     required this.selectedWordbook,
     required this.sessionLabel,
     required this.sessionHint,
+    required this.onContinueSpelling,
     required this.onFinish,
   });
 
@@ -1404,6 +1498,7 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView> {
   final SrsService _srsService = SrsService();
   late final WordbookManager _wordbookManager;
   final List<McqQuizResult> _results = [];
+  bool _isClosingResults = false;
 
   @override
   void initState() {
@@ -1433,8 +1528,14 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView> {
 
   void _onOptionSelected(Word option) {
     if (_isAnswered) return;
+    setState(() => _selectedOption = option);
+  }
+
+  bool _commitCurrentAnswer() {
+    if (_selectedOption == null) return false;
+    if (_isAnswered) return true;
     final currentWord = _sessionWords[_currentIndex];
-    final isCorrect = option.id == currentWord.id;
+    final isCorrect = _selectedOption!.id == currentWord.id;
     final updatedWord = _srsService.updateWordSrs(
       word: currentWord,
       source: SrsUpdateSource.flashcard,
@@ -1442,13 +1543,14 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView> {
     );
     _wordbookManager.updateWordsSrsData(widget.selectedWordbook.dbFileName, [updatedWord]);
     setState(() {
-      _selectedOption = option;
       _isAnswered = true;
       _results.add(McqQuizResult(questionWord: currentWord, isCorrect: isCorrect));
     });
+    return true;
   }
 
   void _nextQuestion() {
+    if (!_commitCurrentAnswer()) return;
     if (_currentIndex < _sessionWords.length - 1) {
       setState(() {
         _currentIndex++;
@@ -1479,33 +1581,52 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView> {
     });
   }
 
+  void _closeResultsThen(VoidCallback action) {
+    if (_isClosingResults) return;
+    _isClosingResults = true;
+    Navigator.of(context).pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _isClosingResults = false;
+      action();
+    });
+  }
+
+  void _finishFromResults() {
+    if (_isClosingResults) return;
+    _isClosingResults = true;
+    Navigator.of(context).pop();
+    widget.onFinish();
+  }
+
+  void _continueSpellingFromResults() {
+    if (_isClosingResults) return;
+    _isClosingResults = true;
+    Navigator.of(context).pop();
+    widget.onContinueSpelling();
+  }
+
   void _showResults() {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder:
             (_) => _McqQuizResultScreen(
               results: _results,
-              onRestart: () {
-                Navigator.of(context).pop();
-                _startSession();
-              },
-              onRetryIncorrect: () {
-                Navigator.of(context).pop();
-                _restartIncorrectSession();
-              },
-              onFinish: () {
-                Navigator.of(context).pop();
-                widget.onFinish();
-              },
+              onRetryIncorrect: () => _closeResultsThen(_restartIncorrectSession),
+              onContinueSpelling: _continueSpellingFromResults,
+              onFinish: _finishFromResults,
             ),
       ),
     );
   }
 
   Color _getOptionColor(Word option, Word correctAnswer, BuildContext context) {
-    const positive = Color(0xFF0EA5E9);
-    const caution = Colors.deepOrange;
+    const positive = AppTheme.primaryGreen;
+    const caution = AppTheme.accentCoral;
     if (!_isAnswered) {
+      if (option.id == _selectedOption?.id) {
+        return Theme.of(context).colorScheme.primary.withValues(alpha: 0.13);
+      }
       return Theme.of(context).cardColor.withValues(alpha: 0.58);
     }
     if (option.id == correctAnswer.id) {
@@ -1535,74 +1656,87 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView> {
             currentIndex: _currentIndex,
             totalCount: _sessionWords.length,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           Expanded(
-            flex: 2,
+            flex: 3,
             child: GlassmorphicCard(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text(
-                    currentWord.word,
-                    style: theme.textTheme.displaySmall,
-                    textAlign: TextAlign.center,
+                child: Text(
+                  currentWord.word,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    height: 1.05,
                   ),
+                  textAlign: TextAlign.center,
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
           Expanded(
-            flex: 3,
-            child: Column(
-              children:
-                  _currentOptions.map((option) {
-                    final isCorrect = option.id == currentWord.id;
-                    final isSelected = option.id == _selectedOption?.id;
-                    final borderColor =
-                        !_isAnswered
-                            ? theme.colorScheme.outline.withValues(alpha: 0.18)
-                            : isCorrect
-                            ? const Color(0xFF0EA5E9).withValues(alpha: 0.34)
-                            : isSelected
-                            ? Colors.deepOrange.withValues(alpha: 0.34)
-                            : theme.colorScheme.outline.withValues(alpha: 0.14);
-                    return Expanded(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        decoration: BoxDecoration(
-                          color: _getOptionColor(option, currentWord, context),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: borderColor),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 12,
-                              offset: const Offset(0, 6),
+            flex: 10,
+            child: ListView.separated(
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              itemCount: _currentOptions.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final option = _currentOptions[index];
+                final isCorrect = option.id == currentWord.id;
+                final isSelected = option.id == _selectedOption?.id;
+                final borderColor =
+                    !_isAnswered
+                        ? isSelected
+                        ? theme.colorScheme.primary.withValues(alpha: 0.42)
+                        : theme.colorScheme.outline.withValues(alpha: 0.18)
+                        : isCorrect
+                        ? AppTheme.primaryGreen.withValues(alpha: 0.34)
+                        : isSelected
+                        ? AppTheme.accentCoral.withValues(alpha: 0.34)
+                        : theme.colorScheme.outline.withValues(alpha: 0.14);
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  constraints: const BoxConstraints(minHeight: 64),
+                  decoration: BoxDecoration(
+                    color: _getOptionColor(option, currentWord, context),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: borderColor),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => _onOptionSelected(option),
+                      borderRadius: BorderRadius.circular(18),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        child: Center(
+                          child: Text(
+                            option.meaning,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              height: 1.18,
                             ),
-                          ],
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () => _onOptionSelected(option),
-                            borderRadius: BorderRadius.circular(18),
-                            child: Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                                child: Text(
-                                  option.meaning,
-                                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ),
+                            textAlign: TextAlign.center,
+                            softWrap: true,
                           ),
                         ),
                       ),
-                    );
-                  }).toList(),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
           const SizedBox(height: 16),
@@ -1610,9 +1744,9 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView> {
             width: double.infinity,
             height: 50,
             child: FilledButton.icon(
-              onPressed: _isAnswered ? _nextQuestion : null,
+              onPressed: _selectedOption != null ? _nextQuestion : null,
               icon: const Icon(CupertinoIcons.arrow_right, size: 18),
-              label: const Text('다음 문제'),
+              label: Text(_currentIndex < _sessionWords.length - 1 ? '다음 문제' : '결과 보기'),
             ),
           ),
         ],
@@ -1730,14 +1864,14 @@ class _QuizSessionHeader extends StatelessWidget {
 
 class _McqQuizResultScreen extends StatelessWidget {
   final List<McqQuizResult> results;
-  final VoidCallback onRestart;
   final VoidCallback onRetryIncorrect;
+  final VoidCallback onContinueSpelling;
   final VoidCallback onFinish;
 
   const _McqQuizResultScreen({
     required this.results,
-    required this.onRestart,
     required this.onRetryIncorrect,
+    required this.onContinueSpelling,
     required this.onFinish,
   });
 
@@ -1749,8 +1883,21 @@ class _McqQuizResultScreen extends StatelessWidget {
     final incorrectAnswers = totalQuestions - correctAnswers;
     final accuracyRate = totalQuestions > 0 ? (correctAnswers / totalQuestions * 100).round() : 0;
     final hasIncorrect = incorrectAnswers > 0;
-    return Scaffold(
-      appBar: AppBar(title: const Text('퀴즈 결과'), backgroundColor: Colors.transparent, elevation: 0),
+    return PopScope<void>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) onFinish();
+      },
+      child: Scaffold(
+      appBar: AppBar(
+        title: const Text('퀴즈 결과'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.back),
+          onPressed: onFinish,
+        ),
+      ),
       backgroundColor: Colors.transparent,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -1786,19 +1933,18 @@ class _McqQuizResultScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             _buildRoutineBridgeCard(
-              context: context,
               theme: theme,
               hasIncorrect: hasIncorrect,
               weakCount: incorrectAnswers,
+              onContinueSpelling: onContinueSpelling,
             ),
             const SizedBox(height: 20),
             _buildNextActionCard(
-              context: context,
               theme: theme,
               hasIncorrect: hasIncorrect,
               incorrectCount: incorrectAnswers,
               onRetryIncorrect: onRetryIncorrect,
-              onRestart: onRestart,
+              onContinueSpelling: onContinueSpelling,
               onFinish: onFinish,
             ),
             const SizedBox(height: 20),
@@ -1822,6 +1968,7 @@ class _McqQuizResultScreen extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -1831,7 +1978,7 @@ class _McqQuizResultScreen extends StatelessWidget {
     required int correctAnswers,
     required int incorrectAnswers,
   }) {
-    final accentColor = hasIncorrect ? Colors.deepOrange : Colors.green;
+    final accentColor = hasIncorrect ? AppTheme.accentCoral : AppTheme.primaryGreen;
     final icon = hasIncorrect ? CupertinoIcons.flame_fill : CupertinoIcons.check_mark_circled_solid;
     final title = hasIncorrect ? '오늘 복습 큐가 또렷해졌어요' : '오늘 기억이 잘 붙었습니다';
     final message =
@@ -1872,12 +2019,11 @@ class _McqQuizResultScreen extends StatelessWidget {
   }
 
   Widget _buildNextActionCard({
-    required BuildContext context,
     required ThemeData theme,
     required bool hasIncorrect,
     required int incorrectCount,
     required VoidCallback onRetryIncorrect,
-    required VoidCallback onRestart,
+    required VoidCallback onContinueSpelling,
     required VoidCallback onFinish,
   }) {
     return GlassmorphicCard(
@@ -1888,12 +2034,12 @@ class _McqQuizResultScreen extends StatelessWidget {
             children: [
               Icon(
                 hasIncorrect ? CupertinoIcons.arrow_2_circlepath_circle_fill : CupertinoIcons.sparkles,
-                color: hasIncorrect ? Colors.deepOrange : Colors.green,
+                color: hasIncorrect ? AppTheme.accentCoral : AppTheme.primaryGreen,
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  hasIncorrect ? '오답은 복습 큐로 돌아갑니다' : '좋아요. 다음 단어로 넘어갈 준비가 됐어요',
+                  hasIncorrect ? '뜻 고르기 결과를 확인했습니다' : '다음은 직접 떠올릴 차례입니다',
                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -1902,8 +2048,8 @@ class _McqQuizResultScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             hasIncorrect
-                ? '틀린 $incorrectCount개 단어는 더 자주 만나도록 SRS에 반영됩니다. 바로 다시 풀면 기억이 더 단단해져요.'
-                : '이번 세트는 안정적입니다. 새 단어 루틴을 시작해 학습 흐름을 이어갈 수 있어요.',
+                ? '틀린 $incorrectCount개 단어는 SRS에 반영됩니다. 이어서 주관식으로 한 번 더 꺼내 보면 기억이 더 선명해집니다.'
+                : '객관식 확인을 마쳤습니다. 이제 스펠링을 직접 입력하며 주관식으로 고정해보세요.',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 14),
@@ -1911,31 +2057,16 @@ class _McqQuizResultScreen extends StatelessWidget {
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed:
-                      hasIncorrect
-                          ? onRetryIncorrect
-                          : () {
-                            Navigator.of(context).pushReplacement(
-                              MaterialPageRoute(
-                                builder:
-                                    (_) => const FlashcardScreen(
-                                      initialMode: FlashcardLaunchMode.newWords,
-                                    ),
-                              ),
-                            );
-                          },
-                  icon: Icon(
-                    hasIncorrect ? CupertinoIcons.arrow_counterclockwise : CupertinoIcons.plus_circle_fill,
-                    size: 18,
-                  ),
-                  label: Text(hasIncorrect ? '오답 다시 풀기' : '새 단어 루틴'),
+                  onPressed: onContinueSpelling,
+                  icon: const Icon(CupertinoIcons.pencil, size: 18),
+                  label: const Text('주관식으로 이어가기'),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: onFinish,
-                  child: const Text('완료'),
+                  onPressed: hasIncorrect ? onRetryIncorrect : onFinish,
+                  child: Text(hasIncorrect ? '오답 다시 풀기' : '완료'),
                 ),
               ),
             ],
@@ -1946,17 +2077,17 @@ class _McqQuizResultScreen extends StatelessWidget {
   }
 
   Widget _buildRoutineBridgeCard({
-    required BuildContext context,
     required ThemeData theme,
     required bool hasIncorrect,
     required int weakCount,
+    required VoidCallback onContinueSpelling,
   }) {
-    final accentColor = hasIncorrect ? Colors.deepOrange : const Color(0xFF0EA5E9);
-    final title = hasIncorrect ? '다음 루틴은 카드 복습이 좋습니다' : '이 흐름이면 새 단어를 넣기 좋습니다';
+    final accentColor = hasIncorrect ? AppTheme.accentCoral : AppTheme.primaryGreen;
+    final title = hasIncorrect ? '다음은 주관식으로 다시 고정' : '객관식 다음은 주관식입니다';
     final message =
         hasIncorrect
-            ? '헷갈린 단어 $weakCount개를 먼저 카드로 다시 보면 회복이 빠릅니다. 그 뒤에 다시 스펠링으로 확인하면 루틴이 매끈하게 이어집니다.'
-            : '지금은 복습이 급하지 않습니다. 새 단어 루틴으로 들어가 바로 다음 스펠링으로 연결하면 가장 자연스럽습니다.';
+            ? '헷갈린 단어 $weakCount개가 드러났습니다. 바로 스펠링을 입력해보면 어떤 철자가 흔들리는지 더 정확히 알 수 있습니다.'
+            : '뜻을 고르는 단계가 끝났습니다. 이제 단어를 직접 입력하는 주관식으로 기억을 단단하게 고정합니다.';
 
     return GlassmorphicCard(
       child: Column(
@@ -1992,7 +2123,7 @@ class _McqQuizResultScreen extends StatelessWidget {
                   theme,
                   accentColor,
                   '1',
-                  hasIncorrect ? '카드 복습' : '새 단어 루틴',
+                  '객관식 확인',
                 ),
               ),
               const SizedBox(width: 8),
@@ -2001,7 +2132,7 @@ class _McqQuizResultScreen extends StatelessWidget {
                   theme,
                   accentColor,
                   '2',
-                  hasIncorrect ? '스펠링 재확인' : '바로 스펠링',
+                  '주관식 입력',
                 ),
               ),
             ],
@@ -2010,24 +2141,9 @@ class _McqQuizResultScreen extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: () {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(
-                    builder:
-                        (_) => FlashcardScreen(
-                          initialMode:
-                              hasIncorrect
-                                  ? FlashcardLaunchMode.review
-                                  : FlashcardLaunchMode.newWords,
-                        ),
-                  ),
-                );
-              },
-              icon: Icon(
-                hasIncorrect ? CupertinoIcons.arrow_2_circlepath_circle_fill : CupertinoIcons.plus_circle_fill,
-                size: 18,
-              ),
-              label: Text(hasIncorrect ? '카드 복습으로 이어가기' : '새 단어 루틴 시작'),
+              onPressed: onContinueSpelling,
+              icon: const Icon(CupertinoIcons.pencil, size: 18),
+              label: const Text('주관식으로 이어가기'),
             ),
           ),
         ],
@@ -2167,6 +2283,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
   bool _hasSavedSessionSrs = false;
   SpellingAnswerState _answerState = SpellingAnswerState.none;
   final List<SpellingQuizResult> _results = [];
+  bool _isClosingResults = false;
 
   @override
   void initState() {
@@ -2245,6 +2362,30 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
         _answerState = SpellingAnswerState.incorrect;
       }
     });
+  }
+
+  String? _firstRevealableSpellingChar() {
+    if (_sessionWords.isEmpty) return null;
+    final answer = _sessionWords[_currentIndex].word;
+    for (final rune in answer.runes) {
+      final char = String.fromCharCode(rune);
+      if (char == ' ' || char == '-' || char == '_') continue;
+      return char;
+    }
+    return null;
+  }
+
+  void _applyFirstLetterHint() {
+    if (_answerState != SpellingAnswerState.none) return;
+    if (_textController.text.replaceAll(RegExp(r'[\s\-_]'), '').isNotEmpty) return;
+    final firstChar = _firstRevealableSpellingChar();
+    if (firstChar == null) return;
+    _textController.value = TextEditingValue(
+      text: firstChar,
+      selection: TextSelection.collapsed(offset: firstChar.length),
+    );
+    setState(() {});
+    _ensureKeyboardVisible();
   }
 
   void _showCorrectAnswer() {
@@ -2334,6 +2475,24 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
     await _wordbookManager.updateWordsSrsData(widget.selectedWordbook.dbFileName, wordsToUpdate);
   }
 
+  void _closeResultsThen(VoidCallback action) {
+    if (_isClosingResults) return;
+    _isClosingResults = true;
+    Navigator.of(context).pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _isClosingResults = false;
+      action();
+    });
+  }
+
+  void _finishFromResults() {
+    if (_isClosingResults) return;
+    _isClosingResults = true;
+    Navigator.of(context).pop();
+    widget.onFinish();
+  }
+
   void _showResults() {
     _saveSessionSrsOnExit().then((_) {
       if (mounted) {
@@ -2342,8 +2501,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
             builder:
                 (_) => _SpellingQuizResultScreen(
                   results: _results,
-                  onRestart: () {
-                    Navigator.of(context).pop();
+                  onRestart: () => _closeResultsThen(() {
                     setState(() {
                       _currentIndex = 0;
                       _answerState = SpellingAnswerState.none;
@@ -2353,15 +2511,9 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
                       _textController.clear();
                     });
                     _initializeSession();
-                  },
-                  onRetryWeakWords: () {
-                    Navigator.of(context).pop();
-                    _restartWeakWordSession();
-                  },
-                  onFinish: () {
-                    Navigator.of(context).pop();
-                    widget.onFinish();
-                  },
+                  }),
+                  onRetryWeakWords: () => _closeResultsThen(_restartWeakWordSession),
+                  onFinish: _finishFromResults,
                 ),
           ),
         );
@@ -2397,7 +2549,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
               label: widget.sessionLabel,
               hint: widget.sessionHint,
               accentColor:
-                  widget.sessionLabel.contains('복습') ? Colors.deepOrange : theme.colorScheme.primary,
+                  widget.sessionLabel.contains('복습') ? AppTheme.accentCoral : theme.colorScheme.primary,
               currentIndex: _currentIndex,
               totalCount: _sessionWords.length,
             ),
@@ -2451,9 +2603,9 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
     }
 
     Color getTextColor() {
-      if (_answerState == SpellingAnswerState.correct) return const Color(0xFF0EA5E9);
-      if (_answerState == SpellingAnswerState.incorrect) return Colors.deepOrange;
-      if (_answerState == SpellingAnswerState.showAnswer) return Colors.deepOrange;
+      if (_answerState == SpellingAnswerState.correct) return AppTheme.primaryGreen;
+      if (_answerState == SpellingAnswerState.incorrect) return AppTheme.accentCoral;
+      if (_answerState == SpellingAnswerState.showAnswer) return AppTheme.accentCoral;
       return theme.textTheme.bodyLarge!.color!;
     }
 
@@ -2517,14 +2669,34 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
   Widget _buildActionButtons() {
     final theme = Theme.of(context);
     if (_answerState == SpellingAnswerState.none) {
-      return SizedBox(
-        width: double.infinity,
-        height: 50,
-        child: FilledButton.icon(
-          onPressed: _textController.text.isNotEmpty ? _checkAnswer : null,
-          icon: const Icon(CupertinoIcons.check_mark, size: 18),
-          label: const Text('정답 확인'),
-        ),
+      final canUseHint =
+          _textController.text.replaceAll(RegExp(r'[\s\-_]'), '').isEmpty &&
+          _firstRevealableSpellingChar() != null;
+      return Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 50,
+              child: OutlinedButton.icon(
+                onPressed: canUseHint ? _applyFirstLetterHint : null,
+                icon: const Icon(CupertinoIcons.lightbulb, size: 18),
+                label: const Text('힌트'),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 2,
+            child: SizedBox(
+              height: 50,
+              child: FilledButton.icon(
+                onPressed: _textController.text.isNotEmpty ? _checkAnswer : null,
+                icon: const Icon(CupertinoIcons.check_mark, size: 18),
+                label: const Text('정답 확인'),
+              ),
+            ),
+          ),
+        ],
       );
     } else if (_answerState == SpellingAnswerState.correct) {
       return SizedBox(
@@ -2533,7 +2705,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
         child: FilledButton.icon(
           onPressed: _nextQuestion,
           style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF0EA5E9),
+            backgroundColor: AppTheme.primaryGreen,
             foregroundColor: Colors.white,
           ),
           icon: const Icon(CupertinoIcons.arrow_right, size: 18),
@@ -2564,7 +2736,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
               child: FilledButton.icon(
                 onPressed: _showCorrectAnswer,
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.deepOrange,
+                  backgroundColor: AppTheme.accentCoral,
                   foregroundColor: Colors.white,
                 ),
                 icon: const Icon(CupertinoIcons.eye_fill, size: 18),
@@ -2616,8 +2788,21 @@ class _SpellingQuizResultScreen extends StatelessWidget {
     final accuracyRate =
         totalQuestions > 0 ? ((firstTryCorrect + retryCorrect) / totalQuestions * 100).round() : 0;
     final hasWeakWords = incorrect > 0 || skipped > 0;
-    return Scaffold(
-      appBar: AppBar(title: const Text('퀴즈 결과'), backgroundColor: Colors.transparent, elevation: 0),
+    return PopScope<void>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) onFinish();
+      },
+      child: Scaffold(
+      appBar: AppBar(
+        title: const Text('퀴즈 결과'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.back),
+          onPressed: onFinish,
+        ),
+      ),
       backgroundColor: Colors.transparent,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -2691,6 +2876,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -2700,13 +2886,13 @@ class _SpellingQuizResultScreen extends StatelessWidget {
     required int firstTryCorrect,
     required int weakCount,
   }) {
-    final accentColor = hasWeakWords ? Colors.deepOrange : Colors.green;
+    final accentColor = hasWeakWords ? AppTheme.accentCoral : AppTheme.primaryGreen;
     final icon = hasWeakWords ? CupertinoIcons.flame_fill : CupertinoIcons.check_mark_circled_solid;
     final title = hasWeakWords ? '약한 단어가 선명해졌어요' : '기억이 안정권에 들어왔어요';
     final message =
         hasWeakWords
             ? '헷갈린 단어 $weakCount개가 오늘 복습 큐에 다시 들어갑니다. 지금 이어서 한 번 더 보면 정착 속도가 빨라집니다.'
-            : '첫 시도에 맞힌 단어가 $firstTryCorrect개입니다. 오늘 루틴을 잘 따라왔고, 이제 새 단어를 넣기 좋은 상태입니다.';
+            : '첫 시도에 맞힌 단어가 $firstTryCorrect개입니다. 오늘 학습 흐름을 잘 따라왔고, 이제 새 단어를 넣기 좋은 상태입니다.';
 
     return GlassmorphicCard(
       child: Row(
@@ -2757,7 +2943,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
             children: [
               Icon(
                 hasWeakWords ? CupertinoIcons.flame_fill : CupertinoIcons.check_mark_circled_solid,
-                color: hasWeakWords ? Colors.deepOrange : Colors.green,
+                color: hasWeakWords ? AppTheme.accentCoral : AppTheme.primaryGreen,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -2772,7 +2958,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
           Text(
             hasWeakWords
                 ? '틀리거나 스킵한 $weakCount개 단어는 오늘 복습 큐에 남습니다. 바로 다시 보면 회복 속도가 빨라져요.'
-                : '잘 떠올렸습니다. 새 단어 루틴을 추가해 오늘 루틴을 이어갈 수 있어요.',
+                : '잘 떠올렸습니다. 새 단어 학습을 추가해 오늘 흐름을 이어갈 수 있어요.',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 14),
@@ -2797,7 +2983,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                     hasWeakWords ? CupertinoIcons.arrow_counterclockwise : CupertinoIcons.plus_circle_fill,
                     size: 18,
                   ),
-                  label: Text(hasWeakWords ? '오답 다시 풀기' : '새 단어 루틴'),
+                  label: Text(hasWeakWords ? '오답 다시 풀기' : '새 단어 카드 학습'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -2820,12 +3006,12 @@ class _SpellingQuizResultScreen extends StatelessWidget {
     required bool hasWeakWords,
     required int weakCount,
   }) {
-    final accentColor = hasWeakWords ? Colors.deepOrange : const Color(0xFF0EA5E9);
+    final accentColor = hasWeakWords ? AppTheme.accentCoral : AppTheme.primaryGreen;
     final title = hasWeakWords ? '다음 루틴은 카드 복습이 좋습니다' : '지금은 새 단어를 넣기 좋은 타이밍입니다';
     final message =
         hasWeakWords
             ? '흔들린 단어 $weakCount개를 카드로 한 번 더 정리한 뒤 다시 스펠링으로 확인하면 오늘 복습 큐가 더 빨리 줄어듭니다.'
-            : '지금 흐름이 안정적이라 새 단어 루틴을 넣고 바로 다시 테스트하는 흐름이 가장 자연스럽습니다.';
+            : '지금 흐름이 안정적입니다. 현재 단어장에서 아직 시작하지 않은 새 단어를 카드로 먼저 익히면 다음 복습이 자연스럽게 이어집니다.';
 
     return GlassmorphicCard(
       child: Column(
@@ -2861,7 +3047,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                   theme,
                   accentColor,
                   '1',
-                  hasWeakWords ? '카드 복습' : '새 단어 루틴',
+                  hasWeakWords ? '카드 복습' : '새 단어 카드',
                 ),
               ),
               const SizedBox(width: 8),
@@ -2896,7 +3082,7 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                 hasWeakWords ? CupertinoIcons.arrow_2_circlepath_circle_fill : CupertinoIcons.plus_circle_fill,
                 size: 18,
               ),
-              label: Text(hasWeakWords ? '카드 복습으로 이어가기' : '새 단어 루틴 시작'),
+              label: Text(hasWeakWords ? '카드 복습으로 이어가기' : '새 단어 카드 학습'),
             ),
           ),
         ],
