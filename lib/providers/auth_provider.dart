@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as auth;
@@ -5,10 +8,11 @@ import 'package:googleapis_auth/googleapis_auth.dart' as auth;
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 
 class AuthProvider extends ChangeNotifier {
+  final firebase_auth.FirebaseAuth _firebaseAuth = firebase_auth.FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: [
       'https://www.googleapis.com/auth/spreadsheets.readonly',
-      'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/drive.file',
     ],
   );
 
@@ -22,14 +26,21 @@ class AuthProvider extends ChangeNotifier {
     _googleSignIn.onCurrentUserChanged.listen((account) {
       _currentUser = account;
       notifyListeners();
+      if (account != null) {
+        unawaited(_syncFirebaseIdentity(account));
+      }
     });
-    _googleSignIn.signInSilently();
+    unawaited(_restoreGoogleSession());
   }
 
   Future<void> signIn() async {
     _setLoading(true);
     try {
-      await _googleSignIn.signIn();
+      final account = await _googleSignIn.signIn();
+      if (account != null) {
+        _currentUser = account;
+        await _syncFirebaseIdentity(account);
+      }
     } catch (error) {
       debugPrint("AuthProvider :: Error signing in: $error");
     } finally {
@@ -58,6 +69,59 @@ class AuthProvider extends ChangeNotifier {
       return await _googleSignIn.authenticatedClient();
     }
     return null;
+  }
+
+  Future<String?> getAccessToken() async {
+    final user = _currentUser ?? await _googleSignIn.signInSilently();
+    final authentication = await user?.authentication;
+    return authentication?.accessToken;
+  }
+
+  Future<void> _restoreGoogleSession() async {
+    final account = await _googleSignIn.signInSilently();
+    if (account == null) return;
+    _currentUser = account;
+    notifyListeners();
+    await _syncFirebaseIdentity(account);
+  }
+
+  Future<void> _syncFirebaseIdentity(GoogleSignInAccount account) async {
+    try {
+      final authentication = await account.authentication;
+      final credential = firebase_auth.GoogleAuthProvider.credential(
+        accessToken: authentication.accessToken,
+        idToken: authentication.idToken,
+      );
+      final currentUser = _firebaseAuth.currentUser;
+
+      if (currentUser == null) {
+        await _firebaseAuth.signInWithCredential(credential);
+        return;
+      }
+
+      if (currentUser.isAnonymous) {
+        try {
+          await currentUser.linkWithCredential(credential);
+        } on firebase_auth.FirebaseAuthException catch (error) {
+          if (error.code == 'credential-already-in-use' ||
+              error.code == 'account-exists-with-different-credential') {
+            await _firebaseAuth.signInWithCredential(credential);
+          } else {
+            rethrow;
+          }
+        }
+        return;
+      }
+
+      final linkedGoogleAccount = currentUser.providerData.any(
+        (provider) => provider.providerId == firebase_auth.GoogleAuthProvider.PROVIDER_ID,
+      );
+      if (!linkedGoogleAccount || currentUser.email != account.email) {
+        await _firebaseAuth.signInWithCredential(credential);
+      }
+    } catch (error) {
+      debugPrint('AuthProvider :: Firebase identity sync deferred: $error');
+    }
   }
 
   void _setLoading(bool loading) {

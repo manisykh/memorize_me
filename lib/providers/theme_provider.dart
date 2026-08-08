@@ -19,7 +19,15 @@ class ThemeNotifier extends ChangeNotifier {
   AppThemeType get currentTheme => _currentTheme;
   int get eyeCareLevel => _eyeCareLevel;
 
-  ThemeData getTheme() => AppTheme.appThemes[_currentTheme]!;
+  ThemeData getTheme() {
+    final theme = AppTheme.appThemes[_currentTheme]!;
+    if (_currentTheme != AppThemeType.visionProtection) return theme;
+
+    final levelIndex =
+        (_eyeCareLevel - 1).clamp(0, AppTheme.visionProtectionColors.length - 1).toInt();
+    final backgroundColor = AppTheme.visionProtectionColors[levelIndex];
+    return theme.copyWith(scaffoldBackgroundColor: backgroundColor);
+  }
 
   Future<void> _initPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();

@@ -1,5 +1,5 @@
 name: memorize_app
-description: "A new Flutter project."
+description: "A vocabulary memorization app with wordbooks, quizzes, SRS review, Google Sheets import, and AI-assisted study tools."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -45,7 +45,7 @@ dependencies:
   # 파일 처리
   file_picker: ^8.0.3
   csv: ^6.0.0
-  share_plus: ^9.0.0
+  share_plus: ^12.0.2
   path: ^1.9.0
 
   # The following adds the Cupertino Icons font to your application.
@@ -63,6 +63,12 @@ dependencies:
   flutter_svg: ^2.0.10+1
   flutter_tts: ^4.0.2
   google_fonts: ^6.2.1
+  firebase_core: ^3.15.2
+  firebase_crashlytics: ^4.3.10
+  firebase_analytics: ^11.6.0
+  firebase_remote_config: ^5.5.0
+  firebase_auth: ^5.7.0
+  cloud_firestore: ^5.6.12
   google_generative_ai: ^0.4.0
   dart_openai: ^5.1.0            # ▼▼▼ [추가] ▼▼▼
   flutter_secure_storage: ^9.1.1 # ▼▼▼ [추가] ▼▼▼
@@ -96,6 +102,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/onboarding/generated/
     - assets/fonts/ # 폰트 폴더 등록
     - assets/icons/
 
@@ -111,8 +118,8 @@ flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
   image_path: "assets/icons/icon_1.png"
-  adaptive_icon_background: "#00000000" # 투명한 색상 코드
-  adaptive_icon_foreground: "assets/icons/icon_1.png"
+  adaptive_icon_background: "#FBF7EF"
+  adaptive_icon_foreground: "assets/icons/icon_adaptive_foreground.png"
       
 
   # To add assets to your application, add an assets section, like this:

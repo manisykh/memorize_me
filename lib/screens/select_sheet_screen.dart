@@ -4,7 +4,11 @@ import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:provider/provider.dart';
 
 import '../providers/wordbook_manager.dart';
+import '../services/analytics_service.dart';
 import '../services/sheets_service.dart';
+
+const String selectSheetImportResultDone = 'imported';
+const String selectSheetImportResultStartStudy = 'startStudy';
 
 class SelectSheetScreen extends StatefulWidget {
   final String spreadsheetId;
@@ -38,13 +42,49 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
     setState(() => _isLoading = true);
 
     final manager = context.read<WordbookManager>();
-    await manager.createMultipleWordbooksFromSheets(_selectedSheets.toList(), widget.spreadsheetId);
+    final importedWordbooks = await manager.createMultipleWordbooksFromSheets(
+      _selectedSheets.toList(),
+      widget.spreadsheetId,
+    );
+    if (importedWordbooks.isNotEmpty && mounted) {
+      context.read<AnalyticsService>().logWordbookImported(
+        source: 'google_sheets',
+        wordbookCount: importedWordbooks.length,
+      );
+    }
 
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('${_selectedSheets.length}개의 단어장을 가져왔습니다.')));
-      Navigator.of(context).pop(true);
+      setState(() => _isLoading = false);
+
+      final result = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (dialogContext) => AlertDialog(
+              title: const Text('단어장을 가져왔습니다'),
+              content: Text(
+                importedWordbooks.isEmpty
+                    ? '선택한 시트에서 새 단어장을 만들지 못했습니다. 시트 이름과 단어 데이터를 확인해주세요.'
+                    : '${importedWordbooks.length}개의 단어장을 만들었습니다.\n첫 단어장 "${importedWordbooks.first.name}"을(를) 바로 학습할 수 있습니다.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(selectSheetImportResultDone),
+                  child: const Text('단어장 관리로 이동'),
+                ),
+                FilledButton(
+                  onPressed:
+                      importedWordbooks.isEmpty
+                          ? null
+                          : () => Navigator.of(dialogContext).pop(selectSheetImportResultStartStudy),
+                  child: const Text('바로 학습하기'),
+                ),
+              ],
+            ),
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop(result ?? selectSheetImportResultDone);
     }
   }
 

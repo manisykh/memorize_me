@@ -10,8 +10,10 @@ import '../models/study_plan_model.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/srs_service.dart';
 import '../widgets/glassmorphic_card.dart';
+import 'flashcard_screen.dart';
 import 'manage_words_screen.dart';
 import 'merge_wordbooks_screen.dart';
+import 'select_sheet_screen.dart';
 import 'select_spreadsheet_screen.dart';
 
 class WordbookManagementScreen extends StatefulWidget {
@@ -104,7 +106,7 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface.withValues(alpha: 0.96),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: theme.colorScheme.outline.withValues(alpha: 0.58),
                   ),
@@ -196,80 +198,17 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildSectionTitle(theme, '기본 제공 단어장'),
+          const SizedBox(height: 12),
+          _buildBuiltinWordbookSection(theme, manager),
+          const SizedBox(height: 26),
           _buildSectionTitle(theme, '단어장 가져오기'),
           const SizedBox(height: 12),
-          Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildToolCard(
-                      context: context,
-                      icon: Image.asset(
-                        'assets/icons/google_sheet_icon.png',
-                        height: 24,
-                        width: 24,
-                      ),
-                      label: 'Google 시트',
-                      onTap:
-                          () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const SelectSpreadsheetScreen()),
-                          ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildToolCard(
-                      context: context,
-                      icon: const Icon(CupertinoIcons.folder_open),
-                      label: '로컬 파일',
-                      onTap: () => manager.createNewWordbookFromCsv(context),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildToolCard(
-                      context: context,
-                      icon: const Icon(CupertinoIcons.pencil_ellipsis_rectangle),
-                      label: '단어 편집',
-                      onTap: () {
-                        if (_selectedForEditing != null) {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => ManageWordsScreen(wordbook: _selectedForEditing!),
-                            ),
-                          );
-                          return;
-                        }
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('편집할 단어장을 목록에서 선택해 주세요.'),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildToolCard(
-                      context: context,
-                      icon: const Icon(Icons.merge_type),
-                      label: '단어장 병합',
-                      onTap:
-                          () => Navigator.of(
-                            context,
-                          ).push(MaterialPageRoute(builder: (_) => const MergeWordbooksScreen())),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+          _buildImportPanel(theme, manager),
+          if (manager.wordbooks.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            _buildAdvancedManagementPanel(theme),
+          ],
           const SizedBox(height: 26),
           _buildSectionTitle(theme, '단어장 목록'),
           const SizedBox(height: 6),
@@ -282,9 +221,9 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
           ),
           const SizedBox(height: 12),
           if (manager.wordbooks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 40),
-              child: Center(child: Text('추가된 단어장이 없습니다.')),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              child: _buildEmptyWordbookGuide(theme, manager),
             )
           else
             ListView.builder(
@@ -304,7 +243,7 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
                     builder: (context, snapshot) {
                       final stats = snapshot.data;
                       return GlassmorphicCard(
-                        borderRadius: 28,
+                        borderRadius: 14,
                         isActive: isActive || isSelectedForEditing,
                         onTap: () {
                           if (isActive) {
@@ -462,6 +401,29 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
     );
   }
 
+  Future<void> _openGoogleSheetImport() async {
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const SelectSpreadsheetScreen()),
+    );
+    if (!mounted || result == null) return;
+
+    if (result == selectSheetImportResultStartStudy) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder:
+              (_) => const FlashcardScreen(
+                initialMode: FlashcardLaunchMode.newWords,
+              ),
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('가져온 단어장을 선택하고 학습을 시작할 수 있습니다.')),
+    );
+  }
+
   bool _isActiveWordbook(Wordbook? activeWordbook, Wordbook wordbook) {
     if (activeWordbook == null) return false;
     if (activeWordbook.id != null && wordbook.id != null) {
@@ -542,23 +504,349 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
     return 15;
   }
 
-  Widget _buildToolCard({
-    required BuildContext context,
-    required Widget icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
+  Widget _buildImportPanel(ThemeData theme, WordbookManager manager) {
+    return Column(
+      children: [
+        GlassmorphicCard(
+          borderRadius: 14,
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          onTap: _openGoogleSheetImport,
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: Image.asset(
+                    'assets/icons/google_sheet_icon.png',
+                    height: 26,
+                    width: 26,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Google 시트에서 가져오기',
+                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Drive에서 직접 선택한 스프레드시트만 단어장으로 가져옵니다.',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Icon(CupertinoIcons.chevron_right, size: 18),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => manager.createNewWordbookFromCsv(context),
+            icon: const Icon(CupertinoIcons.folder_open),
+            label: const Text('CSV 파일에서 가져오기'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAdvancedManagementPanel(ThemeData theme) {
     return GlassmorphicCard(
-      borderRadius: 24,
-      padding: const EdgeInsets.all(14),
-      onTap: onTap,
+      borderRadius: 14,
+      padding: EdgeInsets.zero,
+      child: Theme(
+        data: theme.copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          leading: const Icon(CupertinoIcons.slider_horizontal_3),
+          title: Text(
+            '고급 관리',
+            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          subtitle: Text(
+            '단어 편집, 단어장 병합',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.pencil_ellipsis_rectangle),
+              title: const Text('선택한 단어장 편집'),
+              subtitle: Text(
+                _selectedForEditing == null
+                    ? '먼저 아래 목록에서 단어장을 선택하세요.'
+                    : '${_selectedForEditing!.name}의 단어를 수정합니다.',
+              ),
+              onTap: _openSelectedWordbookEditor,
+            ),
+            ListTile(
+              leading: const Icon(Icons.merge_type),
+              title: const Text('단어장 병합'),
+              subtitle: const Text('여러 단어장을 하나로 합칩니다.'),
+              onTap: _openMergeWordbooks,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openSelectedWordbookEditor() {
+    if (_selectedForEditing != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ManageWordsScreen(wordbook: _selectedForEditing!),
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('편집할 단어장을 목록에서 선택해 주세요.')),
+    );
+  }
+
+  void _openMergeWordbooks() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const MergeWordbooksScreen()),
+    );
+  }
+
+  Widget _buildEmptyWordbookGuide(ThemeData theme, WordbookManager manager) {
+    return GlassmorphicCard(
+      borderRadius: 14,
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
       child: Column(
         children: [
-          icon,
+          Icon(
+            CupertinoIcons.book_circle_fill,
+            size: 44,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '첫 단어장을 만들어보세요',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+          ),
           const SizedBox(height: 8),
-          Text(label, style: theme.textTheme.bodySmall),
+          Text(
+            'Google 시트에서 단어를 가져오면 바로 복습 루틴과 플래시카드를 시작할 수 있습니다.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _openGoogleSheetImport,
+              icon: Image.asset(
+                'assets/icons/google_sheet_icon.png',
+                height: 20,
+                width: 20,
+              ),
+              label: const Text('Google 시트로 단어장 만들기'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => manager.createNewWordbookFromCsv(context),
+              icon: const Icon(CupertinoIcons.folder_open),
+              label: const Text('CSV 파일에서 가져오기'),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBuiltinWordbookSection(ThemeData theme, WordbookManager manager) {
+    final templates = manager.builtinWordbookTemplates;
+    return Column(
+      children:
+          templates
+              .map(
+                (template) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _buildBuiltinWordbookCard(theme, manager, template),
+                ),
+              )
+              .toList(),
+    );
+  }
+
+  Widget _buildBuiltinWordbookCard(
+    ThemeData theme,
+    WordbookManager manager,
+    BuiltinWordbookTemplate template,
+  ) {
+    final isAdded = manager.isBuiltinWordbookAdded(template);
+    final isActive = manager.activeWordbook?.dbFileName == template.dbFileName;
+    final accentColor = theme.colorScheme.primary;
+
+    return GlassmorphicCard(
+      borderRadius: 14,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      onTap: () async {
+        final messenger = ScaffoldMessenger.of(context);
+        try {
+          final wordbook = await manager.addBuiltinWordbook(template);
+          if (!mounted) return;
+          setState(() => _selectedForEditing = wordbook);
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                isAdded
+                    ? '${template.name}을(를) 활성 단어장으로 선택했습니다.'
+                    : '${template.name}이(가) 추가되었습니다.',
+              ),
+            ),
+          );
+        } catch (e) {
+          if (!mounted) return;
+          messenger.showSnackBar(SnackBar(content: Text('기본 단어장을 추가하지 못했습니다: $e')));
+        }
+      },
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(CupertinoIcons.book_fill, color: accentColor, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        template.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: accentColor.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        template.levelLabel,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: accentColor,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    _buildBuiltinMetaPill(
+                      theme,
+                      '현재 ${template.count}개',
+                      theme.colorScheme.primary,
+                    ),
+                    _buildBuiltinMetaPill(
+                      theme,
+                      '목표 ${template.targetCount}개',
+                      theme.colorScheme.tertiary,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  template.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color:
+                  isActive
+                      ? accentColor.withValues(alpha: 0.14)
+                      : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              isActive
+                  ? '현재'
+                  : isAdded
+                  ? '추가됨'
+                  : '추가',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: isActive ? accentColor : theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBuiltinMetaPill(ThemeData theme, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.14)),
+      ),
+      child: Text(
+        text,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -744,6 +1032,12 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
           CupertinoIcons.doc_text_fill,
           size: 24,
           color: theme.textTheme.bodyLarge?.color?.withValues(alpha: 0.9),
+        );
+      case WordbookSource.builtin:
+        return Icon(
+          CupertinoIcons.book_fill,
+          size: 24,
+          color: theme.colorScheme.primary,
         );
     }
   }

@@ -14,7 +14,7 @@ class GlassmorphicCard extends StatelessWidget {
     this.onTap,
     this.isActive = false,
     this.padding = const EdgeInsets.all(16.0),
-    this.borderRadius = 20.0,
+    this.borderRadius = 18.0,
   });
 
   @override
@@ -30,14 +30,14 @@ class GlassmorphicCard extends StatelessWidget {
 
     if (isDark) {
       fillColor = theme.colorScheme.surface;
-      borderColor = Colors.white.withValues(alpha: 0.18);
+      borderColor = Colors.white.withValues(alpha: 0.16);
       activeBorderColor = theme.colorScheme.primary;
       shadows = [
         BoxShadow(
-          color: Colors.black.withValues(alpha: 0.36),
+          color: Colors.black.withValues(alpha: 0.28),
           blurRadius: 18,
-          spreadRadius: -8,
-          offset: const Offset(0, 5),
+          spreadRadius: -12,
+          offset: const Offset(0, 8),
         ),
       ];
     } else if (isVision) {
@@ -48,20 +48,20 @@ class GlassmorphicCard extends StatelessWidget {
         BoxShadow(
           color: const Color(0xFF7F5431).withValues(alpha: 0.10),
           blurRadius: 16,
-          spreadRadius: -8,
-          offset: const Offset(0, 4),
+          spreadRadius: -12,
+          offset: const Offset(0, 7),
         ),
       ];
     } else {
-      fillColor = Colors.white.withValues(alpha: 0.98);
-      borderColor = const Color(0xFFDCDCE0);
+      fillColor = const Color(0xFFFFFCF7);
+      borderColor = const Color(0xFFE5D8C8);
       activeBorderColor = AppTheme.accentCoral;
       shadows = [
         BoxShadow(
-          color: AppTheme.ink.withValues(alpha: 0.08),
+          color: AppTheme.ink.withValues(alpha: 0.075),
           blurRadius: 18,
-          spreadRadius: -10,
-          offset: const Offset(0, 5),
+          spreadRadius: -14,
+          offset: const Offset(0, 10),
         ),
       ];
     }
@@ -87,7 +87,7 @@ class GlassmorphicCard extends StatelessWidget {
                 borderRadius: radius,
                 border: Border.all(
                   color: isActive ? activeBorderColor : borderColor,
-                  width: isActive ? 2.0 : 1.0,
+                  width: isActive ? 1.4 : 1.0,
                 ),
               ),
               child: child,

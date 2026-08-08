@@ -1,18 +1,28 @@
 // lib/main.dart (수정된 전체 코드)
 
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'providers/ai_settings_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/entitlement_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/word_list_provider.dart';
 import 'providers/wordbook_manager.dart';
 import 'screens/app_shell_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'services/ai_service.dart';
+import 'services/analytics_service.dart';
 import 'services/api_key_service.dart';
+import 'services/app_config_service.dart';
 import 'services/csv_service.dart';
 import 'services/database_service.dart';
 import 'services/mode_state_service.dart'; // ▼▼▼ [추가]
@@ -21,20 +31,45 @@ import 'services/test_sheet_service.dart';
 import 'services/tts_service.dart';
 import 'themes/app_theme.dart';
 import 'widgets/gradient_background.dart';
+import 'widgets/launch_notice_gate.dart';
 import 'providers/flashcard_settings_provider.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    return true;
+  };
 
   runApp(
     MultiProvider(
       providers: [
+        Provider<AnalyticsService>(create: (_) => AnalyticsService()),
+        ChangeNotifierProvider<AppConfigService>(
+          lazy: false,
+          create: (_) => AppConfigService()..initialize(),
+        ),
         Provider<DatabaseService>(create: (_) => DatabaseService()),
         Provider<TestSheetService>(create: (_) => TestSheetService()),
         Provider<ApiKeyService>(create: (_) => ApiKeyService()),
         Provider<TtsService>(create: (_) => TtsService()),
         Provider<ModeStateService>(create: (_) => ModeStateService()), // ▼▼▼ [추가]
         ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+        ChangeNotifierProvider<EntitlementProvider>(
+          lazy: false,
+          create:
+              (context) => EntitlementProvider(
+                appConfig: context.read<AppConfigService>(),
+                analytics: context.read<AnalyticsService>(),
+              ),
+        ),
         ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
         ChangeNotifierProvider<AiSettingsProvider>(create: (_) => AiSettingsProvider()),
         ChangeNotifierProvider<FlashcardSettingsProvider>(
@@ -87,38 +122,77 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeNotifier>(
-      builder: (context, themeNotifier, child) {
-        final theme = themeNotifier.getTheme();
+    return Selector<ThemeNotifier, AppThemeType>(
+      selector: (_, themeNotifier) => themeNotifier.currentTheme,
+      builder: (context, currentThemeType, child) {
+        final theme = AppTheme.appThemes[currentThemeType]!;
         return MaterialApp(
           title: 'Memorize Me',
           theme: theme,
           debugShowCheckedModeBanner: false,
+          navigatorObservers: [context.read<AnalyticsService>().observer],
           builder: (context, child) {
-            final currentThemeType = themeNotifier.currentTheme;
             final content = child ?? const SizedBox.shrink();
-            Color backgroundColor;
-            if (currentThemeType == AppThemeType.lightGreen) {
-              backgroundColor = theme.scaffoldBackgroundColor;
-              return AnnotatedRegion<SystemUiOverlayStyle>(
-                value: _systemUiOverlayStyle(theme, currentThemeType, backgroundColor),
-                child: GradientBackground(child: content),
-              );
-            } else if (currentThemeType == AppThemeType.visionProtection) {
-              int levelIndex = (themeNotifier.eyeCareLevel - 1).clamp(0, 4);
-              backgroundColor = AppTheme.visionProtectionColors[levelIndex];
-            } else {
-              backgroundColor = theme.scaffoldBackgroundColor;
-            }
-            return AnnotatedRegion<SystemUiOverlayStyle>(
-              value: _systemUiOverlayStyle(theme, currentThemeType, backgroundColor),
-              child: Container(color: backgroundColor, child: content),
+            return Selector<ThemeNotifier, int>(
+              selector: (_, themeNotifier) => themeNotifier.eyeCareLevel,
+              builder: (context, eyeCareLevel, _) {
+                final backgroundColor = _backgroundColorFor(
+                  theme,
+                  currentThemeType,
+                  eyeCareLevel,
+                );
+                final effectiveTheme =
+                    currentThemeType == AppThemeType.visionProtection
+                        ? theme.copyWith(scaffoldBackgroundColor: backgroundColor)
+                        : theme;
+
+                if (currentThemeType == AppThemeType.lightGreen) {
+                  return AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: _systemUiOverlayStyle(
+                      effectiveTheme,
+                      currentThemeType,
+                      backgroundColor,
+                    ),
+                    child: Theme(
+                      data: effectiveTheme,
+                      child: GradientBackground(child: content),
+                    ),
+                  );
+                }
+
+                return AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: _systemUiOverlayStyle(
+                    effectiveTheme,
+                    currentThemeType,
+                    backgroundColor,
+                  ),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    color: backgroundColor,
+                    child: Theme(data: effectiveTheme, child: content),
+                  ),
+                );
+              },
             );
           },
           home: const AppInitializer(),
         );
       },
     );
+  }
+
+  Color _backgroundColorFor(
+    ThemeData theme,
+    AppThemeType themeType,
+    int eyeCareLevel,
+  ) {
+    if (themeType == AppThemeType.visionProtection) {
+      final levelIndex =
+          (eyeCareLevel - 1).clamp(0, AppTheme.visionProtectionColors.length - 1).toInt();
+      return AppTheme.visionProtectionColors[levelIndex];
+    }
+    return theme.scaffoldBackgroundColor;
   }
 
   SystemUiOverlayStyle _systemUiOverlayStyle(
@@ -130,17 +204,26 @@ class MyApp extends StatelessWidget {
     final statusBarColor = switch (themeType) {
       AppThemeType.lightGreen => Colors.white,
       AppThemeType.dark => const Color(0xFF2D241C),
-      AppThemeType.visionProtection => const Color(0xFFFFF8ED),
+      AppThemeType.visionProtection => Color.alphaBlend(
+        Colors.white.withValues(alpha: 0.50),
+        fallbackSurfaceColor,
+      ),
     };
     final navigationBarColor = switch (themeType) {
       AppThemeType.lightGreen => Colors.white,
       AppThemeType.dark => const Color(0xFF3A2E24),
-      AppThemeType.visionProtection => const Color(0xFFFBF6EC),
+      AppThemeType.visionProtection => Color.alphaBlend(
+        Colors.white.withValues(alpha: 0.42),
+        fallbackSurfaceColor,
+      ),
     };
     final dividerColor = switch (themeType) {
       AppThemeType.lightGreen => const Color(0xFFDCDCE0),
       AppThemeType.dark => const Color(0xFF604A35),
-      AppThemeType.visionProtection => const Color(0xFFE5D6BD),
+      AppThemeType.visionProtection => Color.alphaBlend(
+        const Color(0xFFE5D6BD).withValues(alpha: 0.72),
+        fallbackSurfaceColor,
+      ),
     };
 
     return SystemUiOverlayStyle(
@@ -164,12 +247,37 @@ class AppInitializer extends StatefulWidget {
 }
 
 class _AppInitializerState extends State<AppInitializer> {
-  late final Future<void> _initializationFuture;
+  static const String _onboardingSeenKey = 'onboarding_seen_v1';
+
+  late Future<_InitialAppState> _initializationFuture;
 
   @override
   void initState() {
     super.initState();
-    _initializationFuture = context.read<WordbookManager>().loadInitialData();
+    _initializationFuture = _initialize();
+  }
+
+  Future<_InitialAppState> _initialize() async {
+    unawaited(context.read<AppConfigService>().initialize());
+    unawaited(context.read<EntitlementProvider>().initialize());
+    await context.read<WordbookManager>().loadInitialData();
+    final prefs = await SharedPreferences.getInstance();
+    return _InitialAppState(
+      shouldShowOnboarding: !(prefs.getBool(_onboardingSeenKey) ?? false),
+    );
+  }
+
+  Future<void> _finishOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_onboardingSeenKey, true);
+    await context.read<AnalyticsService>().logOnboardingCompleted();
+    if (mounted) {
+      setState(() {
+        _initializationFuture = Future.value(
+          const _InitialAppState(shouldShowOnboarding: false),
+        );
+      });
+    }
   }
 
   @override
@@ -184,7 +292,11 @@ class _AppInitializerState extends State<AppInitializer> {
               body: Center(child: Text('앱 초기화 실패:\n${snapshot.error}')),
             );
           }
-          return const AppShellScreen();
+          final appState = snapshot.data ?? const _InitialAppState();
+          if (appState.shouldShowOnboarding) {
+            return OnboardingScreen(onFinished: _finishOnboarding);
+          }
+          return const LaunchNoticeGate(child: AppShellScreen());
         }
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -193,4 +305,10 @@ class _AppInitializerState extends State<AppInitializer> {
       },
     );
   }
+}
+
+class _InitialAppState {
+  const _InitialAppState({this.shouldShowOnboarding = false});
+
+  final bool shouldShowOnboarding;
 }

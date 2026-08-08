@@ -3,14 +3,17 @@ import 'dart:math';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:path/path.dart' as p;
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 import '../models/study_plan_model.dart';
 import '../services/database_service.dart';
+import '../services/analytics_service.dart';
 import '../services/sheets_service.dart';
 import '../services/srs_service.dart';
 import 'word_list_provider.dart';
@@ -20,6 +23,48 @@ class WordbookManager extends ChangeNotifier {
   static const String _lastActiveWordbookIdKey = 'last_active_wordbook_id';
   static const String _lastActiveWordbookDbFileNameKey = 'last_active_wordbook_db_file_name';
   static const String _lastActiveWordbookNameKey = 'last_active_wordbook_name';
+  static const List<BuiltinWordbookTemplate> _builtinTemplates = [
+    BuiltinWordbookTemplate(
+      name: '초등 기본',
+      dbFileName: 'builtin_elementary_core_v1.db',
+      sourceAsset: 'assets/initial_words1.csv',
+      offset: 0,
+      count: 100,
+      targetCount: 800,
+      levelLabel: '정규',
+      description: '쉬운 일상 단어와 기초 표현',
+    ),
+    BuiltinWordbookTemplate(
+      name: '중등 필수',
+      dbFileName: 'builtin_middle_core_v1.db',
+      sourceAsset: 'assets/initial_words1.csv',
+      offset: 100,
+      count: 100,
+      targetCount: 1200,
+      levelLabel: '정규',
+      description: '학교 영어의 기본 체계를 잡는 단어',
+    ),
+    BuiltinWordbookTemplate(
+      name: '고등/수능',
+      dbFileName: 'builtin_high_suneung_v1.db',
+      sourceAsset: 'assets/initial_words1.csv',
+      offset: 200,
+      count: 100,
+      targetCount: 2000,
+      levelLabel: '정규',
+      description: '독해와 시험 빈출 중심 단어',
+    ),
+    BuiltinWordbookTemplate(
+      name: '비즈니스/토익',
+      dbFileName: 'builtin_business_toeic_v1.db',
+      sourceAsset: 'assets/builtin_business_toeic_seed.csv',
+      offset: 0,
+      count: 100,
+      targetCount: 2000,
+      levelLabel: '특화',
+      description: '업무, 이메일, 회의, 토익 빈출 단어',
+    ),
+  ];
 
   final DatabaseService _dbService;
   final SheetsService _sheetsService;
@@ -28,6 +73,8 @@ class WordbookManager extends ChangeNotifier {
 
   List<Wordbook> _wordbooks = [];
   List<Wordbook> get wordbooks => _wordbooks;
+  List<BuiltinWordbookTemplate> get builtinWordbookTemplates =>
+      List.unmodifiable(_builtinTemplates);
   List<StudyPlan> _studyPlans = [];
   List<StudyPlan> get studyPlans => List.unmodifiable(_studyPlans);
 
@@ -75,6 +122,56 @@ class WordbookManager extends ChangeNotifier {
     _statsRevision++;
     // loadInitialData에서 setActiveWordbook을 관리하므로 여기서는 호출하지 않습니다.
     if (shouldNotify) notifyListeners();
+  }
+
+  bool isBuiltinWordbookAdded(BuiltinWordbookTemplate template) {
+    return getWordbookByDbFileName(template.dbFileName) != null;
+  }
+
+  Future<Wordbook> addBuiltinWordbook(BuiltinWordbookTemplate template) async {
+    final existing = getWordbookByDbFileName(template.dbFileName);
+    if (existing != null) {
+      await setActiveWordbook(existing);
+      return existing;
+    }
+
+    _setLoading(true);
+    try {
+      final words = await _loadBuiltinWords(template);
+      if (words.isEmpty) {
+        throw StateError('${template.name}에서 가져올 단어를 찾을 수 없습니다.');
+      }
+      final wordbook = Wordbook(
+        name: template.name,
+        dbFileName: template.dbFileName,
+        source: WordbookSource.builtin,
+      );
+      final savedWordbook = await _dbService.addWordbook(wordbook);
+      await _dbService.addWordsInBatch(savedWordbook.dbFileName, words);
+      await _loadWordbooks(shouldNotify: false);
+      final loadedWordbook = getWordbookByDbFileName(savedWordbook.dbFileName) ?? savedWordbook;
+      await setActiveWordbook(loadedWordbook);
+      return loadedWordbook;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<List<Word>> _loadBuiltinWords(BuiltinWordbookTemplate seed) async {
+    final csvString = await rootBundle.loadString(seed.sourceAsset);
+    final rows = const CsvToListConverter().convert(csvString);
+    return rows
+        .skip(1 + seed.offset)
+        .take(seed.count)
+        .map((row) {
+          if (row.length < 2) return null;
+          final word = row[0].toString().trim();
+          final meaning = row[1].toString().replaceAll('"', '').trim();
+          if (word.isEmpty || meaning.isEmpty) return null;
+          return Word(word: word, meaning: meaning);
+        })
+        .whereType<Word>()
+        .toList();
   }
 
   Future<void> _loadStudyPlans({bool shouldNotify = true}) async {
@@ -404,14 +501,22 @@ class WordbookManager extends ChangeNotifier {
         return;
       }
       final theme = Theme.of(context);
-      final nameController = TextEditingController(text: p.basenameWithoutExtension(path));
+      var draftName = p.basenameWithoutExtension(path);
+      void popDialogAfterUnfocus<T>(BuildContext dialogContext, [T? result]) {
+        FocusScope.of(dialogContext).unfocus();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!dialogContext.mounted) return;
+          Navigator.of(dialogContext).pop<T>(result);
+        });
+      }
+
       final String? newName = await showDialog<String>(
         context: context,
         builder:
             (dialogContext) => AlertDialog(
               title: const Text('단어장 이름 지정'),
-              content: TextField(
-                controller: nameController,
+              content: TextFormField(
+                initialValue: draftName,
                 autofocus: true,
                 textInputAction: TextInputAction.done,
                 decoration: const InputDecoration(
@@ -419,23 +524,23 @@ class WordbookManager extends ChangeNotifier {
                   hintText: '단어장 이름을 입력하세요',
                 ),
                 style: TextStyle(color: theme.textTheme.bodyLarge?.color),
-                onSubmitted: (value) {
-                  Navigator.of(dialogContext).pop(value.trim());
+                onChanged: (value) => draftName = value,
+                onFieldSubmitted: (value) {
+                  popDialogAfterUnfocus<String>(dialogContext, value.trim());
                 },
               ),
               actions: [
                 TextButton(
                   child: const Text('취소'),
-                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  onPressed: () => popDialogAfterUnfocus<String>(dialogContext),
                 ),
                 FilledButton(
                   child: const Text('생성'),
-                  onPressed: () => Navigator.of(dialogContext).pop(nameController.text.trim()),
+                  onPressed: () => popDialogAfterUnfocus<String>(dialogContext, draftName.trim()),
                 ),
               ],
             ),
       );
-      nameController.dispose();
       if (newName == null || newName.isEmpty) {
         _setLoading(false);
         return;
@@ -450,6 +555,12 @@ class WordbookManager extends ChangeNotifier {
       await _dbService.addWordsInBatch(savedWordbook.dbFileName, words);
       await _loadWordbooks();
       await setActiveWordbook(savedWordbook);
+      if (context.mounted) {
+        context.read<AnalyticsService>().logWordbookImported(
+          source: 'csv',
+          wordbookCount: 1,
+        );
+      }
     } catch (e) {
       debugPrint("Error creating wordbook from CSV: $e");
       if (context.mounted) {
@@ -471,15 +582,22 @@ class WordbookManager extends ChangeNotifier {
     _setLoading(false);
   }
 
-  Future<void> mergeWordbooks(Set<int> wordbookIds, String newName, BuildContext context) async {
+  Future<MergeWordbooksResult> mergeWordbooks(Set<int> wordbookIds, String newName) async {
     _setLoading(true);
     try {
       final List<Word> mergedWords = [];
       final Set<String> uniqueWordTexts = {};
       final List<Wordbook> booksToMerge =
           _wordbooks.where((wb) => wordbookIds.contains(wb.id)).toList();
+
+      if (booksToMerge.length < 2) {
+        throw StateError('병합할 단어장이 2개 이상 필요합니다.');
+      }
+
+      var totalWordCount = 0;
       for (final book in booksToMerge) {
         final wordsFromDb = await _dbService.getAllWords(book.dbFileName);
+        totalWordCount += wordsFromDb.length;
         for (var word in wordsFromDb) {
           if (uniqueWordTexts.add(word.word.trim().toLowerCase())) {
             mergedWords.add(word);
@@ -494,56 +612,36 @@ class WordbookManager extends ChangeNotifier {
       );
       final savedWordbook = await _dbService.addWordbook(newWordbook);
       await _dbService.addWordsInBatch(savedWordbook.dbFileName, mergedWords);
-      if (context.mounted) {
-        final deleteOriginals = await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) {
-            return AlertDialog(
-              title: const Text('병합 완료'),
-              content: Text("새로운 단어장 '$newName'이(가) 생성되었습니다.\n병합에 사용된 기존 단어장들을 삭제하시겠습니까?"),
-              actions: [
-                TextButton(
-                  child: const Text('유지'),
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                ),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Theme.of(dialogContext).colorScheme.error,
-                    foregroundColor: Theme.of(dialogContext).colorScheme.onError,
-                  ),
-                  child: const Text('삭제'),
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
-                ),
-              ],
-            );
-          },
-        );
-        if (deleteOriginals == true) {
-          for (final bookToDelete in booksToMerge) {
-            await deleteWordbook(bookToDelete);
-          }
-        }
-        await _loadWordbooks();
-        await setActiveWordbook(savedWordbook);
-        if (!context.mounted) return;
-        Navigator.of(context).pop();
-      }
+      await _loadWordbooks();
+      await setActiveWordbook(savedWordbook);
+      return MergeWordbooksResult(
+        createdWordbook: savedWordbook,
+        sourceWordbooks: List.unmodifiable(booksToMerge),
+        mergedWordCount: mergedWords.length,
+        duplicateSkippedCount: totalWordCount - mergedWords.length,
+      );
     } catch (e) {
       debugPrint("Error merging wordbooks: $e");
+      rethrow;
     } finally {
       _setLoading(false);
     }
   }
 
-  Future<void> createMultipleWordbooksFromSheets(
+  Future<List<Wordbook>> createMultipleWordbooksFromSheets(
     List<sheets.Sheet> selectedSheets,
     String spreadsheetId,
   ) async {
     _setLoading(true);
+    final importedWordbooks = <Wordbook>[];
     try {
       for (final sheet in selectedSheets) {
         final sheetName = sheet.properties?.title;
         if (sheetName == null || sheetName.isEmpty) continue;
+
+        final words = await _sheetsService.getWordsFromSheet(spreadsheetId, sheetName);
+        if (words == null || words.isEmpty) continue;
+
         final dbFileName =
             'wordbook_${DateTime.now().millisecondsSinceEpoch}_${sheet.properties?.sheetId}.db';
         final newWordbook = Wordbook(
@@ -554,14 +652,17 @@ class WordbookManager extends ChangeNotifier {
           source: WordbookSource.googleSheet,
         );
         final savedWordbook = await _dbService.addWordbook(newWordbook);
-        final words = await _sheetsService.getWordsFromSheet(spreadsheetId, sheetName);
-        if (words != null) {
-          await _dbService.addWordsInBatch(savedWordbook.dbFileName, words);
-        }
+        await _dbService.addWordsInBatch(savedWordbook.dbFileName, words);
+        importedWordbooks.add(savedWordbook);
       }
       await _loadWordbooks();
+      if (importedWordbooks.isNotEmpty) {
+        await setActiveWordbook(importedWordbooks.first);
+      }
+      return importedWordbooks;
     } catch (e) {
       debugPrint("Error creating multiple wordbooks from sheets: $e");
+      return importedWordbooks;
     } finally {
       _setLoading(false);
     }
@@ -573,4 +674,40 @@ class WordbookManager extends ChangeNotifier {
       Future.microtask(() => notifyListeners());
     }
   }
+}
+
+class MergeWordbooksResult {
+  final Wordbook createdWordbook;
+  final List<Wordbook> sourceWordbooks;
+  final int mergedWordCount;
+  final int duplicateSkippedCount;
+
+  const MergeWordbooksResult({
+    required this.createdWordbook,
+    required this.sourceWordbooks,
+    required this.mergedWordCount,
+    required this.duplicateSkippedCount,
+  });
+}
+
+class BuiltinWordbookTemplate {
+  final String name;
+  final String dbFileName;
+  final String sourceAsset;
+  final int offset;
+  final int count;
+  final int targetCount;
+  final String levelLabel;
+  final String description;
+
+  const BuiltinWordbookTemplate({
+    required this.name,
+    required this.dbFileName,
+    required this.sourceAsset,
+    required this.offset,
+    required this.count,
+    required this.targetCount,
+    required this.levelLabel,
+    required this.description,
+  });
 }

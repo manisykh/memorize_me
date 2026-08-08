@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "memorize_app" "\0"
+            VALUE "CompanyName", "Memorize Me" "\0"
+            VALUE "FileDescription", "Memorize Me" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "memorize_app" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "memorize_app.exe" "\0"
-            VALUE "ProductName", "memorize_app" "\0"
+            VALUE "InternalName", "memorize_me" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Memorize Me. All rights reserved." "\0"
+            VALUE "OriginalFilename", "memorize_me.exe" "\0"
+            VALUE "ProductName", "Memorize Me" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -1,6 +1,8 @@
 // lib/services/ai_service.dart
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart' as gemini;
 import 'package:http/http.dart' as http;
@@ -32,6 +34,8 @@ class AiFallbackResult<T> {
 }
 
 class AiService {
+  static const Duration _requestTimeout = Duration(seconds: 45);
+
   final ApiKeyService _apiKeyService;
   AiService(this._apiKeyService);
 
@@ -62,6 +66,8 @@ class AiService {
       return responseText?.trim().replaceAll('"', '');
     } on CustomApiException {
       rethrow;
+    } on TimeoutException {
+      throw CustomApiException('request_timeout', 'AI 요청 시간이 초과되었습니다.');
     } on Exception catch (e) {
       debugPrint('${provider.label} 예문 생성 오류: $e');
       throw CustomApiException('sentence_generation_failed', '예문 생성에 실패했습니다.');
@@ -109,19 +115,15 @@ class AiService {
           ) ??
           '{}';
       final cleanedJson = _cleanModelText(responseText);
-      final decodedJson = jsonDecode(cleanedJson) as Map<String, dynamic>;
-
-      return decodedJson.map((key, value) {
-        final valueMap = value as Map<String, dynamic>;
-        return MapEntry(key, {
-          "sentence": valueMap['sentence']?.toString() ?? '',
-          "translation": valueMap['translation']?.toString() ?? '',
-        });
-      });
+      return _parseSentenceMap(cleanedJson);
     } on CustomApiException {
       rethrow;
     } catch (e) {
-      throw CustomApiException('sentence_generation_failed', '일괄 예문 생성에 실패했습니다.');
+      final mappedError = _mapUnexpectedAiError(e);
+      if (mappedError.code != 'unknown_error') {
+        throw mappedError;
+      }
+      throw CustomApiException('model_response_invalid', 'AI 예문 응답 형식이 올바르지 않습니다.');
     }
   }
 
@@ -139,6 +141,29 @@ class AiService {
             option.endpoint,
           ),
     );
+  }
+
+  Future<void> testConnection({
+    required AiProvider provider,
+    required String modelName,
+    String? endpoint,
+  }) async {
+    final apiKey = await _apiKeyService.getApiKey(provider);
+    if (apiKey == null || apiKey.isEmpty) {
+      throw CustomApiException('api_key_missing', '${provider.label} API 키가 등록되지 않았습니다.');
+    }
+    final responseText = await _sendPrompt(
+      provider: provider,
+      modelName: modelName,
+      apiKey: apiKey,
+      endpoint: endpoint,
+      prompt: 'Return exactly this JSON object and nothing else: {"ok":true}',
+    );
+    final cleaned = _cleanModelText(responseText ?? '');
+    final decoded = jsonDecode(cleaned);
+    if (decoded is! Map<String, dynamic> || decoded['ok'] != true) {
+      throw CustomApiException('model_response_invalid', 'AI 연결 테스트 응답 형식이 올바르지 않습니다.');
+    }
   }
 
   Future<AiQuizResponse?> generateGrammarQuiz({
@@ -174,13 +199,16 @@ class AiService {
         endpoint: endpoint,
       );
       if (responseText != null) {
-        return AiQuizResponse.parse(_cleanModelText(responseText));
+        return _parseAndValidateQuizResponse(
+          responseText,
+          expectedAnswerableCount: questionCount,
+        );
       }
       return null;
     } on CustomApiException {
       rethrow;
     } on Exception catch (e) {
-      throw CustomApiException('unknown_error', '알 수 없는 오류가 발생했습니다: ${e.toString()}');
+      throw _mapUnexpectedAiError(e);
     }
   }
 
@@ -243,8 +271,10 @@ class AiService {
         endpoint: endpoint,
       );
       if (responseText != null) {
-        final cleanedText = _cleanModelText(responseText);
-        return AiQuizResponse.parse(cleanedText);
+        return _parseAndValidateQuizResponse(
+          responseText,
+          expectedAnswerableCount: questionCount,
+        );
       }
       return null;
     } on CustomApiException {
@@ -259,7 +289,7 @@ class AiService {
       } else if (e.toString().contains('SocketException')) {
         throw CustomApiException('network_error', '네트워크 연결을 확인해주세요.');
       } else {
-        throw CustomApiException('unknown_error', '알 수 없는 오류가 발생했습니다: ${e.toString()}');
+        throw _mapUnexpectedAiError(e);
       }
     }
   }
@@ -350,6 +380,8 @@ class AiService {
       'network_error',
       'openai_request_failed',
       'anthropic_request_failed',
+      'model_response_invalid',
+      'model_request_failed',
     }.contains(error.code);
   }
 
@@ -363,7 +395,9 @@ class AiService {
     switch (provider) {
       case AiProvider.gemini:
         final model = gemini.GenerativeModel(model: modelName, apiKey: apiKey);
-        final response = await model.generateContent([gemini.Content.text(prompt)]);
+        final response = await model
+            .generateContent([gemini.Content.text(prompt)])
+            .timeout(_requestTimeout);
         return response.text;
       case AiProvider.anthropic:
         return _sendAnthropicPrompt(modelName: modelName, apiKey: apiKey, prompt: prompt);
@@ -377,6 +411,7 @@ class AiService {
       case AiProvider.together:
       case AiProvider.fireworks:
       case AiProvider.customOpenAI:
+      case AiProvider.zAi:
         return _sendOpenAiCompatiblePrompt(
           provider: provider,
           modelName: modelName,
@@ -400,24 +435,26 @@ class AiService {
       throw CustomApiException('endpoint_missing', '${provider.label} 엔드포인트를 입력해주세요.');
     }
 
-    final response = await http.post(
-      Uri.parse(resolvedEndpoint),
-      headers: {
-        'Authorization': 'Bearer $apiKey',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'model': modelName,
-        'messages': [
-          {
-            'role': 'system',
-            'content': 'Return only valid JSON. Do not wrap the response in markdown.',
+    final response = await http
+        .post(
+          Uri.parse(resolvedEndpoint),
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+            'Content-Type': 'application/json',
           },
-          {'role': 'user', 'content': prompt},
-        ],
-        'temperature': 0.7,
-      }),
-    );
+          body: jsonEncode({
+            'model': modelName,
+            'messages': [
+              {
+                'role': 'system',
+                'content': 'Return only valid JSON. Do not wrap the response in markdown.',
+              },
+              {'role': 'user', 'content': prompt},
+            ],
+            'temperature': 0.7,
+          }),
+        )
+        .timeout(_requestTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final body = utf8.decode(response.bodyBytes);
@@ -445,23 +482,25 @@ class AiService {
     required String apiKey,
     required String prompt,
   }) async {
-    final response = await http.post(
-      Uri.parse('https://api.anthropic.com/v1/messages'),
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'model': modelName,
-        'max_tokens': 4096,
-        'temperature': 0.7,
-        'system': 'Return only valid JSON. Do not wrap the response in markdown.',
-        'messages': [
-          {'role': 'user', 'content': prompt},
-        ],
-      }),
-    );
+    final response = await http
+        .post(
+          Uri.parse('https://api.anthropic.com/v1/messages'),
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'model': modelName,
+            'max_tokens': 4096,
+            'temperature': 0.7,
+            'system': 'Return only valid JSON. Do not wrap the response in markdown.',
+            'messages': [
+              {'role': 'user', 'content': prompt},
+            ],
+          }),
+        )
+        .timeout(_requestTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final body = utf8.decode(response.bodyBytes);
@@ -490,8 +529,285 @@ class AiService {
     return null;
   }
 
+  Map<String, Map<String, String>> _parseSentenceMap(String cleanedJson) {
+    final decoded = jsonDecode(cleanedJson);
+    if (decoded is! Map<String, dynamic> || decoded.isEmpty) {
+      throw CustomApiException('model_response_invalid', 'AI 예문 응답이 비어 있습니다.');
+    }
+
+    final result = <String, Map<String, String>>{};
+    for (final entry in decoded.entries) {
+      final value = entry.value;
+      if (value is! Map<String, dynamic>) continue;
+      final sentence = value['sentence']?.toString().trim() ?? '';
+      final translation = value['translation']?.toString().trim() ?? '';
+      if (entry.key.trim().isEmpty || sentence.isEmpty || translation.isEmpty) continue;
+      result[entry.key] = {
+        'sentence': sentence,
+        'translation': translation,
+      };
+    }
+
+    if (result.isEmpty) {
+      throw CustomApiException('model_response_invalid', '저장할 수 있는 예문이 없습니다.');
+    }
+    return result;
+  }
+
+  AiQuizResponse _parseAndValidateQuizResponse(
+    String responseText, {
+    int? expectedAnswerableCount,
+  }) {
+    try {
+      final response = AiQuizResponse.parse(_cleanModelText(responseText));
+      return _sanitizeAndValidateQuizResponse(
+        response,
+        expectedAnswerableCount: expectedAnswerableCount,
+      );
+    } on CustomApiException {
+      rethrow;
+    } catch (e) {
+      throw CustomApiException('model_response_invalid', 'AI 퀴즈 응답 형식이 올바르지 않습니다.');
+    }
+  }
+
+  AiQuizResponse _sanitizeAndValidateQuizResponse(
+    AiQuizResponse response, {
+    int? expectedAnswerableCount,
+  }) {
+    if (response.questions.isEmpty) {
+      throw CustomApiException('model_response_invalid', 'AI가 문제를 생성하지 않았습니다.');
+    }
+
+    var answerableCount = 0;
+    var droppedDuplicateCount = 0;
+    final sanitizedQuestions = <AiQuestion>[];
+    final seenQuestions = <String>{};
+    final seenOptionSets = <String>{};
+    const allowedTypes = {'vocabulary', 'grammar', 'reading_section'};
+    for (final question in response.questions) {
+      if (_isBlank(question.type)) {
+        throw CustomApiException('model_response_invalid', '문제 유형이 비어 있습니다.');
+      }
+      if (!allowedTypes.contains(question.type)) {
+        throw CustomApiException('model_response_invalid', '지원하지 않는 문제 유형이 포함되어 있습니다.');
+      }
+
+      if (question.type == 'reading_section') {
+        final subQuestions = question.questions;
+        if (_isBlank(question.passage) || subQuestions == null || subQuestions.isEmpty) {
+          throw CustomApiException('model_response_invalid', '독해 문제의 지문 또는 하위 문제가 누락되었습니다.');
+        }
+        final sanitizedSubQuestions = <AiReadingSubQuestion>[];
+        for (final subQuestion in subQuestions) {
+          final shouldKeep = _validateQuestionParts(
+            question: subQuestion.question,
+            options: subQuestion.options,
+            answer: subQuestion.answer,
+            seenQuestions: seenQuestions,
+            seenOptionSets: seenOptionSets,
+          );
+          if (!shouldKeep) {
+            droppedDuplicateCount++;
+            continue;
+          }
+          sanitizedSubQuestions.add(subQuestion);
+          answerableCount++;
+        }
+        if (sanitizedSubQuestions.isNotEmpty) {
+          sanitizedQuestions.add(
+            AiQuestion(
+              type: question.type,
+              passage: question.passage,
+              script: question.script,
+              question: question.question,
+              options: question.options,
+              answer: question.answer,
+              explanation: question.explanation,
+              questions: sanitizedSubQuestions,
+            ),
+          );
+        }
+        continue;
+      }
+
+      final shouldKeep = _validateQuestionParts(
+        question: question.question,
+        options: question.options,
+        answer: question.answer,
+        seenQuestions: seenQuestions,
+        seenOptionSets: seenOptionSets,
+      );
+      if (!shouldKeep) {
+        droppedDuplicateCount++;
+        continue;
+      }
+      sanitizedQuestions.add(question);
+      answerableCount++;
+    }
+
+    if (answerableCount == 0) {
+      throw CustomApiException('model_response_invalid', '채점 가능한 문제가 없습니다.');
+    }
+    if (expectedAnswerableCount != null && answerableCount != expectedAnswerableCount) {
+      if (droppedDuplicateCount > 0 && answerableCount < expectedAnswerableCount) {
+        debugPrint(
+          'AI quiz accepted after dropping $droppedDuplicateCount duplicate question(s). '
+          'Generated $answerableCount/$expectedAnswerableCount answerable question(s).',
+        );
+        return AiQuizResponse(
+          questions: sanitizedQuestions,
+          requestedQuestionCount: expectedAnswerableCount,
+          droppedDuplicateCount: droppedDuplicateCount,
+        );
+      }
+      throw CustomApiException(
+        'model_response_invalid',
+        'AI가 요청한 문제 수와 다른 수의 문제를 생성했습니다. ($answerableCount/$expectedAnswerableCount)',
+      );
+    }
+    if (droppedDuplicateCount > 0) {
+      debugPrint('AI quiz dropped $droppedDuplicateCount duplicate question(s).');
+    }
+    return AiQuizResponse(
+      questions: sanitizedQuestions,
+      requestedQuestionCount: expectedAnswerableCount ?? answerableCount,
+      droppedDuplicateCount: droppedDuplicateCount,
+    );
+  }
+
+  bool _validateQuestionParts({
+    required String? question,
+    required List<String>? options,
+    required String? answer,
+    required Set<String> seenQuestions,
+    required Set<String> seenOptionSets,
+  }) {
+    if (_isBlank(question)) {
+      throw CustomApiException('model_response_invalid', '문제 문항이 누락되었습니다.');
+    }
+    final normalizedQuestion = _normalizeForDuplicateCheck(question!);
+    if (!seenQuestions.add(normalizedQuestion)) {
+      return false;
+    }
+    if (options == null || options.length != 4 || options.any((option) => _isBlank(option))) {
+      throw CustomApiException('model_response_invalid', '선택지는 정확히 4개여야 합니다.');
+    }
+    final normalizedOptions = options.map(_normalizeForDuplicateCheck).toList();
+    if (normalizedOptions.toSet().length != normalizedOptions.length) {
+      throw CustomApiException('model_response_invalid', '중복된 선택지가 포함되어 있습니다.');
+    }
+    if (normalizedOptions.any(_isDisallowedOptionText)) {
+      throw CustomApiException('model_response_invalid', '부적절한 선택지가 포함되어 있습니다.');
+    }
+    if (_isBlank(answer)) {
+      throw CustomApiException('model_response_invalid', '정답이 누락되었습니다.');
+    }
+    final normalizedAnswer = _normalizeForDuplicateCheck(answer ?? '');
+    if (normalizedOptions.where((option) => option == normalizedAnswer).length != 1) {
+      throw CustomApiException('model_response_invalid', '정답과 일치하는 선택지가 정확히 1개여야 합니다.');
+    }
+    final optionSetKey = (normalizedOptions..sort()).join('|');
+    if (!seenOptionSets.add(optionSetKey)) {
+      return false;
+    }
+    if (_isBlank(answer)) {
+      throw CustomApiException('model_response_invalid', '정답이 누락되었습니다.');
+    }
+    if (!options.contains(answer)) {
+      throw CustomApiException('model_response_invalid', '정답이 선택지 안에 없습니다.');
+    }
+    return true;
+  }
+
+  bool _isBlank(String? value) => value == null || value.trim().isEmpty;
+
+  bool _isDisallowedOptionText(String value) {
+    return {
+      'all of the above',
+      'none of the above',
+      'both a and b',
+      'both b and c',
+      'true',
+      'false',
+      'all',
+      'none',
+    }.contains(value);
+  }
+
+  String _normalizeForDuplicateCheck(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'''[“”"'`.,!?;:()\[\]{}]'''), '');
+  }
+
+  CustomApiException _mapUnexpectedAiError(Object error) {
+    final text = error.toString();
+    final lowerText = text.toLowerCase();
+    if (lowerText.contains('model') ||
+        lowerText.contains('not found') ||
+        lowerText.contains('invalid_argument') ||
+        lowerText.contains('invalid argument') ||
+        lowerText.contains('404')) {
+      return CustomApiException(
+        'model_request_failed',
+        '선택한 모델로 요청할 수 없습니다. AI 설정에서 다른 모델을 선택해주세요.',
+      );
+    }
+    if (lowerText.contains('timeout')) {
+      return CustomApiException('request_timeout', 'AI 요청 시간이 초과되었습니다.');
+    }
+    if (lowerText.contains('socket') || lowerText.contains('network')) {
+      return CustomApiException('network_error', '네트워크 연결을 확인해주세요.');
+    }
+    return CustomApiException('unknown_error', '알 수 없는 오류가 발생했습니다: $text');
+  }
+
   String _cleanModelText(String text) {
-    return text.replaceAll(RegExp(r'```(?:json)?|```'), '').replaceAll('**', '').trim();
+    final cleaned = text.replaceAll(RegExp(r'```(?:json)?|```'), '').replaceAll('**', '').trim();
+    final start = cleaned.indexOf('{');
+    final end = cleaned.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return cleaned.substring(start, end + 1).trim();
+    }
+    return cleaned;
+  }
+
+  String _questionLanguageGuide(String questionLanguage) {
+    final isKorean = questionLanguage.toLowerCase().contains('korean');
+    if (isKorean) {
+      return """
+    - User-facing question instructions may be written in Korean.
+    - English learning material MUST stay in English: passages, sentence-completion sentences, target words, and English sentence options.
+    - Korean meanings may be used when a vocabulary question asks about meaning.
+    - The explanation field, when present, MUST be in Korean.
+    """;
+    }
+    return """
+    - User-facing question instructions should be written in English.
+    - English learning material MUST stay in English.
+    - Korean meanings may be used only when the question explicitly asks for Korean meaning.
+    - The explanation field, when present, MUST be in Korean.
+    """;
+  }
+
+  String _canonicalQuizType(String quizType) {
+    return switch (quizType) {
+      '어휘' => 'vocabulary',
+      '문법' => 'grammar',
+      '독해' => 'reading_section',
+      _ => 'mixed',
+    };
+  }
+
+  List<Word> _wordsForPrompt(List<Word> words, int count) {
+    var candidateLimit = count * 4;
+    if (candidateLimit < 20) candidateLimit = 20;
+    if (candidateLimit > 80) candidateLimit = 80;
+    final shuffledWords = List<Word>.from(words)..shuffle(Random());
+    return shuffledWords.take(candidateLimit).toList();
   }
 
   String _buildGrammarPrompt(
@@ -502,8 +818,17 @@ class AiService {
     bool includeExplanation,
     String questionLanguage,
   ) {
-    // ... (기존과 동일)
-    final chaptersString = chapters.map((c) => "  - ${c.description}: ${c.title}").join('\n');
+    final chaptersJson = jsonEncode(
+      chapters
+          .map(
+            (c) => {
+              'group': c.description,
+              'chapter': c.title,
+              if (c.details.isNotEmpty) 'details': c.details,
+            },
+          )
+          .toList(),
+    );
     final difficultyMap = {
       '기초':
           "Beginner level for elementary school students. Use simple S+V+O sentences and basic vocabulary.",
@@ -520,32 +845,67 @@ class AiService {
           "Professional level. Use vocabulary and sentence structures found in academic papers and reputable news sources like CNN or Newsweek.",
     };
     final difficultyDescription = difficultyMap[difficulty] ?? difficultyMap['중급']!;
+    final languageGuide = _questionLanguageGuide(questionLanguage);
+    final explanationRule =
+        includeExplanation
+            ? 'Every answerable question MUST include a concise Korean explanation.'
+            : 'Do not include explanation, or set explanation to an empty string.';
 
     return """
     You are an adaptive learning assistant creating English grammar quizzes.
-    Your MOST IMPORTANT task is to strictly control the difficulty of the questions, including the complexity of sentence structures, to match the user's selected level.
+    Your job is to create accurate, answerable English grammar questions for Korean learners.
 
     # Mission
-    Create exactly `$count` multiple-choice grammar questions based on the provided "SELECTED CHAPTERS".
+    Create exactly `$count` answerable multiple-choice grammar questions based only on the selected chapters.
 
     # Core Rules
-    1.  **Strictly Adhere to Scope**: All questions MUST test concepts only from the "SELECTED CHAPTERS".
-    2.  **Difficulty Adherence (CRITICAL)**: The complexity of sentence structure and vocabulary in your questions MUST precisely match the `Target Difficulty` description. This is your highest priority. It is a failure if you use simple sentences for a '전문가' level question.
-    3.  **Vary Question Formats**: Mix formats like "fill-in-the-blank", "choose the grammatically correct/incorrect sentence".
-    4.  **Language Requirements**: All JSON fields (question, options, answer) MUST be in $questionLanguage. The "explanation" field MUST be in KOREAN.
-    5.  **JSON Format**: The output MUST be a single, valid JSON object without any markdown.
+    1. Scope: Every question MUST test one of the selected chapters. Do not introduce unrelated grammar points.
+    2. Difficulty: Sentence length, vocabulary, and distractor subtlety MUST match the target difficulty.
+    3. Count: The response MUST contain exactly `$count` answerable questions.
+    4. Options: Every question MUST have exactly 4 unique options.
+    5. Answer: The `answer` value MUST exactly match one string from `options`.
+    6. Explanation: $explanationRule
+    7. JSON only: Return one valid JSON object. No markdown, no comments, no trailing commas.
+    8. Language:
+$languageGuide
+
+    # Quality Rules
+    - Do NOT repeat the same question stem, sentence, answer, or option set.
+    - If multiple chapters are selected, distribute questions across chapters as evenly as possible.
+    - Do NOT create more than 2 consecutive questions from the same chapter group unless only one group is selected.
+    - Each distractor MUST be plausible and test the same grammar point as the correct answer.
+    - Distractors should be common learner mistakes: tense mismatch, agreement error, wrong preposition, wrong word order, wrong infinitive/gerund, or incorrect clause connector.
+    - Do NOT use silly distractors, obviously unrelated choices, "all of the above", "none of the above", or true/false style choices.
+    - Randomize the correct answer position. Do not always place the answer in the same option slot.
+    - For "choose the incorrect sentence" questions, make exactly one option incorrect and make the other three clearly grammatical.
+    - For "choose the correct sentence" questions, make exactly one option correct and make the other three contain realistic grammar errors.
+    - Avoid testing two unrelated grammar rules in the same question.
 
     # Quiz Configuration
     - **Target Level:** ${category.title}
     - **Target Difficulty:** $difficulty. ($difficultyDescription)
     - **Question Count:** $count
-    - **Include Korean Explanation:** $includeExplanation
     - **Question Language:** $questionLanguage
-    - **SELECTED CHAPTERS:**
-$chaptersString
+    - **Selected Chapters JSON:** $chaptersJson
 
-    # Required JSON Output Format
-    { "questions": [ { "type": "grammar", "question": "...", "options": [], "answer": "...", "explanation": "..." } ] }
+    # Allowed Question Formats
+    - Fill in the blank.
+    - Choose the grammatically correct sentence.
+    - Choose the grammatically incorrect sentence.
+    - Choose the best correction.
+
+    # Required JSON Schema
+    {
+      "questions": [
+        {
+          "type": "grammar",
+          "question": "...",
+          "options": ["...", "...", "...", "..."],
+          "answer": "...",
+          "explanation": "..."
+        }
+      ]
+    }
     """;
   }
 
@@ -557,8 +917,20 @@ $chaptersString
     bool includeExplanation,
     String questionLanguage,
   ) {
-    // ... (기존과 동일)
-    final wordListString = words.map((w) => '"${w.word}":"${w.meaning}"').join(', ');
+    final promptWords = _wordsForPrompt(words, count);
+    final omittedWordCount = words.length - promptWords.length;
+    final wordListJson = jsonEncode(
+      promptWords
+          .map(
+            (w) => {
+              'word': w.word,
+              'meaning': w.meaning,
+              if (w.exampleSentence != null && w.exampleSentence!.trim().isNotEmpty)
+                'exampleSentence': w.exampleSentence,
+            },
+          )
+          .toList(),
+    );
 
     final difficultyMap = {
       '기초':
@@ -576,93 +948,149 @@ $chaptersString
           "Professional level. Use vocabulary and structures from news articles or academic papers.",
     };
     final difficultyDescription = difficultyMap[difficulty] ?? difficultyMap['중급']!;
+    final canonicalType = _canonicalQuizType(quizType);
+    final languageGuide = _questionLanguageGuide(questionLanguage);
+    final explanationRule =
+        includeExplanation
+            ? 'Every answerable question MUST include a concise Korean explanation.'
+            : 'Do not include explanation, or set explanation to an empty string.';
+    final candidateNote =
+        omittedWordCount > 0
+            ? 'The user selected ${words.length} words. To keep the prompt reliable, this request includes ${promptWords.length} shuffled candidate words. Build the quiz from these candidates.'
+            : 'Build the quiz from the provided candidate words.';
 
     const vocabularyInstructions = """
-  **Area Specific Instructions for 'vocabulary' questions:**
-  - `sentence_completion`: The `question` MUST be a sentence with EXACTLY ONE blank ('______'). The sentence complexity and vocabulary MUST strictly match the `Target Difficulty`.
-  - `definition_matching`: The `question` is a definition. Options are words.
-  - `synonym_antonym`: Ask for a synonym or antonym.
+  Vocabulary questions:
+  - Use type exactly "vocabulary".
+  - Prefer the selected English words as the correct answers.
+  - Good formats: sentence completion, definition matching, Korean meaning matching, synonym/antonym.
+  - If using sentence completion, the sentence must contain exactly one blank: "______".
+  - Use each candidate word as a correct answer at most once unless the requested count exceeds the number of candidates.
+  - The correct answer MUST reflect the provided Korean meaning, especially for polysemous words.
+  - Distractors must be plausible words with a similar part of speech or semantic field, not random words.
+  - Do not reuse the same sentence template or ask the same "meaning of this word" pattern repeatedly.
+  """;
+
+    const grammarInstructions = """
+  Grammar questions:
+  - Use type exactly "grammar".
+  - Test grammar through selected vocabulary when natural, but do not force awkward sentences.
+  - Good formats: fill in the blank, sentence correction, choosing the grammatical sentence, choosing the incorrect sentence.
+  - Do not repeat the same grammar pattern more than once unless the requested count is larger than the available patterns.
+  - Distractors must represent realistic learner errors, not vocabulary misunderstandings.
   """;
 
     const readingInstructions = """
-  **Area Specific Instructions for 'reading' questions:**
-  - The `type` MUST be "reading_section".
-  - **Passage Length & Complexity (CRITICAL)**: MUST be proportional to the `Target Difficulty`. 
+  Reading questions:
+  - Use type exactly "reading_section".
+  - A reading_section counts by the number of sub-questions inside its `questions` list.
+  - Passage length and complexity MUST match the Target Difficulty.
     - '기초'/'기본': 1-3 simple sentences.
     - '중급'/'중고급': 1-2 paragraphs with some complex sentences.
     - '고급' or higher: 2-4 paragraphs with advanced vocabulary and complex structures.
-  - **Question Types (CRITICAL)**: You MUST generate a diverse mix of sub-questions based on the `Target Difficulty` and the following `sub_type` list.
-    - **For '기초'/'기본'**:
-      - `main_idea`: Ask for the main idea.
-      - `detail`: Ask for specific details (who, what, when, where).
-    - **For '중급'/'중고급'**: In addition to the above, include:
-      - `inference`: Ask the user to infer information not explicitly stated.
-      - `purpose`: Ask about the author's purpose.
-      - `contextual_vocabulary`: Ask for the meaning of a word in context.
-    - **For '고급' or higher**: In addition to all the above, include challenging types like:
-      - `tone_attitude`: Ask about the author's tone or attitude.
-      - `paragraph_ordering`: Provide 3-4 paragraphs labeled (A), (B), (C)... out of order. The question asks for the correct sequence. The passage should contain the scrambled paragraphs, and the options should be permutations like ["(B)-(A)-(C)", "(C)-(A)-(B)", ...].
-      - `sentence_insertion`: The passage should contain a marker like "[INSERT SENTENCE HERE]". The question asks which sentence from the options best fits into the passage.
-  - **MANDATORY `questions` field**: Every `reading_section` object MUST contain a non-empty `questions` list with at least one sub-question object.
-  """;
-
-    const listeningInstructions = """
-  **Area Specific Instructions for 'listening' questions:**
-  - The `type` MUST be "listening".
-  - **Script Length & Speed (CRITICAL)**: MUST be proportional to the `Target Difficulty`.
-    - '기초'/'기본': 2-4 slow turns of dialogue.
-    - '중급'/'중고급': 4-6 turns of natural speed dialogue.
-    - '고급' or higher: A long monologue or a dialogue with >6 turns at a fast, natural pace.
-  - The `question` field MUST NOT contain the script. It must only be the question about the script.
+  - Every reading_section MUST contain a non-empty `questions` list.
+  - Each sub-question MUST have exactly 4 unique options and an answer that exactly matches one option.
+  - Do not create a passage that directly repeats the answer phrase from the correct option unless the question is explicit detail lookup.
+  - Mix sub-question skills when possible: main idea, inference, detail, vocabulary in context, and sentence insertion.
+  - Avoid more than 3 sub-questions per passage unless the requested count is high enough.
   """;
 
     String areaInstruction;
     String strictTypeConstraint = "";
 
     if (quizType != '종합') {
-      final typeName = quizType.toLowerCase().replaceAll(' ', '_');
       strictTypeConstraint =
-          "- **Critical Rule**: You MUST ONLY generate questions of the '$typeName' type.";
+          "- Critical Rule: Generate ONLY `$canonicalType` question blocks.";
       if (quizType == '어휘') {
         areaInstruction = vocabularyInstructions;
       } else if (quizType == '독해') {
         areaInstruction = readingInstructions;
-      } else if (quizType == '듣기') {
-        areaInstruction = listeningInstructions;
+      } else if (quizType == '문법') {
+        areaInstruction = grammarInstructions;
       } else {
-        areaInstruction = "Generate questions for the '$typeName' type.";
+        areaInstruction = 'Generate questions for the `$canonicalType` type.';
       }
     } else {
       areaInstruction =
-          "Generate a mix of questions from `vocabulary`, `grammar`, `reading_section`, and `listening`. Follow all specific instructions for each type.";
+          "Generate a useful mix from `vocabulary`, `grammar`, and `reading_section`. Listening is intentionally excluded from the MVP quiz generator. If the requested count is small, choose the most appropriate types without exceeding the exact answerable count.";
     }
 
     return """
     You are an adaptive learning assistant that creates English quizzes.
-    Your MOST IMPORTANT task is to strictly and precisely control the difficulty of all generated content (questions, sentences, passages, scripts) to match the user's selected level.
+    Your job is to create accurate, answerable English vocabulary and grammar quizzes for Korean learners.
 
     # 1. MANDATORY RULES
     $strictTypeConstraint
-    - **Difficulty Adherence (HIGHEST PRIORITY)**: The complexity of vocabulary, sentence structure, and passage/script length used in ALL question types MUST strictly match the `Target Difficulty` description. It is a critical failure if you do not follow this rule.
-    - Total answerable questions MUST be EXACTLY `$count`.
-    - All text in JSON fields MUST be in $questionLanguage. The `explanation` field, if included, MUST be in KOREAN.
-    - Do not use markdown like `**`.
-    - User-selected words from the `Vocabulary List` MUST be included in the quiz.
+    - Difficulty: Vocabulary, sentence structure, and passage length MUST match the Target Difficulty.
+    - Count: Total answerable questions MUST be exactly `$count`. A reading_section with 3 sub-questions counts as 3.
+    - Options: Every answerable question MUST have exactly 4 unique options.
+    - Answer: The `answer` value MUST exactly match one string from `options`.
+    - Explanation: $explanationRule
+    - JSON only: Return one valid JSON object. No markdown, no comments, no trailing commas.
+    - Language:
+$languageGuide
+
+    # 1-B. QUALITY RULES
+    - Do NOT repeat the same question stem, sentence, answer, or set of options.
+    - Use the provided candidate words broadly. Avoid using the same correct word twice unless unavoidable.
+    - Correct answer positions must be varied across questions.
+    - Distractors must be plausible and close enough to test knowledge, but only one option may be correct.
+    - Do NOT use "all of the above", "none of the above", true/false choices, joke options, or obviously unrelated distractors.
+    - Avoid questions that can be answered without understanding the target word, grammar point, or passage.
+    - When using Korean meanings, keep them concise and aligned with the supplied word meanings.
+    - If the requested type is not `종합`, every answerable question MUST use only the requested type.
+    - If the requested type is `종합` and count >= 4, include at least two different question types.
+    - Do NOT generate `listening` questions in this generator. Listening will be handled by a separate feature later.
 
     # 2. QUIZ CONFIGURATION
-    - **Vocabulary List:** { $wordListString }
+    - **Vocabulary Candidates JSON:** $wordListJson
+    - **Candidate Note:** $candidateNote
     - **Target Difficulty:** $difficulty. ($difficultyDescription)
-    - **Include Korean Explanation:** `$includeExplanation`
+    - **Requested Quiz Type:** $quizType
     - **Question Language:** $questionLanguage
 
     # 3. QUESTION AREA & TYPE INSTRUCTIONS
     $areaInstruction
 
     # 4. REQUIRED JSON RESPONSE FORMAT
-    Your output MUST be a single, valid JSON object.
-    { "questions": [ /* ... your questions here ... */ ] }
+    Use one of these shapes:
+    {
+      "questions": [
+        {
+          "type": "vocabulary",
+          "question": "...",
+          "options": ["...", "...", "...", "..."],
+          "answer": "...",
+          "explanation": "..."
+        },
+        {
+          "type": "grammar",
+          "question": "...",
+          "options": ["...", "...", "...", "..."],
+          "answer": "...",
+          "explanation": "..."
+        },
+        {
+          "type": "reading_section",
+          "passage": "...",
+          "questions": [
+            {
+              "question": "...",
+              "options": ["...", "...", "...", "..."],
+              "answer": "...",
+              "explanation": "..."
+            }
+          ]
+        }
+      ]
+    }
 
-    **FINAL CHECK: Review your generated quiz to ensure the passage/sentence/script length and question complexity STRICTLY match the requested '$difficulty' level. This is the highest priority.**
+    FINAL CHECK:
+    - Exactly `$count` answerable questions.
+    - Every answer exactly matches one option.
+    - No duplicate question stems, no duplicate correct answers unless unavoidable, and no duplicate option sets.
+    - Distractors are plausible, same-category alternatives.
+    - The JSON can be parsed by a strict JSON parser.
   """;
   }
 }

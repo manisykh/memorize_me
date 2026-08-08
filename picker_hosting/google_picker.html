@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Memorize Me Google Picker</title>
+    <style>
+      body {
+        align-items: center;
+        background: #fffaf1;
+        color: #3d3027;
+        display: flex;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        justify-content: center;
+        margin: 0;
+        min-height: 100vh;
+        padding: 24px;
+        text-align: center;
+      }
+      main {
+        max-width: 420px;
+      }
+      button {
+        background: #c96f3d;
+        border: 0;
+        border-radius: 999px;
+        color: white;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 700;
+        margin-top: 16px;
+        padding: 14px 22px;
+      }
+    </style>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Google Drive에서 스프레드시트 선택</h1>
+      <p id="status">Google 계정 권한을 확인하는 중입니다.</p>
+      <button id="retry" hidden>다시 시도</button>
+    </main>
+
+    <script>
+      const CLIENT_ID = '1089946281483-5nu4bjsb01fdmcq63eoo48s8sfo30joq.apps.googleusercontent.com';
+      const API_KEY = 'AIzaSyCp8oCvdql3MfjzCtwQ-ZhB7W-wO4ZeSyk';
+      const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+      const params = new URLSearchParams(window.location.search);
+      const redirectUri = params.get('redirect_uri');
+      const state = params.get('state') || '';
+      let tokenClient;
+      let accessToken;
+      let pickerLoaded = false;
+
+      const statusEl = document.getElementById('status');
+      const retryButton = document.getElementById('retry');
+      retryButton.addEventListener('click', start);
+
+      function setStatus(message, canRetry = false) {
+        statusEl.textContent = message;
+        retryButton.hidden = !canRetry;
+      }
+
+      function finish(query) {
+        if (!redirectUri) {
+          setStatus('앱으로 돌아갈 주소가 없습니다.', true);
+          return;
+        }
+        const url = new URL(redirectUri);
+        for (const [key, value] of Object.entries(query)) {
+          url.searchParams.set(key, value);
+        }
+        url.searchParams.set('state', state);
+        window.location.href = url.toString();
+      }
+
+      function start() {
+        setStatus('Google Drive 파일 선택기를 준비하는 중입니다.');
+        gapi.load('picker', {
+          callback: () => {
+            pickerLoaded = true;
+            requestToken();
+          }
+        });
+      }
+
+      function requestToken() {
+        if (!tokenClient) {
+          tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+            callback: (response) => {
+              if (response.error) {
+                finish({ error: response.error });
+                return;
+              }
+              accessToken = response.access_token;
+              createPicker();
+            },
+          });
+        }
+        tokenClient.requestAccessToken({ prompt: '' });
+      }
+
+      function createPicker() {
+        if (!pickerLoaded || !accessToken) {
+          setStatus('Google Picker를 열 수 없습니다.', true);
+          return;
+        }
+
+        const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
+          .setMimeTypes('application/vnd.google-apps.spreadsheet')
+          .setIncludeFolders(false)
+          .setSelectFolderEnabled(false);
+
+        const picker = new google.picker.PickerBuilder()
+          .setDeveloperKey(API_KEY)
+          .setOAuthToken(accessToken)
+          .addView(view)
+          .setCallback((data) => {
+            if (data.action === google.picker.Action.PICKED) {
+              const doc = data.docs && data.docs[0];
+              if (!doc || !doc.id) {
+                finish({ error: 'selected_file_missing' });
+                return;
+              }
+              finish({
+                spreadsheetId: doc.id,
+                name: doc.name || 'Google Sheets',
+              });
+            } else if (data.action === google.picker.Action.CANCEL) {
+              finish({});
+            }
+          })
+          .build();
+
+        picker.setVisible(true);
+        setStatus('스프레드시트를 선택하세요.');
+      }
+
+      if (!redirectUri) {
+        setStatus('앱에서 다시 열어주세요.', true);
+      } else if (CLIENT_ID.startsWith('REPLACE_') || API_KEY.startsWith('REPLACE_')) {
+        setStatus('Picker 페이지 설정이 필요합니다.', true);
+      } else {
+        start();
+      }
+    </script>
+  </body>
+</html>

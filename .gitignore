@@ -33,6 +33,10 @@ migrate_working_dir/
 .pub/
 /build/
 
+# Local Firebase deployment cache and Codex attachments
+/.firebase/
+/.codex-remote-attachments/
+
 # Symbolication related
 app.*.symbols
 
@@ -43,3 +47,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Android release signing secrets
+/android/key.properties
+/android/*.jks
+/android/*.keystore
+
+# Local build-time environment values
+/env/*.json

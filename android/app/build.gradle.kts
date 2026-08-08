@@ -1,28 +1,52 @@
+import java.io.FileInputStream
+import java.util.Properties
+import org.gradle.api.GradleException
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
+}
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasReleaseKeystore = keystorePropertiesFile.exists()
+val isReleaseBuildRequested = gradle.startParameter.taskNames.any {
+    it.contains("Release", ignoreCase = true)
+}
+val shouldConfigureReleaseSigning = hasReleaseKeystore && isReleaseBuildRequested
+
+if (shouldConfigureReleaseSigning) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+fun releaseKeystoreProperty(name: String): String {
+    val value = keystoreProperties[name]?.toString()?.trim()
+    require(!value.isNullOrEmpty()) {
+        "Missing '$name' in android/key.properties. Run android/setup_release_signing.ps1 or copy android/key.properties.example."
+    }
+    return value
 }
 
 android {
-    namespace = "com.example.memorize_app"
-    compileSdk = 35
-    ndkVersion = "27.0.12077973"
+    namespace = "com.memorize.me"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.memorize_app"
+        applicationId = "com.memorize.me"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -31,11 +55,30 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (shouldConfigureReleaseSigning) {
+            create("release") {
+                keyAlias = releaseKeystoreProperty("keyAlias")
+                keyPassword = releaseKeystoreProperty("keyPassword")
+                val releaseStoreFile = file(releaseKeystoreProperty("storeFile"))
+                require(releaseStoreFile.exists()) {
+                    "Release keystore file not found: ${releaseStoreFile.absolutePath}"
+                }
+                storeFile = releaseStoreFile
+                storePassword = releaseKeystoreProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (shouldConfigureReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            } else if (isReleaseBuildRequested) {
+                throw GradleException(
+                    "Missing android/key.properties. Run android/setup_release_signing.ps1 or copy android/key.properties.example."
+                )
+            }
         }
     }
 }

@@ -16,6 +16,7 @@ enum AiProvider {
   together,
   fireworks,
   customOpenAI,
+  zAi,
 }
 
 extension AiProviderInfo on AiProvider {
@@ -45,6 +46,8 @@ extension AiProviderInfo on AiProvider {
         return 'Fireworks AI';
       case AiProvider.customOpenAI:
         return 'Custom OpenAI Compatible';
+      case AiProvider.zAi:
+        return 'Z.AI';
     }
   }
 
@@ -74,6 +77,8 @@ extension AiProviderInfo on AiProvider {
         return 'Fireworks';
       case AiProvider.customOpenAI:
         return 'Custom';
+      case AiProvider.zAi:
+        return 'Z.AI';
     }
   }
 
@@ -83,6 +88,9 @@ extension AiProviderInfo on AiProvider {
     switch (this) {
       case AiProvider.gemini:
         return const [
+          'gemini-3.5-flash',
+          'gemini-3.1-flash-lite',
+          'gemini-3.1-pro-preview',
           'gemini-2.5-pro',
           'gemini-2.5-flash',
           'gemini-2.5-flash-lite',
@@ -115,6 +123,8 @@ extension AiProviderInfo on AiProvider {
         ];
       case AiProvider.openRouter:
         return const [
+          'deepseek/deepseek-chat-v3-0324:free',
+          'meta-llama/llama-3.3-70b-instruct:free',
           'openai/gpt-4o',
           'anthropic/claude-3.5-sonnet',
           'google/gemini-2.0-flash-001',
@@ -158,8 +168,64 @@ extension AiProviderInfo on AiProvider {
         ];
       case AiProvider.customOpenAI:
         return const [
+          'meta/llama-3.3-70b-instruct',
+          'nvidia/llama-3.3-nemotron-super-49b-v1.5',
+          'nvidia/llama-3.1-nemotron-70b-instruct',
+          'meta/llama-3.1-405b-instruct',
+          'meta/llama-3.1-70b-instruct',
           'custom-model',
         ];
+      case AiProvider.zAi:
+        return const [
+          'glm-4.7-flash',
+          'glm-5.1',
+          'glm-5',
+          'glm-5-turbo',
+          'glm-4.7',
+          'glm-4.7-flashx',
+          'glm-4.6',
+          'glm-4.5',
+          'glm-4.5-air',
+          'glm-4.5-flash',
+        ];
+    }
+  }
+
+  String costHintForModel(String model, {String? endpoint}) {
+    final normalizedModel = model.toLowerCase();
+    final normalizedEndpoint = endpoint?.toLowerCase() ?? '';
+
+    switch (this) {
+      case AiProvider.gemini:
+        if (normalizedModel.contains('pro-preview')) return '유료 모델';
+        return '무료 티어 가능';
+      case AiProvider.groq:
+        return '무료 플랜 가능';
+      case AiProvider.openRouter:
+        return normalizedModel.endsWith(':free') ? '무료 모델' : '요금 확인';
+      case AiProvider.customOpenAI:
+        if (normalizedEndpoint.contains('integrate.api.nvidia.com')) {
+          return 'NVIDIA 무료 크레딧 확인';
+        }
+        return '요금 확인';
+      case AiProvider.zAi:
+        if (normalizedModel == 'glm-4.7-flash' ||
+            normalizedModel == 'glm-4.5-flash') {
+          return '무료 모델';
+        }
+        if (normalizedModel == 'glm-5.1') {
+          return '한시적 무료 · 정책 확인';
+        }
+        return '요금 확인';
+      case AiProvider.openAI:
+      case AiProvider.anthropic:
+      case AiProvider.mistral:
+      case AiProvider.deepSeek:
+      case AiProvider.xAI:
+      case AiProvider.perplexity:
+      case AiProvider.together:
+      case AiProvider.fireworks:
+        return '요금 확인';
     }
   }
 
@@ -183,6 +249,8 @@ extension AiProviderInfo on AiProvider {
         return 'https://api.together.xyz/v1/chat/completions';
       case AiProvider.fireworks:
         return 'https://api.fireworks.ai/inference/v1/chat/completions';
+      case AiProvider.zAi:
+        return 'https://api.z.ai/api/paas/v4/chat/completions';
       case AiProvider.customOpenAI:
       case AiProvider.gemini:
       case AiProvider.anthropic:

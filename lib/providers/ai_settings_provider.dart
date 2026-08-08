@@ -142,6 +142,7 @@ class AiSettingsProvider extends ChangeNotifier {
       case AiProvider.together:
       case AiProvider.fireworks:
       case AiProvider.customOpenAI:
+      case AiProvider.zAi:
         return null;
     }
   }

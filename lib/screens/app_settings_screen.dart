@@ -4,10 +4,13 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/entitlement_provider.dart';
 import '../providers/theme_provider.dart';
 import '../themes/app_theme.dart';
+import '../widgets/ai_settings_card.dart';
 import '../widgets/glassmorphic_card.dart';
 import '../widgets/study_guide.dart';
+import 'onboarding_screen.dart';
 import 'tts_settings_screen.dart';
 
 class AppSettingsScreen extends StatefulWidget {
@@ -18,22 +21,37 @@ class AppSettingsScreen extends StatefulWidget {
 }
 
 class _AppSettingsScreenState extends State<AppSettingsScreen> {
+  bool _isAiSettingsExpanded = false;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(title: const Text('앱 설정'), automaticallyImplyLeading: true),
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: canPop ? AppBar(automaticallyImplyLeading: true) : null,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                '앱 설정',
+                style: theme.textTheme.displaySmall?.copyWith(
+                  fontSize: 29,
+                  height: 1.08,
+                  fontWeight: FontWeight.w900,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 18),
               _buildSectionTitle(theme, '계정'),
               const SizedBox(height: 12),
               _buildAuthSection(context),
+              const SizedBox(height: 12),
+              _buildFoundingStatus(context),
 
               const SizedBox(height: 24),
               _buildSectionTitle(theme, '디자인'),
@@ -44,7 +62,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               _buildSectionTitle(theme, '가이드'),
               const SizedBox(height: 12),
               GlassmorphicCard(
-                borderRadius: 28,
+                borderRadius: 14,
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
                   leading: const Icon(CupertinoIcons.question_circle_fill),
@@ -57,12 +75,32 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       ).push(MaterialPageRoute(builder: (_) => const StudyGuideScreen())),
                 ),
               ),
+              const SizedBox(height: 12),
+              GlassmorphicCard(
+                borderRadius: 14,
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  leading: const Icon(CupertinoIcons.book_fill),
+                  title: const Text('온보딩 다시 보기'),
+                  subtitle: const Text('앱의 주요 기능 소개를 다시 봅니다.'),
+                  trailing: const Icon(CupertinoIcons.right_chevron),
+                  onTap:
+                      () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder:
+                              (_) => OnboardingScreen(
+                                onFinished: () => Navigator.of(context).pop(),
+                              ),
+                        ),
+                      ),
+                ),
+              ),
 
               const SizedBox(height: 24),
               _buildSectionTitle(theme, '소리'),
               const SizedBox(height: 12),
               GlassmorphicCard(
-                borderRadius: 28,
+                borderRadius: 14,
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
                   leading: const Icon(CupertinoIcons.speaker_2_fill),
@@ -74,6 +112,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       ).push(MaterialPageRoute(builder: (_) => const TtsSettingsScreen())),
                 ),
               ),
+
+              const SizedBox(height: 24),
+              _buildAiSettingsExpansion(theme),
             ],
           ),
         ),
@@ -88,7 +129,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     if (authProvider.isLoading) return const Center(child: CircularProgressIndicator());
 
     return GlassmorphicCard(
-      borderRadius: 28,
+      borderRadius: 14,
       child: user != null ? _buildLoggedInUser(context, user) : _buildLoginButton(context),
     );
   }
@@ -131,7 +172,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   Widget _buildThemeSettingsSection(BuildContext context) {
     final themeNotifier = context.watch<ThemeNotifier>();
     return GlassmorphicCard(
-      borderRadius: 28,
+      borderRadius: 14,
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Column(
         children: [
@@ -182,6 +223,86 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildFoundingStatus(BuildContext context) {
+    final theme = Theme.of(context);
+    final entitlement = context.watch<EntitlementProvider>();
+    final registered = entitlement.isFoundingMember && entitlement.isServerConfirmed;
+
+    return GlassmorphicCard(
+      borderRadius: 14,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(
+          registered ? CupertinoIcons.rosette : CupertinoIcons.clock,
+          color: registered ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+        ),
+        title: Text(
+          registered ? 'Founding 혜택 등록 완료' : 'Founding 혜택 등록 준비 중',
+          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          registered
+              ? '향후 추가되는 유료 기능도 무료로 이용할 수 있습니다.'
+              : '네트워크 연결 후 자동으로 등록합니다. Google 로그인 시 기기 변경 후에도 혜택을 복원할 수 있습니다.',
+        ),
+        trailing:
+            entitlement.loading
+                ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                : registered
+                ? Icon(CupertinoIcons.check_mark_circled_solid, color: theme.colorScheme.primary)
+                : IconButton(
+                  tooltip: '다시 확인',
+                  onPressed: entitlement.refresh,
+                  icon: const Icon(CupertinoIcons.refresh),
+                ),
+      ),
+    );
+  }
+
+  Widget _buildAiSettingsExpansion(ThemeData theme) {
+    return Column(
+      children: [
+        GlassmorphicCard(
+          borderRadius: 14,
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+            leading: const Icon(CupertinoIcons.sparkles),
+            title: Text(
+              'AI 모델과 API',
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            subtitle: const Text('사용할 AI와 API 키, 자동 대체 후보를 관리합니다.'),
+            trailing: AnimatedRotation(
+              turns: _isAiSettingsExpanded ? 0.5 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: const Icon(CupertinoIcons.chevron_down),
+            ),
+            onTap:
+                () => setState(() {
+                  _isAiSettingsExpanded = !_isAiSettingsExpanded;
+                }),
+          ),
+        ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          child:
+              _isAiSettingsExpanded
+                  ? const Padding(
+                    key: ValueKey('ai-settings-expanded'),
+                    padding: EdgeInsets.only(top: 12),
+                    child: AiSettingsCard(),
+                  )
+                  : const SizedBox.shrink(key: ValueKey('ai-settings-collapsed')),
+        ),
+      ],
     );
   }
 

@@ -1,0 +1,46 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function foundingEnrollmentOpen() {
+      return exists(/databases/$(database)/documents/system/commercialization)
+        && get(/databases/$(database)/documents/system/commercialization).data.foundingEnrollmentOpen == true;
+    }
+
+    match /system/commercialization {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /entitlements/{uid} {
+      allow read: if isOwner(uid);
+
+      allow create: if isOwner(uid)
+        && foundingEnrollmentOpen()
+        && request.resource.data.keys().hasOnly([
+          'plan',
+          'foundingMember',
+          'claimedAt',
+          'source',
+          'schemaVersion'
+        ])
+        && request.resource.data.plan == 'founding'
+        && request.resource.data.foundingMember == true
+        && request.resource.data.claimedAt == request.time
+        && request.resource.data.source == 'launch_founding_program'
+        && request.resource.data.schemaVersion == 1;
+
+      // Paid entitlements are written later by the billing backend or Firebase Console.
+      allow update: if false;
+      allow delete: if isOwner(uid);
+    }
+  }
+}

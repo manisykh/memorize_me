@@ -35,19 +35,24 @@ class LearningModeCard extends StatelessWidget {
           type: MaterialType.transparency,
           child: Container(
             constraints: const BoxConstraints(minHeight: 138),
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: colorScheme.outline.withValues(alpha: 0.45)),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  theme.colorScheme.surface,
+                  Color.alphaBlend(color.withValues(alpha: 0.055), theme.colorScheme.surface),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: color.withValues(alpha: 0.22)),
               boxShadow: [
                 BoxShadow(
-                  color: colorScheme.shadow.withValues(
-                    alpha:
-                      theme.brightness == Brightness.dark ? 0.22 : 0.06,
-                  ),
-                  blurRadius: 24,
-                  offset: const Offset(0, 14),
+                  color: color.withValues(alpha: theme.brightness == Brightness.dark ? 0.18 : 0.10),
+                  blurRadius: 18,
+                  spreadRadius: -12,
+                  offset: const Offset(0, 10),
                 ),
               ],
             ),
@@ -59,7 +64,7 @@ class LearningModeCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
+                    color: color.withValues(alpha: 0.13),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(icon, color: color, size: 24),

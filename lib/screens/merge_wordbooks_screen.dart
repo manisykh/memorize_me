@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../models/wordbook_model.dart';
 import '../providers/wordbook_manager.dart';
 
@@ -12,51 +13,151 @@ class MergeWordbooksScreen extends StatefulWidget {
 
 class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
   final Set<int> _selectedWordbookIds = {};
+  bool _isMerging = false;
 
   Future<void> _onMerge() async {
+    final manager = context.read<WordbookManager>();
+    final messenger = ScaffoldMessenger.of(context);
+
     if (_selectedWordbookIds.length < 2) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('병합하려면 2개 이상의 단어장을 선택해주세요.')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('병합하려면 2개 이상의 단어장을 선택해주세요.')),
+      );
       return;
     }
 
-    final nameController = TextEditingController();
+    final selectedIds = Set<int>.from(_selectedWordbookIds);
+    var draftName = '';
     final newName = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('새 단어장 이름 입력'),
+          title: const Text('새 단어장 이름'),
           content: TextField(
-            controller: nameController,
             decoration: const InputDecoration(
-              labelText: '새 단어장 이름',
+              labelText: '단어장 이름',
               hintText: '병합된 단어장의 이름을 입력하세요',
             ),
             autofocus: true,
             textInputAction: TextInputAction.done,
-            onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+            onChanged: (value) => draftName = value,
+            onSubmitted:
+                (value) => _popDialogAfterUnfocus<String>(dialogContext, value.trim()),
           ),
           actions: [
             TextButton(
               child: const Text('취소'),
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () => _popDialogAfterUnfocus<String>(dialogContext),
             ),
             FilledButton(
               child: const Text('병합'),
-              onPressed: () => Navigator.pop(dialogContext, nameController.text.trim()),
+              onPressed:
+                  () => _popDialogAfterUnfocus<String>(
+                    dialogContext,
+                    draftName.trim(),
+                  ),
             ),
           ],
         );
       },
     );
-    nameController.dispose();
+
+    await Future<void>.delayed(Duration.zero);
     if (!mounted || newName == null || newName.isEmpty) return;
-    context.read<WordbookManager>().mergeWordbooks(
-      _selectedWordbookIds,
-      newName,
-      context,
+
+    setState(() => _isMerging = true);
+    MergeWordbooksResult result;
+    try {
+      result = await manager.mergeWordbooks(selectedIds, newName);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isMerging = false);
+      messenger.showSnackBar(SnackBar(content: Text('단어장 병합 중 오류가 발생했습니다: $error')));
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _isMerging = false);
+
+    final deleteOriginals = await _confirmDeleteOriginals(result);
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
+
+    if (deleteOriginals == true) {
+      setState(() => _isMerging = true);
+      try {
+        for (final wordbook in result.sourceWordbooks) {
+          await manager.deleteWordbook(wordbook);
+        }
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              "'${result.createdWordbook.name}' 병합 완료. 기존 단어장 ${result.sourceWordbooks.length}개를 삭제했습니다.",
+            ),
+          ),
+        );
+        setState(() => _selectedWordbookIds.clear());
+      } catch (error) {
+        if (!mounted) return;
+        messenger.showSnackBar(SnackBar(content: Text('기존 단어장 삭제 중 오류가 발생했습니다: $error')));
+      } finally {
+        if (mounted) setState(() => _isMerging = false);
+      }
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            "'${result.createdWordbook.name}' 병합 완료. ${result.mergedWordCount}개 단어를 담았습니다.",
+          ),
+        ),
+      );
+      setState(() => _selectedWordbookIds.clear());
+    }
+  }
+
+  Future<bool?> _confirmDeleteOriginals(MergeWordbooksResult result) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        final duplicateText =
+            result.duplicateSkippedCount > 0
+                ? '\n중복 단어 ${result.duplicateSkippedCount}개는 제외했습니다.'
+                : '';
+        return AlertDialog(
+          title: const Text('병합 완료'),
+          content: Text(
+            "'${result.createdWordbook.name}' 단어장이 생성되었습니다.\n"
+            '${result.sourceWordbooks.length}개 단어장에서 ${result.mergedWordCount}개 단어를 가져왔습니다.'
+            '$duplicateText\n\n'
+            '병합에 사용한 기존 단어장들을 삭제할까요?',
+          ),
+          actions: [
+            TextButton(
+              child: const Text('유지'),
+              onPressed: () => _popDialogAfterUnfocus<bool>(dialogContext, false),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: theme.colorScheme.error,
+                foregroundColor: theme.colorScheme.onError,
+              ),
+              child: const Text('삭제'),
+              onPressed: () => _popDialogAfterUnfocus<bool>(dialogContext, true),
+            ),
+          ],
+        );
+      },
     );
+  }
+
+  void _popDialogAfterUnfocus<T>(BuildContext dialogContext, [T? result]) {
+    FocusScope.of(dialogContext).unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!dialogContext.mounted) return;
+      Navigator.of(dialogContext).pop<T>(result);
+    });
   }
 
   @override
@@ -73,29 +174,52 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
                 itemCount: wordbooks.length,
                 itemBuilder: (context, index) {
                   final wordbook = wordbooks[index];
+                  final id = wordbook.id;
                   return CheckboxListTile(
                     title: Text(wordbook.name),
-                    subtitle: Text(
-                      wordbook.source == WordbookSource.googleSheet ? 'Google 시트' : '로컬 파일',
-                    ),
-                    value: _selectedWordbookIds.contains(wordbook.id),
-                    onChanged: (isSelected) {
-                      setState(() {
-                        if (isSelected == true) {
-                          _selectedWordbookIds.add(wordbook.id!);
-                        } else {
-                          _selectedWordbookIds.remove(wordbook.id!);
-                        }
-                      });
-                    },
+                    subtitle: Text(_sourceLabel(wordbook.source)),
+                    value: id != null && _selectedWordbookIds.contains(id),
+                    onChanged:
+                        id == null || _isMerging
+                            ? null
+                            : (isSelected) {
+                              setState(() {
+                                if (isSelected == true) {
+                                  _selectedWordbookIds.add(id);
+                                } else {
+                                  _selectedWordbookIds.remove(id);
+                                }
+                              });
+                            },
                   );
                 },
               ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _onMerge,
-        label: Text('선택한 단어장 합치기 (${_selectedWordbookIds.length}개)'),
-        icon: const Icon(Icons.merge_type),
+        onPressed: _isMerging ? null : _onMerge,
+        label:
+            _isMerging
+                ? const Text('병합 중...')
+                : Text('선택한 단어장 합치기 (${_selectedWordbookIds.length}개)'),
+        icon:
+            _isMerging
+                ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                : const Icon(Icons.merge_type),
       ),
     );
+  }
+
+  String _sourceLabel(WordbookSource source) {
+    switch (source) {
+      case WordbookSource.googleSheet:
+        return 'Google 시트';
+      case WordbookSource.localCsv:
+        return '로컬 파일';
+      case WordbookSource.builtin:
+        return '기본 제공';
+    }
   }
 }

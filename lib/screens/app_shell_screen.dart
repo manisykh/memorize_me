@@ -8,14 +8,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
+import '../models/learning_route_origin.dart';
 import '../models/study_plan_model.dart';
+import '../providers/ai_settings_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/word_list_provider.dart';
 import '../providers/wordbook_manager.dart';
+import '../services/api_key_service.dart';
+import '../services/analytics_service.dart';
 import '../services/srs_service.dart';
 import '../themes/app_theme.dart';
-import '../widgets/ai_settings_card.dart';
 import '../widgets/glassmorphic_card.dart';
 import '../widgets/study_guide.dart';
 import 'ai_grammar_quiz_setup_screen.dart';
@@ -27,6 +30,9 @@ import 'srs_status_screen.dart';
 import 'wordbook_management_screen.dart';
 
 enum _ShellTab { home, review, stats, ai, settings }
+
+const bool _showStatsMetricCards = false;
+const bool _showDeckSecondaryMetrics = false;
 
 class _ShellPalette {
   final Color background;
@@ -79,35 +85,51 @@ class _ShellPalette {
     }
 
     if (isVision) {
-      return const _ShellPalette(
-        background: Color(0xFFF9F2E5),
-        topBar: Color(0xFFFFF8ED),
-        iconSurface: Color(0xFFF0E2CC),
-        navBackground: Color(0xFFFBF6EC),
-        navIndicator: Color(0xFFF0E2CC),
-        border: Color(0xFFE5D6BD),
-        brand: Color(0xFF8B4A32),
-        accent: Color(0xFFC76E40),
-        review: Color(0xFF5C8A6E),
-        info: Color(0xFFE08A52),
-        success: Color(0xFF5C8A6E),
-        warning: Color(0xFFD69A3F),
+      final background = theme.scaffoldBackgroundColor;
+      final topBar = Color.alphaBlend(
+        Colors.white.withValues(alpha: 0.50),
+        background,
+      );
+      final navBackground = Color.alphaBlend(
+        Colors.white.withValues(alpha: 0.42),
+        background,
+      );
+      final iconSurface = Color.alphaBlend(
+        const Color(0xFFE5D6BD).withValues(alpha: 0.62),
+        background,
+      );
+      return _ShellPalette(
+        background: background,
+        topBar: topBar,
+        iconSurface: iconSurface,
+        navBackground: navBackground,
+        navIndicator: iconSurface,
+        border: Color.alphaBlend(
+          const Color(0xFFE5D6BD).withValues(alpha: 0.72),
+          background,
+        ),
+        brand: const Color(0xFF8B4A32),
+        accent: const Color(0xFFC76E40),
+        review: const Color(0xFF5C8A6E),
+        info: const Color(0xFFE08A52),
+        success: const Color(0xFF5C8A6E),
+        warning: const Color(0xFFD69A3F),
       );
     }
 
     return const _ShellPalette(
-      background: Color(0xFFF7F7F7),
+      background: Color(0xFFFAFAFA),
       topBar: Color(0xFFFFFFFF),
-      iconSurface: Color(0xFFEFEFF1),
+      iconSurface: Color(0xFFEAF3EF),
       navBackground: Color(0xFFFFFFFF),
-      navIndicator: Color(0xFFF3E2D7),
-      border: Color(0xFFDCDCE0),
-      brand: Color(0xFF8B432B),
-      accent: Color(0xFFC8612C),
-      review: Color(0xFF5C8A6E),
-      info: Color(0xFFE37E3F),
-      success: Color(0xFF5C8A6E),
-      warning: Color(0xFFD69A3F),
+      navIndicator: Color(0xFFE4F0E8),
+      border: Color(0xFFDDE5E0),
+      brand: Color(0xFF2F5D50),
+      accent: Color(0xFFC86F3D),
+      review: Color(0xFF5E7F64),
+      info: Color(0xFFB77942),
+      success: Color(0xFF3F7A5A),
+      warning: Color(0xFFC49638),
     );
   }
 }
@@ -155,6 +177,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
   void _selectTab(int index) {
     final nextTab = _ShellTab.values[index];
     setState(() => _currentTab = nextTab);
+    context.read<AnalyticsService>().logTabViewed(nextTab.name);
     SharedPreferences.getInstance().then(
       (prefs) => prefs.setString(_lastShellTabKey, nextTab.name),
     );
@@ -346,7 +369,9 @@ class _AppShellScreenState extends State<AppShellScreen> {
     final theme = Theme.of(context);
     final palette = _ShellPalette.of(theme);
     final isDark = theme.brightness == Brightness.dark;
-    final currentTheme = context.watch<ThemeNotifier>().currentTheme;
+    final currentTheme = context.select<ThemeNotifier, AppThemeType>(
+      (notifier) => notifier.currentTheme,
+    );
     final manager = context.watch<WordbookManager>();
     if (_cachedStatsRevision != manager.statsRevision) {
       _deckStatsFutures.clear();
@@ -373,10 +398,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
     final learningScopeSubtitle = _learningScopeSubtitle(activeWordbook, activeStudyPlan);
 
     return Scaffold(
-      backgroundColor:
-          theme.scaffoldBackgroundColor == Colors.transparent
-              ? Colors.transparent
-              : palette.background,
+      backgroundColor: palette.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -467,20 +489,23 @@ class _AppShellScreenState extends State<AppShellScreen> {
               ),
             ),
             Expanded(
-              child: _buildCurrentTab(
-                manager: manager,
-                dailyPlan: dailyPlan,
-                fullDailyPlan: fullDailyPlan,
-                user: user,
-                activeWordbook: activeWordbook,
-                activeStudyPlan: activeStudyPlan,
-                plannedWordbookDbNames: plannedWordbookDbNames,
-                lockedNewWordCount: lockedNewWordCount,
-                plannedNewWordSessionCount: plannedNewWordSessionCount,
-                newWordSessionCount: newWordSessionCount,
-                routineWordCount: routineWordCount,
-                totalWordCount: words.length,
-                learningScopeSubtitle: learningScopeSubtitle,
+              child: ColoredBox(
+                color: palette.background,
+                child: _buildCurrentTab(
+                  manager: manager,
+                  dailyPlan: dailyPlan,
+                  fullDailyPlan: fullDailyPlan,
+                  user: user,
+                  activeWordbook: activeWordbook,
+                  activeStudyPlan: activeStudyPlan,
+                  plannedWordbookDbNames: plannedWordbookDbNames,
+                  lockedNewWordCount: lockedNewWordCount,
+                  plannedNewWordSessionCount: plannedNewWordSessionCount,
+                  newWordSessionCount: newWordSessionCount,
+                  routineWordCount: routineWordCount,
+                  totalWordCount: words.length,
+                  learningScopeSubtitle: learningScopeSubtitle,
+                ),
               ),
             ),
           ],
@@ -511,7 +536,7 @@ class _AppShellScreenState extends State<AppShellScreen> {
           surfaceTintColor: Colors.transparent,
           indicatorColor: palette.navIndicator,
           selectedIndex: _ShellTab.values.indexOf(_currentTab),
-          height: 72,
+          height: 76,
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           onDestinationSelected: _selectTab,
           destinations: const [
@@ -586,7 +611,10 @@ class _AppShellScreenState extends State<AppShellScreen> {
           learningScopeSubtitle: learningScopeSubtitle,
         );
       case _ShellTab.ai:
-        return _BloomAiLearningTab(learningScopeSubtitle: learningScopeSubtitle);
+        return _BloomAiLearningTab(
+          learningScopeSubtitle: learningScopeSubtitle,
+          onOpenSettings: () => _selectTab(_ShellTab.values.indexOf(_ShellTab.settings)),
+        );
       case _ShellTab.settings:
         return const AppSettingsScreen();
     }
@@ -920,7 +948,11 @@ class _HomeDashboardTab extends StatelessWidget {
               if (dailyPlan.hasReview) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.review),
+                    builder:
+                        (_) => const FlashcardScreen(
+                          initialMode: FlashcardLaunchMode.review,
+                          origin: LearningRouteOrigin.home,
+                        ),
                   ),
                 );
                 return;
@@ -928,13 +960,19 @@ class _HomeDashboardTab extends StatelessWidget {
               if (dailyPlan.hasNewWords) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.newWords),
+                    builder:
+                        (_) => const FlashcardScreen(
+                          initialMode: FlashcardLaunchMode.newWords,
+                          origin: LearningRouteOrigin.home,
+                        ),
                   ),
                 );
                 return;
               }
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+                MaterialPageRoute(
+                  builder: (_) => const FlashcardScreen(origin: LearningRouteOrigin.home),
+                ),
               );
             },
             child: GlassmorphicCard(
@@ -1088,35 +1126,64 @@ class _BloomHomeDashboardTabState extends State<_BloomHomeDashboardTab> {
             : 0;
     final estimatedMinutes = _estimatedMinutes(todayActionCount);
     final dashboardWordbooks = _prioritizeActiveWordbook(wordbooks, activeWordbook);
+    final hasActiveWordbook = activeWordbook != null;
     final actionTitle =
-        dailyPlan.hasReview
-            ? '오늘 복습 시작'
+        !hasActiveWordbook
+            ? '단어장 만들기'
+            : dailyPlan.hasReview
+            ? '복습 $reviewCount개 시작'
             : availableNewCount > 0 && newCount > 0
-            ? '새 단어 시작'
+            ? '새 단어 $newCount개 시작'
             : learningCount > 0
-            ? '플래시카드 점검'
+            ? '카드 $learningCount개 점검'
             : '전체 카드 보기';
     final actionSubtitle =
-        dailyPlan.hasReview
-            ? '복습 $reviewCount개 · 약 $estimatedMinutes분 소요'
+        !hasActiveWordbook
+            ? 'Google 시트 또는 CSV에서 가져오기'
+            : dailyPlan.hasReview
+            ? '예상 $estimatedMinutes분'
             : availableNewCount > 0 && newCount > 0
             ? _newWordActionSubtitle(newCount, widget.plannedNewWordSessionCount)
             : learningCount > 0
-            ? '학습 중 $learningCount개를 카드로 다시 확인'
-            : '오늘 남은 학습은 없습니다. 전체 카드를 천천히 확인';
+            ? '학습 중인 단어 확인'
+            : '전체 카드 확인';
+    final prescriptionTitle =
+        !hasActiveWordbook
+            ? '단어장을 추가하세요'
+            : dailyPlan.hasReview
+            ? '오늘 복습 $reviewCount개'
+            : availableNewCount > 0 && newCount > 0
+            ? '새 단어 $newCount개 시작'
+            : learningCount > 0
+            ? '학습 중 $learningCount개 확인'
+            : '오늘 학습 완료';
+    final prescriptionDescription =
+        !hasActiveWordbook
+            ? '단어장을 불러오면 복습과 새 단어 수를 계산합니다.'
+            : dailyPlan.hasReview
+            ? '복습일이 된 단어부터 처리합니다.'
+            : availableNewCount > 0 && newCount > 0
+            ? '오늘 시작할 새 단어만 표시합니다.'
+            : learningCount > 0
+            ? '복습일 전 단어를 카드로 확인합니다.'
+            : '필수 루틴이 비었습니다.';
 
     return SingleChildScrollView(
       key: const PageStorageKey<String>('bloom-home-dashboard-v2'),
-      padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _HomeLearningHero(
             userName: _firstName(widget.user?.displayName),
             remainingCount: remainingTodayFocus,
+            hasActiveWordbook: hasActiveWordbook,
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 14),
           _TodayLearningPanel(
+            prescriptionTitle: prescriptionTitle,
+            prescriptionDescription: prescriptionDescription,
+            hasActiveWordbook: hasActiveWordbook,
             reviewCount: reviewCount,
             newCount: newCount,
             learningCount: learningCount,
@@ -1124,11 +1191,14 @@ class _BloomHomeDashboardTabState extends State<_BloomHomeDashboardTab> {
             remainingCount: remainingTodayFocus,
             totalCount: todayPlanTotal,
             progress: todayProgress,
+            actionTitle: actionTitle,
+            actionSubtitle: actionSubtitle,
+            onActionTap: () => _startRecommendedLearning(context),
             palette: palette,
             onGuideTap: () => showStudyGuideSheet(context, StudyGuideCatalog.todayRoutine),
           ),
           if (widget.studyPlan != null) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             _StudyPlanStatusCard(
               plan: widget.studyPlan!,
               lockedNewWordCount: widget.lockedNewWordCount,
@@ -1139,36 +1209,7 @@ class _BloomHomeDashboardTabState extends State<_BloomHomeDashboardTab> {
               onGuideTap: () => showStudyGuideSheet(context, StudyGuideCatalog.studyPlan),
             ),
           ],
-          const SizedBox(height: 22),
-          _ContinueLearningCard(
-            title: actionTitle,
-            subtitle: actionSubtitle,
-            palette: palette,
-            onTap: () => _startRecommendedLearning(context),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: _StreakCard(
-                  streak: widget.studyDayStreak,
-                  palette: palette,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: _WeeklyGoalCard(
-                  completed: reviewedTodayCount,
-                  remaining: remainingTodayFocus,
-                  target: todayPlanTotal,
-                  palette: palette,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 22),
-          _buildTodayWordCard(palette),
-          const SizedBox(height: 26),
+          const SizedBox(height: 18),
           _SectionHeader(
             title: '단어장 현황',
             actionLabel: '전체 보기',
@@ -1191,10 +1232,20 @@ class _BloomHomeDashboardTabState extends State<_BloomHomeDashboardTab> {
   }
 
   void _startRecommendedLearning(BuildContext context) {
+    if (widget.activeWordbook == null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const WordbookManagementScreen()),
+      );
+      return;
+    }
     if (widget.dailyPlan.hasReview) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.review),
+          builder:
+              (_) => const FlashcardScreen(
+                initialMode: FlashcardLaunchMode.review,
+                origin: LearningRouteOrigin.home,
+              ),
         ),
       );
       return;
@@ -1202,19 +1253,27 @@ class _BloomHomeDashboardTabState extends State<_BloomHomeDashboardTab> {
     if (widget.dailyPlan.hasNewWords && widget.newWordSessionCount > 0) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.newWords),
+          builder:
+              (_) => const FlashcardScreen(
+                initialMode: FlashcardLaunchMode.newWords,
+                origin: LearningRouteOrigin.home,
+              ),
         ),
       );
       return;
     }
     if (widget.dailyPlan.learningWords.isNotEmpty) {
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+        MaterialPageRoute(
+          builder: (_) => const FlashcardScreen(origin: LearningRouteOrigin.home),
+        ),
       );
       return;
     }
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+      MaterialPageRoute(
+        builder: (_) => const FlashcardScreen(origin: LearningRouteOrigin.home),
+      ),
     );
   }
 
@@ -1327,28 +1386,32 @@ class _TodayWordCandidate {
 class _HomeLearningHero extends StatelessWidget {
   final String userName;
   final int remainingCount;
+  final bool hasActiveWordbook;
 
   const _HomeLearningHero({
     required this.userName,
     required this.remainingCount,
+    required this.hasActiveWordbook,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final focusMessage =
-        remainingCount == 0
-            ? '$userName님, 오늘 필수 학습은 모두 정리됐어요.'
-            : '$userName님, 남은 학습 $remainingCount개를 이어가세요.';
+        !hasActiveWordbook
+            ? '학습할 단어장을 추가하세요.'
+            : remainingCount == 0
+            ? '오늘 처리할 필수 학습이 없습니다.'
+            : '남은 학습 $remainingCount개';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '오늘의 학습',
+          '오늘 학습',
           style: theme.textTheme.displaySmall?.copyWith(
-            fontSize: 30,
-            height: 1.0,
+            fontSize: 29,
+            height: 1.08,
             fontWeight: FontWeight.w900,
             color: theme.colorScheme.onSurface,
           ),
@@ -1371,6 +1434,9 @@ class _HomeLearningHero extends StatelessWidget {
 }
 
 class _TodayLearningPanel extends StatelessWidget {
+  final String prescriptionTitle;
+  final String prescriptionDescription;
+  final bool hasActiveWordbook;
   final int reviewCount;
   final int newCount;
   final int learningCount;
@@ -1378,10 +1444,16 @@ class _TodayLearningPanel extends StatelessWidget {
   final int remainingCount;
   final int totalCount;
   final double progress;
+  final String actionTitle;
+  final String actionSubtitle;
+  final VoidCallback onActionTap;
   final _ShellPalette palette;
   final VoidCallback? onGuideTap;
 
   const _TodayLearningPanel({
+    required this.prescriptionTitle,
+    required this.prescriptionDescription,
+    required this.hasActiveWordbook,
     required this.reviewCount,
     required this.newCount,
     required this.learningCount,
@@ -1389,6 +1461,9 @@ class _TodayLearningPanel extends StatelessWidget {
     required this.remainingCount,
     required this.totalCount,
     required this.progress,
+    required this.actionTitle,
+    required this.actionSubtitle,
+    required this.onActionTap,
     required this.palette,
     this.onGuideTap,
   });
@@ -1399,122 +1474,272 @@ class _TodayLearningPanel extends StatelessWidget {
     final progressPercent = (progress * 100).round();
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(34),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            palette.accent.withValues(alpha: 0.13),
-            palette.review.withValues(alpha: 0.08),
-            palette.iconSurface.withValues(alpha: 0.92),
+            const Color(0xFFFFFCF6),
+            palette.iconSurface.withValues(alpha: 0.72),
+            const Color(0xFFFFF7EE),
           ],
         ),
-        border: Border.all(color: palette.border.withValues(alpha: 0.62)),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.border.withValues(alpha: 0.86)),
         boxShadow: [
           BoxShadow(
-            color: palette.accent.withValues(alpha: 0.12),
-            blurRadius: 32,
-            offset: const Offset(0, 18),
+            color: palette.brand.withValues(alpha: theme.brightness == Brightness.dark ? 0.20 : 0.10),
+            blurRadius: 24,
+            spreadRadius: -14,
+            offset: const Offset(0, 16),
           ),
         ],
       ),
       child: Column(
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _LearningMetricBubble(
-                  label: '복습',
-                  value: '$reviewCount',
-                  helper: '오늘 다시 볼 단어',
-                  icon: CupertinoIcons.arrow_2_circlepath_circle_fill,
-                  accentColor: palette.accent,
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: palette.brand,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: palette.brand.withValues(alpha: 0.22),
+                      blurRadius: 16,
+                      spreadRadius: -8,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  CupertinoIcons.checkmark_square,
+                  color: Colors.white,
+                  size: 24,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 14),
               Expanded(
-                child: _LearningMetricBubble(
-                  label: '새 단어',
-                  value: '$newCount',
-                  helper: '오늘 새로 시작',
-                  icon: CupertinoIcons.sparkles,
-                  accentColor: palette.brand,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _LearningMetricBubble(
-                  label: '학습 중',
-                  value: '$learningCount',
-                  helper: '복습일 대기',
-                  icon: CupertinoIcons.book_fill,
-                  accentColor: palette.review,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            prescriptionTitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontSize: 19,
+                              color: theme.colorScheme.onSurface,
+                              fontWeight: FontWeight.w900,
+                              height: 1.22,
+                            ),
+                          ),
+                        ),
+                        if (onGuideTap != null) ...[
+                          const SizedBox(width: 6),
+                          _InlineGuideButton(onTap: onGuideTap!),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      prescriptionDescription,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                        height: 1.36,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Text(
-                '오늘 처리 현황',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontSize: 14,
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w800,
+          const SizedBox(height: 14),
+          InkWell(
+            onTap: onActionTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 62),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    palette.brand,
+                    Color.lerp(palette.brand, palette.accent, 0.22)!,
+                  ],
                 ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: palette.brand.withValues(alpha: 0.22),
+                    blurRadius: 18,
+                    spreadRadius: -10,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
-              if (onGuideTap != null) ...[
-                const SizedBox(width: 4),
-                _InlineGuideButton(onTap: onGuideTap!),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.96),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(CupertinoIcons.play_fill, color: palette.brand, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          actionTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          actionSubtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.84),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Icon(
+                    CupertinoIcons.chevron_right,
+                    color: Colors.white.withValues(alpha: 0.88),
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          if (hasActiveWordbook) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _LearningMetricBubble(
+                    label: '복습',
+                    value: '$reviewCount',
+                    helper: '오늘 다시 볼 단어',
+                    icon: CupertinoIcons.arrow_2_circlepath_circle_fill,
+                    accentColor: palette.accent,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _LearningMetricBubble(
+                    label: '새 단어',
+                    value: '$newCount',
+                    helper: '오늘 새로 시작',
+                    icon: CupertinoIcons.plus_circle_fill,
+                    accentColor: palette.brand,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _LearningMetricBubble(
+                    label: '학습 중',
+                    value: '$learningCount',
+                    helper: '복습일 대기',
+                    icon: CupertinoIcons.book_fill,
+                    accentColor: palette.review,
+                  ),
+                ),
               ],
-              const Spacer(),
-              Text(
-                remainingCount == 0 ? '완료' : '남음 $remainingCount',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontSize: 15,
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Text(
+                  '오늘 목표 완료율',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontSize: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  remainingCount == 0 ? '완료' : '남음 $remainingCount',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontSize: 15,
+                    color: palette.accent,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '$progressPercent%',
+                style: theme.textTheme.labelSmall?.copyWith(
                   color: palette.accent,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              '$progressPercent%',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: palette.accent,
-                fontWeight: FontWeight.w900,
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 8,
+                backgroundColor: palette.iconSurface.withValues(alpha: 0.86),
+                valueColor: AlwaysStoppedAnimation<Color>(palette.accent),
               ),
             ),
-          ),
-          const SizedBox(height: 9),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 10,
-              backgroundColor: palette.iconSurface.withValues(alpha: 0.86),
-              valueColor: AlwaysStoppedAnimation<Color>(palette.accent),
+            const SizedBox(height: 6),
+            Text(
+              totalCount == 0
+                  ? '오늘 꼭 처리해야 할 복습과 새 단어가 없습니다.'
+                  : '오늘 완료 $completedCount개 · 지금 남은 학습 $remainingCount개',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            totalCount == 0
-                ? '오늘 꼭 처리해야 할 복습과 새 단어가 없습니다.'
-                : '오늘 완료 $completedCount개 · 지금 남은 학습 $remainingCount개',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-              height: 1.35,
+          ] else
+            Text(
+              '단어장을 준비하면 오늘 복습, 새 단어, 학습 중 상태가 여기에 표시됩니다.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1540,11 +1765,11 @@ class _LearningMetricBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      constraints: const BoxConstraints(minHeight: 104),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
+      constraints: const BoxConstraints(minHeight: 86),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 9),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: accentColor.withValues(alpha: 0.13)),
       ),
       child: Column(
@@ -1574,7 +1799,7 @@ class _LearningMetricBubble extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.headlineSmall?.copyWith(
-              fontSize: 24,
+              fontSize: 21,
               fontWeight: FontWeight.w900,
               color: theme.colorScheme.onSurface,
             ),
@@ -1725,7 +1950,7 @@ class _StudyPlanStatusCard extends StatelessWidget {
           Text(
             isAdjusted
                 ? '복습 부담이 커서 새 단어를 줄였어요 · 열린 새 단어 $availableNewWordCount개'
-                : '일정상 열린 단어 $unlocked/${plan.totalWords}개 · 아직 잠긴 단어 $lockedNewWordCount개',
+                : '열림 $unlocked/${plan.totalWords} · 잠김 $lockedNewWordCount',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
@@ -2534,7 +2759,7 @@ class _WordbookStatusPager extends StatefulWidget {
 }
 
 class _WordbookStatusPagerState extends State<_WordbookStatusPager> {
-  static const double _statusCardHeight = 344.0;
+  static const double _statusCardHeight = 272.0;
 
   late final PageController _pageController;
   int _currentPage = 0;
@@ -2680,8 +2905,8 @@ class _WordbookStatusSlide extends StatelessWidget {
     final manager = context.read<WordbookManager>();
 
     return GlassmorphicCard(
-      padding: const EdgeInsets.fromLTRB(16, 15, 16, 12),
-      borderRadius: 24,
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+      borderRadius: 20,
       onTap: () async {
         await manager.setActiveWordbook(wordbook);
         if (!context.mounted) return;
@@ -2709,11 +2934,11 @@ class _WordbookStatusSlide extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    width: 42,
-                    height: 42,
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
                       color: palette.iconSurface,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: palette.border.withValues(alpha: 0.72)),
                     ),
                     child: Icon(
@@ -2787,7 +3012,7 @@ class _WordbookStatusSlide extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 6),
               Text(
                 stats?.isPlanScoped == true ? '안정 기억 단계 / 현재 플랜 기준' : '안정 기억 단계 / 전체 단어 기준',
                 maxLines: 1,
@@ -2802,10 +3027,10 @@ class _WordbookStatusSlide extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
                 child:
                     stats == null
-                        ? const LinearProgressIndicator(minHeight: 10)
+                        ? const LinearProgressIndicator(minHeight: 8)
                         : LinearProgressIndicator(
                           value: masteryRatio.clamp(0.0, 1.0),
-                          minHeight: 10,
+                          minHeight: 8,
                           backgroundColor: palette.iconSurface,
                           valueColor: AlwaysStoppedAnimation<Color>(palette.success),
                         ),
@@ -2819,9 +3044,9 @@ class _WordbookStatusSlide extends StatelessWidget {
                   palette: palette,
                 ),
               ],
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               _MemoryDistributionBar(stats: stats),
-              const SizedBox(height: 9),
+              const SizedBox(height: 6),
               Row(
                 children: [
                   Expanded(
@@ -2841,6 +3066,7 @@ class _WordbookStatusSlide extends StatelessWidget {
                   ),
                 ],
               ),
+              if (_showDeckSecondaryMetrics) ...[
               const SizedBox(height: 7),
               Row(
                 children: [
@@ -2861,6 +3087,7 @@ class _WordbookStatusSlide extends StatelessWidget {
                   ),
                 ],
               ),
+              ],
             ],
           );
         },
@@ -3116,33 +3343,55 @@ class _EmptyWordbookStatusCard extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = _ShellPalette.of(theme);
     return GlassmorphicCard(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: palette.iconSurface,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(CupertinoIcons.tray, color: palette.brand),
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: palette.iconSurface,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(CupertinoIcons.tray, color: palette.brand),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '첫 단어장이 필요합니다',
+                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Google 시트나 CSV 파일에서 단어를 가져오면 오늘 루틴을 바로 시작할 수 있습니다.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              '불러온 단어장이 없습니다.',
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const WordbookManagementScreen()),
+                );
+              },
+              icon: const Icon(CupertinoIcons.plus_circle_fill),
+              label: const Text('단어장 만들기'),
             ),
-          ),
-          IconButton(
-            tooltip: '단어장 관리',
-            icon: const Icon(CupertinoIcons.chevron_right),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const WordbookManagementScreen()),
-              );
-            },
           ),
         ],
       ),
@@ -3716,20 +3965,18 @@ class _BloomReviewTab extends _ReviewTab {
         dailyPlan.dueWords
             .where((word) => word.incorrectCount > 0 || word.correctStreak == 0)
             .length;
+    const showReviewSummaryCards = false;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _TabIntroHeader(
-            eyebrow: 'STUDY FLOW',
             title: '복습',
             subtitle: '$learningScopeSubtitle 기준으로 오늘 필요한 복습과 테스트를 시작합니다.',
-            icon: CupertinoIcons.play_circle_fill,
-            palette: palette,
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 16),
           _ContinueLearningCard(
             title:
                 dailyPlan.hasReview
@@ -3748,7 +3995,11 @@ class _BloomReviewTab extends _ReviewTab {
               if (dailyPlan.hasReview) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.review),
+                    builder:
+                        (_) => const FlashcardScreen(
+                          initialMode: FlashcardLaunchMode.review,
+                          origin: LearningRouteOrigin.review,
+                        ),
                   ),
                 );
                 return;
@@ -3756,17 +4007,24 @@ class _BloomReviewTab extends _ReviewTab {
               if (hasTodayNewWords) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const FlashcardScreen(initialMode: FlashcardLaunchMode.newWords),
+                    builder:
+                        (_) => const FlashcardScreen(
+                          initialMode: FlashcardLaunchMode.newWords,
+                          origin: LearningRouteOrigin.review,
+                        ),
                   ),
                 );
                 return;
               }
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+                MaterialPageRoute(
+                  builder: (_) => const FlashcardScreen(origin: LearningRouteOrigin.review),
+                ),
               );
             },
           ),
-          const SizedBox(height: 22),
+          if (showReviewSummaryCards) ...[
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
@@ -3793,7 +4051,8 @@ class _BloomReviewTab extends _ReviewTab {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          ],
+          const SizedBox(height: 14),
           _SectionHeader(
             title: '학습 방식',
             actionLabel: 'SRS',
@@ -3811,19 +4070,21 @@ class _BloomReviewTab extends _ReviewTab {
             accentColor: palette.brand,
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+                MaterialPageRoute(
+                  builder: (_) => const FlashcardScreen(origin: LearningRouteOrigin.review),
+                ),
               );
             },
           ),
           const SizedBox(height: 12),
           _BloomFeatureCard(
             title: '셀프 테스트',
-            subtitle: '객관식과 스펠링 테스트로 바로 떠오르는지 확인합니다.',
+            subtitle: '객관식과 스펠링으로 점검합니다.',
             icon: CupertinoIcons.pencil_outline,
             accentColor: palette.info,
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const QuizScreen()),
+                MaterialPageRoute(builder: (_) => const QuizScreen(origin: LearningRouteOrigin.review)),
               );
             },
           ),
@@ -3834,7 +4095,7 @@ class _BloomReviewTab extends _ReviewTab {
                 reviewCount == 0
                     ? '틀린 단어가 복습일에 도달하면 활성화됩니다.'
                     : weakReviewCount == 0
-                    ? '복습 대기 $reviewCount개를 다시 확인합니다.'
+                    ? '$reviewCount개를 다시 점검합니다.'
                     : '오답 이력 단어 $weakReviewCount개를 포함해 복습합니다.',
             icon: CupertinoIcons.arrow_2_circlepath_circle_fill,
             accentColor: palette.warning,
@@ -3849,14 +4110,18 @@ class _BloomReviewTab extends _ReviewTab {
     if (reviewCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('오답 복습은 틀린 단어가 다시 복습 대기로 들어왔을 때 시작할 수 있습니다.'),
+          content: Text('오답 복습은 틀린 단어가 다시 복습 대상이 되면 시작할 수 있습니다.'),
         ),
       );
       return;
     }
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => const QuizScreen(initialMode: QuizMode.reviewSpelling),
+        builder:
+            (_) => const QuizScreen(
+              initialMode: QuizMode.reviewSpelling,
+              origin: LearningRouteOrigin.review,
+            ),
       ),
     );
   }
@@ -3905,25 +4170,22 @@ class _BloomStatsTabState extends State<_BloomStatsTab> {
     final scopeLabel = usePlanScope ? '현재 플랜' : '전체 단어장';
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _TabIntroHeader(
-            eyebrow: 'MEMORY PULSE',
             title: '통계',
             subtitle: '$scopeLabel · ${widget.learningScopeSubtitle}',
-            icon: CupertinoIcons.chart_bar_alt_fill,
-            palette: palette,
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 16),
           if (hasPlan) ...[
             _StatsScopeSwitch(
               usePlanScope: usePlanScope,
               onChanged: (value) => setState(() => _showPlanScope = value),
               palette: palette,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
           ],
           if (usePlanScope) ...[
             _PlanStatsSummaryCard(
@@ -3934,7 +4196,7 @@ class _BloomStatsTabState extends State<_BloomStatsTab> {
               newWordSessionCount: widget.newWordSessionCount,
               palette: palette,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
           ],
           _MasteryOverviewCard(
             progress: mastery,
@@ -3942,7 +4204,8 @@ class _BloomStatsTabState extends State<_BloomStatsTab> {
             matureCount: matureCount,
             palette: palette,
           ),
-          const SizedBox(height: 22),
+          if (_showStatsMetricCards) ...[
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
@@ -3990,13 +4253,14 @@ class _BloomStatsTabState extends State<_BloomStatsTab> {
               ),
             ],
           ),
-          const SizedBox(height: 22),
+          ],
+          const SizedBox(height: 14),
           _BloomFeatureCard(
             title: usePlanScope ? '플랜 기준 SRS 현황' : 'SRS 학습 현황',
             subtitle:
                 usePlanScope
-                    ? '잠긴 단어를 제외하고 열린 플랜 단어만 자세히 확인합니다.'
-                    : '예정 복습, 단계별 분포, 세부 상태를 더 자세히 확인합니다.',
+                    ? '열린 플랜 단어만 확인합니다.'
+                    : '복습 일정과 단계 분포를 봅니다.',
             icon: CupertinoIcons.chart_bar_alt_fill,
             accentColor: palette.info,
             onTap: () {
@@ -4154,7 +4418,7 @@ class _PlanStatsSummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            '열린 단어 $openedWordCount/${plan.totalWords}개 · 잠긴 단어 $lockedNewWordCount개',
+            '열림 $openedWordCount/${plan.totalWords} · 잠김 $lockedNewWordCount',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
@@ -4182,43 +4446,34 @@ class _PlanStatsSummaryCard extends StatelessWidget {
 
 class _BloomAiLearningTab extends _AiLearningTab {
   final String learningScopeSubtitle;
+  final VoidCallback onOpenSettings;
 
-  const _BloomAiLearningTab({required this.learningScopeSubtitle});
+  const _BloomAiLearningTab({
+    required this.learningScopeSubtitle,
+    required this.onOpenSettings,
+  });
 
   @override
   Widget build(BuildContext context) {
     final palette = _ShellPalette.of(Theme.of(context));
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _TabIntroHeader(
-            eyebrow: 'AI STUDY',
             title: 'AI 학습',
-            subtitle: '$learningScopeSubtitle 기준으로 예문과 문제를 생성합니다.',
-            icon: CupertinoIcons.sparkles,
-            palette: palette,
+            subtitle: '예문과 문제 생성을 관리합니다.',
           ),
-          const SizedBox(height: 22),
-          _AiLearningHeroCard(palette: palette),
-          const SizedBox(height: 22),
-          _BloomFeatureCard(
-            title: 'AI 퀴즈 생성',
-            subtitle: '단어장에 맞춘 개인화 문제로 기억을 점검합니다.',
-            icon: CupertinoIcons.sparkles,
-            accentColor: palette.review,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AiQuizSetupScreen()),
-              );
-            },
-          ),
+          const SizedBox(height: 16),
+          _AiReadinessCard(palette: palette, onOpenSettings: onOpenSettings),
           const SizedBox(height: 12),
+          _AiBetaSummaryCard(palette: palette),
+          const SizedBox(height: 18),
           _BloomFeatureCard(
-            title: 'AI 예문 생성',
-            subtitle: '단어장을 선택해 예문과 번역을 만들고 학습 자료에 연결합니다.',
+            title: '예문 생성',
+            subtitle: '예문과 번역을 채웁니다.',
             icon: CupertinoIcons.doc_text,
             accentColor: palette.info,
             onTap: () {
@@ -4234,8 +4489,20 @@ class _BloomAiLearningTab extends _AiLearningTab {
           ),
           const SizedBox(height: 12),
           _BloomFeatureCard(
-            title: 'AI 문법 체크',
-            subtitle: '문법 범위를 지정해 추가 연습 문제를 생성합니다.',
+            title: '퀴즈 생성',
+            subtitle: '단어장 맞춤 문제를 만듭니다.',
+            icon: CupertinoIcons.question_circle,
+            accentColor: palette.review,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AiQuizSetupScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _BloomFeatureCard(
+            title: '문법 문제 생성',
+            subtitle: '문법 범위별 문제를 만듭니다.',
             icon: CupertinoIcons.text_cursor,
             accentColor: palette.accent,
             onTap: () {
@@ -4244,29 +4511,408 @@ class _BloomAiLearningTab extends _AiLearningTab {
               );
             },
           ),
-          const SizedBox(height: 24),
-          const _SectionTitle(title: 'AI 설정'),
-          const SizedBox(height: 12),
-          const AiSettingsCard(),
         ],
       ),
     );
   }
 }
 
-class _TabIntroHeader extends StatelessWidget {
-  final String eyebrow;
-  final String title;
-  final String subtitle;
-  final IconData icon;
+class _AiBetaSummaryCard extends StatelessWidget {
   final _ShellPalette palette;
 
+  const _AiBetaSummaryCard({required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final aiSettings = context.watch<AiSettingsProvider>();
+    final fallbackText =
+        aiSettings.autoFallbackEnabled
+            ? '자동 대체 사용 시 여러 AI 제공자에 순차 요청될 수 있습니다.'
+            : '현재 선택한 AI 제공자에만 요청됩니다.';
+
+    return GlassmorphicCard(
+      borderRadius: 14,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: palette.warning.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              CupertinoIcons.exclamationmark_shield,
+              color: palette.warning,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AI 생성은 베타 기능입니다',
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '단어장과 생성 옵션이 외부 AI 제공자에게 전송됩니다. 생성된 문제와 해설은 사용 전 확인하세요. $fallbackText',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiReadinessCard extends StatelessWidget {
+  final _ShellPalette palette;
+  final VoidCallback onOpenSettings;
+
+  const _AiReadinessCard({
+    required this.palette,
+    required this.onOpenSettings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final aiSettings = context.watch<AiSettingsProvider>();
+    final apiKeyService = context.read<ApiKeyService>();
+
+    return FutureBuilder<Map<AiProvider, bool>>(
+      future: _loadRegisteredProviders(apiKeyService),
+      builder: (context, snapshot) {
+        final isCheckingApiKey = snapshot.connectionState == ConnectionState.waiting;
+        final registeredProviders = snapshot.data ?? const <AiProvider, bool>{};
+        final priorityOptions = _registeredPriorityOptions(aiSettings, registeredProviders);
+        final hasApiKey = !isCheckingApiKey && priorityOptions.isNotEmpty;
+        final fallbackCount = aiSettings.fallbackOrder.length;
+        final statusColor =
+            isCheckingApiKey
+                ? palette.info
+                : hasApiKey
+                ? palette.success
+                : palette.warning;
+        const showModelDetails = false;
+
+        return GlassmorphicCard(
+          borderRadius: 14,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      isCheckingApiKey
+                          ? CupertinoIcons.clock_fill
+                          : hasApiKey
+                          ? CupertinoIcons.check_mark_circled_solid
+                          : CupertinoIcons.exclamationmark_circle_fill,
+                      color: statusColor,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isCheckingApiKey
+                              ? 'AI 설정 확인 중'
+                              : hasApiKey
+                              ? '생성 준비 완료'
+                              : 'API 등록이 필요합니다',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          hasApiKey
+                              ? '등록된 모델 순서대로 실행합니다.'
+                              : '설정에서 API 키를 등록하세요.',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (showModelDetails) ...[
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildReadinessPill(
+                    theme: theme,
+                    icon: Icons.memory_rounded,
+                    label: '${aiSettings.selectedProvider.shortLabel} · ${aiSettings.selectedModel}',
+                    color: palette.info,
+                  ),
+                  _buildReadinessPill(
+                    theme: theme,
+                    icon:
+                        isCheckingApiKey
+                            ? CupertinoIcons.clock
+                            : hasApiKey
+                            ? CupertinoIcons.lock_shield_fill
+                            : CupertinoIcons.lock_slash,
+                    label:
+                        isCheckingApiKey
+                            ? 'API 키 확인 중'
+                            : hasApiKey
+                            ? 'API 키 등록됨'
+                            : 'API 키 필요',
+                    color: statusColor,
+                  ),
+                  _buildReadinessPill(
+                    theme: theme,
+                    icon: CupertinoIcons.arrow_2_circlepath,
+                    label:
+                        aiSettings.autoFallbackEnabled
+                            ? '자동 대체 ${fallbackCount}개'
+                            : '자동 대체 꺼짐',
+                    color:
+                        aiSettings.autoFallbackEnabled
+                            ? theme.colorScheme.tertiary
+                            : theme.colorScheme.outline,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _buildApiGuide(theme, hasApiKey: hasApiKey),
+              const SizedBox(height: 14),
+              _buildRegisteredPriorityList(
+                theme,
+                options: priorityOptions,
+                isChecking: isCheckingApiKey,
+              ),
+              ],
+              const SizedBox(height: 9),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onOpenSettings,
+                  icon: const Icon(Icons.tune_rounded, size: 18),
+                  label: const Text('설정 탭에서 AI 설정 관리'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<Map<AiProvider, bool>> _loadRegisteredProviders(ApiKeyService apiKeyService) async {
+    final result = <AiProvider, bool>{};
+    for (final provider in AiProvider.values) {
+      final apiKey = await apiKeyService.getApiKey(provider);
+      result[provider] = apiKey != null && apiKey.isNotEmpty;
+    }
+    return result;
+  }
+
+  List<AiRequestOption> _registeredPriorityOptions(
+    AiSettingsProvider aiSettings,
+    Map<AiProvider, bool> registeredProviders,
+  ) {
+    return aiSettings
+        .requestOptions(fallbackEnabled: aiSettings.autoFallbackEnabled)
+        .where((option) => registeredProviders[option.provider] ?? false)
+        .toList();
+  }
+
+  Widget _buildApiGuide(ThemeData theme, {required bool hasApiKey}) {
+    final color = hasApiKey ? palette.success : palette.warning;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            hasApiKey ? CupertinoIcons.checkmark_shield_fill : CupertinoIcons.lightbulb_fill,
+            size: 18,
+            color: color,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              hasApiKey
+                  ? '자동 대체를 켜면 오류 때 다음 모델로 이어집니다.'
+                  : 'AI 회사 선택 → 모델 선택 → API 키 등록 순서로 준비하세요.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegisteredPriorityList(
+    ThemeData theme, {
+    required List<AiRequestOption> options,
+    required bool isChecking,
+  }) {
+    if (isChecking) {
+      return Text(
+        '등록된 AI 모델을 확인하는 중입니다.',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+    }
+    if (options.isEmpty) {
+      return Text(
+        '등록된 모델이 없습니다.',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: palette.warning,
+          fontWeight: FontWeight.w800,
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '실행 순서',
+          style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
+        ...options.asMap().entries.map((entry) {
+          final index = entry.key;
+          final option = entry.value;
+          final isPrimary = index == 0;
+          final color = isPrimary ? palette.success : theme.colorScheme.tertiary;
+          return Padding(
+            padding: EdgeInsets.only(bottom: index == options.length - 1 ? 0 : 7),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: isPrimary ? 0.11 : 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: color.withValues(alpha: isPrimary ? 0.30 : 0.20)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.14),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${index + 1}',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${option.provider.shortLabel} · ${option.modelName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildReadinessPill({
+    required ThemeData theme,
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 230),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+}
+
+class _TabIntroHeader extends StatelessWidget {
+  final String title;
+  final String subtitle;
+
   const _TabIntroHeader({
-    required this.eyebrow,
     required this.title,
     required this.subtitle,
-    required this.icon,
-    required this.palette,
   });
 
   @override
@@ -4276,39 +4922,11 @@ class _TabIntroHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: palette.iconSurface,
-                shape: BoxShape.circle,
-                border: Border.all(color: palette.border.withValues(alpha: 0.68)),
-              ),
-              child: Icon(icon, color: palette.brand, size: 21),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                eyebrow,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: palette.brand,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.0,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
         Text(
           title,
           style: theme.textTheme.displaySmall?.copyWith(
-            fontSize: 30,
-            height: 1.04,
+            fontSize: 29,
+            height: 1.08,
             fontWeight: FontWeight.w900,
             color: theme.colorScheme.onSurface,
           ),
@@ -4452,7 +5070,7 @@ class _DecksSummaryPanel extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
@@ -4772,20 +5390,21 @@ class _BloomFeatureCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return GlassmorphicCard(
-      borderRadius: 28,
+      borderRadius: 18,
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
       onTap: onTap,
       child: Row(
         children: [
           Container(
-            width: 54,
-            height: 54,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               color: accentColor.withValues(alpha: 0.14),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: accentColor, size: 24),
+            child: Icon(icon, color: accentColor, size: 21),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4796,13 +5415,13 @@ class _BloomFeatureCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
-                    fontSize: 17,
+                    fontSize: 15,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
@@ -4813,7 +5432,7 @@ class _BloomFeatureCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Icon(CupertinoIcons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
         ],
       ),
@@ -4840,15 +5459,15 @@ class _MasteryOverviewCard extends StatelessWidget {
     final percent = (progress * 100).round();
 
     return GlassmorphicCard(
-      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
-      borderRadius: 32,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      borderRadius: 18,
       child: Column(
         children: [
           Text(
             '전체 암기율',
             style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             '안정 기억 단계 / 전체 단어',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -4856,23 +5475,23 @@ class _MasteryOverviewCard extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 8),
           SizedBox(
-            width: 156,
-            height: 156,
+            width: 82,
+            height: 82,
             child: Stack(
               fit: StackFit.expand,
               children: [
                 CircularProgressIndicator(
                   value: 1,
-                  strokeWidth: 10,
+                  strokeWidth: 6,
                   valueColor: AlwaysStoppedAnimation<Color>(
                     palette.iconSurface.withValues(alpha: 0.86),
                   ),
                 ),
                 CircularProgressIndicator(
                   value: progress,
-                  strokeWidth: 10,
+                  strokeWidth: 6,
                   strokeCap: StrokeCap.round,
                   valueColor: AlwaysStoppedAnimation<Color>(palette.review),
                 ),
@@ -4888,7 +5507,7 @@ class _MasteryOverviewCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
@@ -5097,7 +5716,11 @@ class _ReviewTab extends StatelessWidget {
                 dailyPlan.hasReview
                     ? () => Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const QuizScreen(initialMode: QuizMode.reviewSpelling),
+                        builder:
+                            (_) => const QuizScreen(
+                              initialMode: QuizMode.reviewSpelling,
+                              origin: LearningRouteOrigin.review,
+                            ),
                       ),
                     )
                     : null,
@@ -5111,18 +5734,26 @@ class _ReviewTab extends StatelessWidget {
             onTap:
                 () => Navigator.of(
                   context,
-                ).push(MaterialPageRoute(builder: (_) => const FlashcardScreen())),
+                ).push(
+                  MaterialPageRoute(
+                    builder: (_) => const FlashcardScreen(origin: LearningRouteOrigin.review),
+                  ),
+                ),
           ),
           const SizedBox(height: 12),
           _ActionCard(
             title: 'Self Test',
-            subtitle: '객관식과 스펠링 테스트를 한곳에서 시작합니다.',
+            subtitle: '객관식과 스펠링을 시작합니다.',
             icon: CupertinoIcons.pencil_outline,
             accentColor: palette.info,
             onTap:
                 () => Navigator.of(
                   context,
-                ).push(MaterialPageRoute(builder: (_) => const QuizScreen())),
+                ).push(
+                  MaterialPageRoute(
+                    builder: (_) => const QuizScreen(origin: LearningRouteOrigin.review),
+                  ),
+                ),
           ),
           const SizedBox(height: 12),
           _ActionCard(
@@ -5133,7 +5764,11 @@ class _ReviewTab extends StatelessWidget {
             onTap:
                 () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const QuizScreen(initialMode: QuizMode.reviewSpelling),
+                    builder:
+                        (_) => const QuizScreen(
+                          initialMode: QuizMode.reviewSpelling,
+                          origin: LearningRouteOrigin.review,
+                        ),
                   ),
                 ),
           ),
@@ -5165,26 +5800,26 @@ class _AiLearningTab extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '개인화 문제 생성과 문법 연습을 이곳에서 시작합니다.',
+            '예문, 퀴즈, 문법 연습을 시작합니다.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 16),
-          _ActionCard(
-            title: 'AI 퀴즈 생성',
-            subtitle: '개인화된 문제로 단어 기억을 더 입체적으로 확인합니다.',
-            icon: CupertinoIcons.sparkles,
-            accentColor: palette.success,
-            onTap:
-                () => Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (_) => const AiQuizSetupScreen())),
+          const SizedBox(height: 12),
+          _AiReadinessCard(
+            palette: palette,
+            onOpenSettings: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AppSettingsScreen()),
+              );
+            },
           ),
           const SizedBox(height: 12),
+          _AiBetaSummaryCard(palette: palette),
+          const SizedBox(height: 16),
           _ActionCard(
             title: 'AI 예문 생성',
-            subtitle: '단어장을 선택해 예문과 번역을 만들고 플래시카드, 시험지, AI 퀴즈에서 활용합니다.',
+            subtitle: '예문과 번역을 채웁니다.',
             icon: CupertinoIcons.doc_text,
             accentColor: palette.info,
             onTap:
@@ -5199,8 +5834,19 @@ class _AiLearningTab extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _ActionCard(
+            title: 'AI 퀴즈 생성',
+            subtitle: '단어장 맞춤 문제를 만듭니다.',
+            icon: CupertinoIcons.sparkles,
+            accentColor: palette.success,
+            onTap:
+                () => Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const AiQuizSetupScreen())),
+          ),
+          const SizedBox(height: 12),
+          _ActionCard(
             title: 'AI 문법 체크',
-            subtitle: '문법 범위를 지정해 추가 연습 문제를 생성합니다.',
+            subtitle: '문법 범위별 문제를 만듭니다.',
             icon: CupertinoIcons.text_cursor,
             accentColor: palette.accent,
             onTap:
@@ -5208,13 +5854,6 @@ class _AiLearningTab extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const AiGrammarQuizSetupScreen()),
                 ),
           ),
-          const SizedBox(height: 12),
-          Text(
-            'AI 설정',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 10),
-          const AiSettingsCard(),
         ],
       ),
     );
@@ -5286,7 +5925,7 @@ class _StatsTab extends StatelessWidget {
           const SizedBox(height: 18),
           _ActionCard(
             title: 'SRS 학습 현황',
-            subtitle: '예정 복습, 단계별 분포, 세부 상태를 더 자세히 확인합니다.',
+            subtitle: '복습 일정과 단계 분포를 봅니다.',
             icon: CupertinoIcons.chart_bar_alt_fill,
             accentColor: palette.info,
             onTap:

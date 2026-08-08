@@ -1,11 +1,11 @@
 {
-    "name": "memorize_app",
-    "short_name": "memorize_app",
+    "name": "Memorize Me",
+    "short_name": "Memorize Me",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "A vocabulary memorization app with wordbooks, quizzes, SRS review, Google Sheets import, and AI-assisted study tools.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

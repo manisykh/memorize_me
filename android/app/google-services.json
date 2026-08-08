@@ -1,35 +1,52 @@
 {
   "project_info": {
-    "project_number": "808697138874",
-    "project_id": "oceanic-sky-462706-t1",
-    "storage_bucket": "oceanic-sky-462706-t1.firebasestorage.app"
+    "project_number": "1089946281483",
+    "project_id": "memorize-me-71f4e",
+    "storage_bucket": "memorize-me-71f4e.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:808697138874:android:bb283a980a4ff0d1f13c83",
+        "mobilesdk_app_id": "1:1089946281483:android:56d00161cf98ce11e7490e",
         "android_client_info": {
-          "package_name": "com.example.memorize_app"
+          "package_name": "com.memorize.me"
         }
       },
       "oauth_client": [
         {
-          "client_id": "808697138874-94m39osib8h3v6d2rr95i4lrggualh5e.apps.googleusercontent.com",
+          "client_id": "1089946281483-6l28g4a3bosnsfokhklfnufnc7mekkkc.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.example.memorize_app",
+            "package_name": "com.memorize.me",
+            "certificate_hash": "da5a1eb6877a2277843b572ad49267da25d2901f"
+          }
+        },
+        {
+          "client_id": "1089946281483-hht7a4i1t4pe21st680duc3sdc298tis.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.memorize.me",
             "certificate_hash": "4f787f203173e494bcb7b5239ee5d98ebab352a0"
           }
+        },
+        {
+          "client_id": "1089946281483-hldj5kifp96d7nalv0e37obijthsmrv1.apps.googleusercontent.com",
+          "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyDVtnsLLzyotuSt26gj8ON5tG-JDIcgxGc"
+          "current_key": "AIzaSyAU-E6uBs82TYe_YK1hwfENtwjwTciepog"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1089946281483-5nu4bjsb01fdmcq63eoo48s8sfo30joq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
