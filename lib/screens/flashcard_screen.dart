@@ -1,10 +1,10 @@
 // lib/screens/flashcard_screen.dart
 
 import 'dart:math';
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flip_card/flip_card.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 
 import '../models/word_model.dart';
@@ -16,6 +16,7 @@ import '../providers/wordbook_manager.dart';
 import '../services/srs_service.dart';
 import '../services/analytics_service.dart';
 import '../services/tts_service.dart';
+import '../services/study_sound_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/glassmorphic_card.dart';
 import '../widgets/wordbook_selection_button.dart';
@@ -77,6 +78,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   bool _pendingInitialLaunch = true;
   bool _isEndingSession = false;
   bool _showEmptyDeckCompletion = false;
+  String? _revealedAdditionalMeaningKey;
 
   int get _recommendedNewWordSessionCount =>
       _wordbookManager.recommendedNewWordSessionCount(
@@ -154,6 +156,13 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     final word = _sessionWords[previousIndex];
     final difficulty =
         direction == CardSwiperDirection.right ? SrsDifficulty.good : SrsDifficulty.again;
+    unawaited(
+      context.read<StudySoundService>().play(
+        difficulty == SrsDifficulty.good
+            ? StudySoundEffect.knownSwipe
+            : StudySoundEffect.unknownSwipe,
+      ),
+    );
 
     final updatedWord = _srsService.updateWordSrs(
       word: word,
@@ -172,6 +181,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         _unknownCount++;
       }
       _currentCardIndex = currentIndex ?? _sessionWords.length;
+      _revealedAdditionalMeaningKey = null;
     });
     return true;
   }
@@ -189,6 +199,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         _unknownCount = max(0, _unknownCount - 1);
       }
       _currentCardIndex = currentIndex;
+      _revealedAdditionalMeaningKey = null;
     });
     return true;
   }
@@ -214,6 +225,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     _knownCount = 0;
     _isEndingSession = false;
     _showEmptyDeckCompletion = false;
+    _revealedAdditionalMeaningKey = null;
   }
 
   void _startSession({required bool srsOnly}) {
@@ -674,6 +686,9 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                                                   word: word,
                                                   isWordSide: showWordFirst,
                                                   overlayColor: overlayColor,
+                                                  showAdditionalMeanings:
+                                                      _revealedAdditionalMeaningKey ==
+                                                      _additionalMeaningKey(word),
                                                 );
 
                                                 final backWidget = _buildCardSurface(
@@ -681,10 +696,15 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                                                   word: word,
                                                   isWordSide: !showWordFirst,
                                                   overlayColor: overlayColor,
+                                                  showAdditionalMeanings:
+                                                      _revealedAdditionalMeaningKey ==
+                                                      _additionalMeaningKey(word),
                                                 );
 
-                                                return FlipCard(
-                                                  key: ValueKey(word.id),
+                                                return _ResponsiveFlipCard(
+                                                  key: ValueKey(
+                                                    '${word.id ?? word.word}-$showWordFirst',
+                                                  ),
                                                   front: frontWidget,
                                                   back: backWidget,
                                                 );
@@ -1280,6 +1300,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     required Word word,
     required bool isWordSide,
     required Color overlayColor,
+    required bool showAdditionalMeanings,
   }) {
     final theme = Theme.of(context);
     final accentColor = isWordSide ? theme.colorScheme.tertiary : AppTheme.primaryGreen;
@@ -1318,7 +1339,18 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                 border: Border.all(color: accentColor.withValues(alpha: 0.14)),
                 borderRadius: BorderRadius.circular(28),
               ),
-              child: _buildCardSide(word: word, isWordSide: isWordSide),
+              child: _buildCardSide(
+                word: word,
+                isWordSide: isWordSide,
+                showAdditionalMeanings: showAdditionalMeanings,
+                onToggleAdditionalMeanings: () {
+                  final key = _additionalMeaningKey(word);
+                  setState(() {
+                    _revealedAdditionalMeaningKey =
+                        _revealedAdditionalMeaningKey == key ? null : key;
+                  });
+                },
+              ),
             ),
           ),
           Positioned(
@@ -1373,8 +1405,19 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   }
 
   // ▼▼▼ [수정] 전체 위젯 수정
-  Widget _buildCardSide({required Word word, required bool isWordSide}) {
-    String mainText = isWordSide ? word.word : word.meaning;
+  Widget _buildCardSide({
+    required Word word,
+    required bool isWordSide,
+    required bool showAdditionalMeanings,
+    required VoidCallback onToggleAdditionalMeanings,
+  }) {
+    final additionalMeaningText = word.additionalMeanings.join(' · ');
+    final mainText =
+        !isWordSide && showAdditionalMeanings && additionalMeaningText.isNotEmpty
+            ? additionalMeaningText
+            : isWordSide
+            ? word.word
+            : word.meaning;
     String? exampleText = isWordSide ? word.exampleSentence : null;
     String? translationText = !isWordSide ? word.exampleSentenceTranslation : null;
     final theme = Theme.of(context);
@@ -1390,13 +1433,19 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    mainText,
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      height: 1.22,
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeIn,
+                    child: Text(
+                      mainText,
+                      key: ValueKey('$isWordSide-$showAdditionalMeanings-$mainText'),
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        height: 1.22,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -1467,10 +1516,111 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                       ),
                     )
-                    : const SizedBox.shrink(),
+                    : word.additionalMeanings.isEmpty
+                    ? const SizedBox.shrink()
+                    : OutlinedButton.icon(
+                      onPressed: onToggleAdditionalMeanings,
+                      icon: Icon(
+                        showAdditionalMeanings
+                            ? CupertinoIcons.chevron_up
+                            : CupertinoIcons.eye,
+                        size: 18,
+                      ),
+                      label: Text(
+                        showAdditionalMeanings
+                            ? '대표 뜻 보기'
+                            : '${_additionalMeaningButtonLabel(word)} 보기',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      ),
+                    ),
           ),
         ),
       ],
     );
+  }
+
+  String _additionalMeaningKey(Word word) => '${word.id ?? word.word}|${word.meaning}';
+
+  String _additionalMeaningButtonLabel(Word word) {
+    final joined = word.additionalMeanings.join(' ');
+    final hasKorean = RegExp(r'[가-힣]').hasMatch(joined);
+    final hasEnglish = RegExp(r'[A-Za-z]').hasMatch(joined);
+    if (hasKorean && !hasEnglish) return '한글 뜻';
+    if (hasEnglish && !hasKorean) return '영어 뜻';
+    return '추가 뜻';
+  }
+
+}
+
+class _ResponsiveFlipCard extends StatefulWidget {
+  const _ResponsiveFlipCard({
+    super.key,
+    required this.front,
+    required this.back,
+  });
+
+  final Widget front;
+  final Widget back;
+
+  @override
+  State<_ResponsiveFlipCard> createState() => _ResponsiveFlipCardState();
+}
+
+class _ResponsiveFlipCardState extends State<_ResponsiveFlipCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  bool _showingFront = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+    );
+  }
+
+  Future<void> _toggle() async {
+    if (_controller.isAnimating) return;
+    if (_showingFront) {
+      await _controller.forward();
+    } else {
+      await _controller.reverse();
+    }
+    if (!mounted) return;
+    setState(() => _showingFront = !_showingFront);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggle,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final value = _controller.value;
+          final showFront = value < 0.5;
+          final angle = showFront ? value * pi : (value - 1) * pi;
+          final transform = Matrix4.identity()
+            ..setEntry(3, 2, 0.001)
+            ..rotateY(angle);
+
+          return Transform(
+            transform: transform,
+            alignment: Alignment.center,
+            child: showFront ? widget.front : widget.back,
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 }

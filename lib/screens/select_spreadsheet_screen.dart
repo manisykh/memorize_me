@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../providers/auth_provider.dart';
 import '../services/google_picker_service.dart';
+import '../services/sheets_service.dart';
 import 'select_sheet_screen.dart';
 
 class SelectSpreadsheetScreen extends StatefulWidget {
@@ -53,6 +54,7 @@ class _SelectSpreadsheetScreenState extends State<SelectSpreadsheetScreen> {
   List<_RecentSpreadsheet> _recentSpreadsheets = const [];
   bool _isLoadingRecent = true;
   bool _isPicking = false;
+  bool _showAdvancedInput = false;
 
   @override
   void initState() {
@@ -164,9 +166,12 @@ class _SelectSpreadsheetScreenState extends State<SelectSpreadsheetScreen> {
       final picker = GooglePickerService(context.read<AuthProvider>());
       final picked = await picker.pickSpreadsheet();
       if (picked == null || !mounted) return;
+      final spreadsheetName =
+          await context.read<SheetsService>().getSpreadsheetTitle(picked.id) ?? picked.name;
+      if (!mounted) return;
       await _openSheetSelector(
         spreadsheetId: picked.id,
-        spreadsheetName: picked.name,
+        spreadsheetName: spreadsheetName,
       );
     } catch (error) {
       if (!mounted) return;
@@ -196,22 +201,57 @@ class _SelectSpreadsheetScreenState extends State<SelectSpreadsheetScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
+    final isGoogleConnected = authProvider.isGoogleDriveConnected;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Google 시트 가져오기')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text(
-              '가져올 스프레드시트를 선택하세요.',
-              style: Theme.of(context).textTheme.titleLarge,
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Image.asset('assets/icons/google_sheet_icon.png'),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '시트를 골라 바로 시작하세요',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Drive에서 선택한 시트만 단어장으로 가져옵니다.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Google Drive 전체 읽기 권한 대신, 사용자가 직접 선택한 스프레드시트만 앱에서 사용합니다.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _isPicking ? null : _pickWithGooglePicker,
               icon:
@@ -222,18 +262,54 @@ class _SelectSpreadsheetScreenState extends State<SelectSpreadsheetScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                       : const Icon(Icons.folder_open),
-              label: Text(_isPicking ? 'Google Drive 여는 중...' : 'Google Drive에서 선택'),
+              label: Text(
+                _isPicking
+                    ? 'Google Drive 여는 중...'
+                    : isGoogleConnected
+                    ? 'Google Drive에서 선택'
+                    : 'Google 계정 연결하고 시트 선택',
+              ),
             ),
-            const SizedBox(height: 12),
-            _SpreadsheetInputCard(
-              formKey: _formKey,
-              controller: _spreadsheetInputController,
-              onSubmit: _continueWithInput,
-              validator:
-                  (value) =>
-                      _extractSpreadsheetId(value ?? '') == null
-                          ? '올바른 Google 스프레드시트 URL 또는 ID를 입력해주세요.'
-                          : null,
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock_outline, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                const SizedBox(width: 5),
+                Text(
+                  '선택한 시트만 접근합니다',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              initiallyExpanded: _showAdvancedInput,
+              onExpansionChanged: (value) => setState(() => _showAdvancedInput = value),
+              title: const Text('URL 또는 ID로 열기'),
+              subtitle: const Text('이전에 Drive에서 허용한 시트'),
+              children: [
+                _SpreadsheetInputCard(
+                  formKey: _formKey,
+                  controller: _spreadsheetInputController,
+                  onSubmit: _continueWithInput,
+                  validator:
+                      (value) =>
+                          _extractSpreadsheetId(value ?? '') == null
+                              ? '올바른 Google 스프레드시트 URL 또는 ID를 입력해주세요.'
+                              : null,
+                ),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Google Drive에서 한 번 이상 선택한 시트만 열 수 있습니다.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             Row(
@@ -260,8 +336,8 @@ class _SelectSpreadsheetScreenState extends State<SelectSpreadsheetScreen> {
             else if (_recentSpreadsheets.isEmpty)
               const _InfoPanel(
                 icon: Icons.history,
-                title: '최근 선택 기록이 없습니다.',
-                message: 'Google Drive에서 스프레드시트를 선택하면 다음부터 이곳에서 빠르게 다시 열 수 있습니다.',
+                title: '최근 시트가 없습니다',
+                message: '한 번 선택한 시트는 다음부터 여기에서 바로 열 수 있습니다.',
               )
             else
               Column(

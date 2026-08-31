@@ -8,7 +8,6 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'providers/ai_settings_provider.dart';
 import 'providers/auth_provider.dart';
@@ -26,7 +25,9 @@ import 'services/app_config_service.dart';
 import 'services/csv_service.dart';
 import 'services/database_service.dart';
 import 'services/mode_state_service.dart'; // ▼▼▼ [추가]
+import 'services/onboarding_state_service.dart';
 import 'services/sheets_service.dart';
+import 'services/study_sound_service.dart';
 import 'services/test_sheet_service.dart';
 import 'services/tts_service.dart';
 import 'themes/app_theme.dart';
@@ -36,6 +37,7 @@ import 'providers/flashcard_settings_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
   await Firebase.initializeApp();
 
   FlutterError.onError = (details) {
@@ -60,6 +62,9 @@ Future<void> main() async {
         Provider<TestSheetService>(create: (_) => TestSheetService()),
         Provider<ApiKeyService>(create: (_) => ApiKeyService()),
         Provider<TtsService>(create: (_) => TtsService()),
+        ChangeNotifierProvider<StudySoundService>(
+          create: (_) => StudySoundService(),
+        ),
         Provider<ModeStateService>(create: (_) => ModeStateService()), // ▼▼▼ [추가]
         ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
         ChangeNotifierProvider<EntitlementProvider>(
@@ -95,21 +100,19 @@ Future<void> main() async {
             return settings;
           },
         ),
-        ChangeNotifierProxyProvider3<
+        ChangeNotifierProxyProvider2<
           DatabaseService,
-          SheetsService,
           WordListNotifier,
           WordbookManager
         >(
           create:
               (context) => WordbookManager(
                 context.read<DatabaseService>(),
-                context.read<SheetsService>(),
                 context.read<WordListNotifier>(),
               ),
           update:
-              (_, dbService, sheetsService, wordList, manager) =>
-                  manager ?? WordbookManager(dbService, sheetsService, wordList),
+              (_, dbService, wordList, manager) =>
+                  manager ?? WordbookManager(dbService, wordList),
         ),
       ],
       child: const MyApp(),
@@ -136,15 +139,11 @@ class MyApp extends StatelessWidget {
             return Selector<ThemeNotifier, int>(
               selector: (_, themeNotifier) => themeNotifier.eyeCareLevel,
               builder: (context, eyeCareLevel, _) {
-                final backgroundColor = _backgroundColorFor(
-                  theme,
-                  currentThemeType,
-                  eyeCareLevel,
-                );
                 final effectiveTheme =
                     currentThemeType == AppThemeType.visionProtection
-                        ? theme.copyWith(scaffoldBackgroundColor: backgroundColor)
+                        ? AppTheme.visionProtectionThemeForLevel(eyeCareLevel)
                         : theme;
+                final backgroundColor = effectiveTheme.scaffoldBackgroundColor;
 
                 if (currentThemeType == AppThemeType.lightGreen) {
                   return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -247,68 +246,260 @@ class AppInitializer extends StatefulWidget {
 }
 
 class _AppInitializerState extends State<AppInitializer> {
-  static const String _onboardingSeenKey = 'onboarding_seen_v1';
-
-  late Future<_InitialAppState> _initializationFuture;
+  final OnboardingStateService _onboardingState = const OnboardingStateService();
+  late Future<bool> _onboardingDecisionFuture;
+  late Future<void> _metadataInitializationFuture;
+  bool _activeWordbookLoadStarted = false;
 
   @override
   void initState() {
     super.initState();
-    _initializationFuture = _initialize();
+    _startInitialization();
   }
 
-  Future<_InitialAppState> _initialize() async {
+  void _startInitialization() {
     unawaited(context.read<AppConfigService>().initialize());
     unawaited(context.read<EntitlementProvider>().initialize());
-    await context.read<WordbookManager>().loadInitialData();
-    final prefs = await SharedPreferences.getInstance();
-    return _InitialAppState(
-      shouldShowOnboarding: !(prefs.getBool(_onboardingSeenKey) ?? false),
+    _onboardingDecisionFuture = _onboardingState.shouldShow();
+    _metadataInitializationFuture = _loadWordbookMetadata();
+    _activeWordbookLoadStarted = false;
+    unawaited(
+      _metadataInitializationFuture.then((_) {
+        _startActiveWordbookLoad();
+      }).catchError((_) {}),
     );
   }
 
+  Future<void> _loadWordbookMetadata() async {
+    try {
+      await context.read<WordbookManager>().loadInitialMetadata();
+    } catch (error, stackTrace) {
+      await FirebaseCrashlytics.instance.recordError(
+        error,
+        stackTrace,
+        reason: 'Wordbook metadata initialization failed',
+      );
+      rethrow;
+    }
+  }
+
+  void _retryInitialization() {
+    setState(_startInitialization);
+  }
+
+  void _startActiveWordbookLoad() {
+    if (_activeWordbookLoadStarted) return;
+    _activeWordbookLoadStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        context.read<WordbookManager>().loadActiveWordbookWords().catchError((
+          Object error,
+          StackTrace stackTrace,
+        ) async {
+          await FirebaseCrashlytics.instance.recordError(
+            error,
+            stackTrace,
+            reason: 'Active wordbook loading failed',
+          );
+        }),
+      );
+    });
+  }
+
   Future<void> _finishOnboarding() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_onboardingSeenKey, true);
+    await _onboardingState.markSeen();
     await context.read<AnalyticsService>().logOnboardingCompleted();
     if (mounted) {
       setState(() {
-        _initializationFuture = Future.value(
-          const _InitialAppState(shouldShowOnboarding: false),
-        );
+        _onboardingDecisionFuture = Future.value(false);
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: _initializationFuture,
+    return FutureBuilder<bool>(
+      future: _onboardingDecisionFuture,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done) {
-          if (snapshot.hasError) {
-            return Scaffold(
-              backgroundColor: Colors.transparent,
-              body: Center(child: Text('앱 초기화 실패:\n${snapshot.error}')),
-            );
-          }
-          final appState = snapshot.data ?? const _InitialAppState();
-          if (appState.shouldShowOnboarding) {
-            return OnboardingScreen(onFinished: _finishOnboarding);
-          }
-          return const LaunchNoticeGate(child: AppShellScreen());
+        if (snapshot.hasError) {
+          return _InitializationErrorScreen(onRetry: _retryInitialization);
         }
-        return Scaffold(
-          backgroundColor: Colors.transparent,
-          body: const Center(child: CircularProgressIndicator()),
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const _BrandStartupScreen();
+        }
+        if (snapshot.data == true) {
+          return OnboardingScreen(onFinished: _finishOnboarding);
+        }
+        return FutureBuilder<void>(
+          future: _metadataInitializationFuture,
+          builder: (context, metadataSnapshot) {
+            if (metadataSnapshot.hasError) {
+              return _InitializationErrorScreen(onRetry: _retryInitialization);
+            }
+            if (metadataSnapshot.connectionState != ConnectionState.done) {
+              return const _BrandStartupScreen();
+            }
+            _startActiveWordbookLoad();
+            return const _ReadyAppShell();
+          },
         );
       },
     );
   }
 }
 
-class _InitialAppState {
-  const _InitialAppState({this.shouldShowOnboarding = false});
+class _ReadyAppShell extends StatelessWidget {
+  const _ReadyAppShell();
 
-  final bool shouldShowOnboarding;
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<WordbookManager>(
+      builder: (context, manager, _) {
+        return Stack(
+          children: [
+            const LaunchNoticeGate(child: AppShellScreen()),
+            if (manager.isActiveWordbookLoading)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+            if (manager.activeWordbookLoadError != null)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: MediaQuery.paddingOf(context).bottom + 18,
+                child: Material(
+                  color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline_rounded),
+                        const SizedBox(width: 10),
+                        const Expanded(child: Text('단어장을 불러오지 못했습니다.')),
+                        TextButton(
+                          onPressed: () {
+                            unawaited(
+                              manager.retryActiveWordbookWords().catchError((_) {}),
+                            );
+                          },
+                          child: const Text('다시 시도'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _BrandStartupScreen extends StatelessWidget {
+  const _BrandStartupScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Icon(
+                    Icons.layers_rounded,
+                    size: 42,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Memorize Me',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InitializationErrorScreen extends StatelessWidget {
+  const _InitializationErrorScreen({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.sync_problem_rounded,
+                  size: 52,
+                  color: theme.colorScheme.error,
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  '앱을 준비하지 못했습니다',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '잠시 후 다시 시도해주세요. 저장된 단어장은 삭제되지 않습니다.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('다시 시도'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -43,9 +43,11 @@ class EntitlementProvider extends ChangeNotifier {
   String? get lastError => _lastError;
 
   bool canUse(AppFeature feature) {
-    if (_appConfig.isLaunchFree) return true;
-    if (_snapshot.hasFullAccess) return true;
-    return feature.isAlwaysFree;
+    return canUseAppFeature(
+      feature: feature,
+      isLaunchFree: _appConfig.isLaunchFree,
+      entitlement: _snapshot,
+    );
   }
 
   Future<void> initialize() {

@@ -27,6 +27,7 @@ class _ManageWordsScreenState extends State<ManageWordsScreen> {
   final TextEditingController _searchController = TextEditingController();
   SrsStage? _selectedStage;
   String _searchQuery = '';
+  bool _isBulkUpdatingMeanings = false;
 
   @override
   void initState() {
@@ -106,14 +107,34 @@ class _ManageWordsScreenState extends State<ManageWordsScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'SRS 기준으로 보기',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                  ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'SRS 기준으로 보기',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed:
+                          _isBulkUpdatingMeanings ||
+                                  !allWords.any((word) => word.additionalMeanings.isNotEmpty)
+                              ? null
+                              : _changeWordbookPrimaryMeaning,
+                      icon:
+                          _isBulkUpdatingMeanings
+                              ? const SizedBox.square(
+                                dimension: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                              : const Icon(Icons.swap_vert, size: 18),
+                      label: const Text('대표 뜻 일괄 변경'),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 10),
@@ -213,6 +234,17 @@ class _ManageWordsScreenState extends State<ManageWordsScreen> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(word.meaning),
+                                        if (word.additionalMeanings.isNotEmpty) ...[
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            '추가 뜻 ${word.additionalMeanings.length}개 · ${word.additionalMeanings.join(' · ')}',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: theme.textTheme.bodySmall?.copyWith(
+                                              color: scheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
                                         const SizedBox(height: 6),
                                         Wrap(
                                           spacing: 8,
@@ -247,10 +279,14 @@ class _ManageWordsScreenState extends State<ManageWordsScreen> {
                                       ],
                                     ),
                                   ),
-                                  trailing: IconButton(
-                                    tooltip: '단어 수정',
-                                    icon: const Icon(CupertinoIcons.pencil),
-                                    onPressed: () async {
+                                  trailing: PopupMenuButton<String>(
+                                    tooltip: '단어 관리',
+                                    onSelected: (action) async {
+                                      if (action == 'primary') {
+                                        await _changePrimaryMeaning(word);
+                                        return;
+                                      }
+                                      if (action != 'edit') return;
                                       final resultHasChanged = await Navigator.of(context).push<bool>(
                                         MaterialPageRoute(
                                           builder:
@@ -264,6 +300,26 @@ class _ManageWordsScreenState extends State<ManageWordsScreen> {
                                         _loadWords();
                                       }
                                     },
+                                    itemBuilder:
+                                        (context) => [
+                                          const PopupMenuItem(
+                                            value: 'edit',
+                                            child: ListTile(
+                                              contentPadding: EdgeInsets.zero,
+                                              leading: Icon(CupertinoIcons.pencil),
+                                              title: Text('단어 수정'),
+                                            ),
+                                          ),
+                                          if (word.additionalMeanings.isNotEmpty)
+                                            const PopupMenuItem(
+                                              value: 'primary',
+                                              child: ListTile(
+                                                contentPadding: EdgeInsets.zero,
+                                                leading: Icon(Icons.swap_vert),
+                                                title: Text('대표 뜻 변경'),
+                                              ),
+                                            ),
+                                        ],
                                   ),
                                 ),
                               ),
@@ -287,6 +343,194 @@ class _ManageWordsScreenState extends State<ManageWordsScreen> {
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  Future<void> _changePrimaryMeaning(Word word) async {
+    if (word.additionalMeanings.isEmpty) return;
+    final selectedIndex = await showDialog<int>(
+      context: context,
+      builder:
+          (dialogContext) => SimpleDialog(
+            title: Text('${word.word}의 대표 뜻'),
+            children:
+                word.additionalMeanings.asMap().entries.map((entry) {
+                  return SimpleDialogOption(
+                    onPressed: () => Navigator.of(dialogContext).pop(entry.key),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Text(entry.value),
+                    ),
+                  );
+                }).toList(),
+          ),
+    );
+    if (selectedIndex == null || !mounted) return;
+
+    final nextAdditionalMeanings = List<String>.from(word.additionalMeanings);
+    final nextPrimaryMeaning = nextAdditionalMeanings[selectedIndex];
+    nextAdditionalMeanings[selectedIndex] = word.meaning;
+    await context.read<WordbookManager>().updateWordsInWordbook(
+      widget.wordbook,
+      [
+        word.copyWith(
+          meaning: nextPrimaryMeaning,
+          additionalMeanings: nextAdditionalMeanings,
+        ),
+      ],
+    );
+    if (!mounted) return;
+    _loadWords();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('대표 뜻을 "$nextPrimaryMeaning"(으)로 변경했습니다.')),
+    );
+  }
+
+  Future<void> _changeWordbookPrimaryMeaning() async {
+    final words = await context.read<DatabaseService>().getAllWords(widget.wordbook.dbFileName);
+    if (!mounted) return;
+
+    final maxAdditionalMeaningCount = words.fold<int>(
+      0,
+      (max, word) =>
+          word.additionalMeanings.length > max ? word.additionalMeanings.length : max,
+    );
+    if (maxAdditionalMeaningCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이 단어장에는 변경할 추가 뜻이 없습니다.')),
+      );
+      return;
+    }
+
+    final selectedIndex = await showDialog<int>(
+      context: context,
+      builder:
+          (dialogContext) => SimpleDialog(
+            title: const Text('대표 뜻 일괄 변경'),
+            children: List.generate(maxAdditionalMeaningCount, (index) {
+              final candidates =
+                  words
+                      .where(
+                        (word) =>
+                            word.additionalMeanings.length > index &&
+                            word.additionalMeanings[index].trim().isNotEmpty,
+                      )
+                      .toList();
+              if (candidates.isEmpty) return const SizedBox.shrink();
+
+              final examples = candidates
+                  .take(2)
+                  .map((word) => '${word.word}: ${word.additionalMeanings[index]}')
+                  .join(' · ');
+              return SimpleDialogOption(
+                onPressed: () => Navigator.of(dialogContext).pop(index),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _meaningGroupLabel(candidates, index),
+                        style: Theme.of(dialogContext).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${candidates.length}개 단어 · $examples',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(dialogContext).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+    );
+    if (selectedIndex == null || !mounted) return;
+
+    final eligibleWords =
+        words
+            .where(
+              (word) =>
+                  word.additionalMeanings.length > selectedIndex &&
+                  word.additionalMeanings[selectedIndex].trim().isNotEmpty,
+            )
+            .toList();
+    final skippedCount = words.length - eligibleWords.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('대표 뜻을 변경할까요?'),
+            content: Text(
+              '${_meaningGroupLabel(eligibleWords, selectedIndex)}을(를) '
+              '${eligibleWords.length}개 단어의 대표 뜻으로 변경합니다.'
+              '${skippedCount > 0 ? '\n해당 추가 뜻이 없는 $skippedCount개 단어는 변경하지 않습니다.' : ''}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('취소'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('일괄 변경'),
+              ),
+            ],
+          ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final updatedWords = eligibleWords.map((word) {
+      final nextAdditionalMeanings = List<String>.from(word.additionalMeanings);
+      final nextPrimaryMeaning = nextAdditionalMeanings[selectedIndex];
+      nextAdditionalMeanings[selectedIndex] = word.meaning;
+      return word.copyWith(
+        meaning: nextPrimaryMeaning,
+        additionalMeanings: nextAdditionalMeanings,
+      );
+    }).toList();
+
+    setState(() => _isBulkUpdatingMeanings = true);
+    try {
+      await context.read<WordbookManager>().updateWordsInWordbook(
+        widget.wordbook,
+        updatedWords,
+      );
+      if (!mounted) return;
+      _loadWords();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${updatedWords.length}개 단어의 대표 뜻을 변경했습니다.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('대표 뜻을 변경하지 못했습니다. 다시 시도해주세요.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isBulkUpdatingMeanings = false);
+    }
+  }
+
+  String _meaningGroupLabel(List<Word> words, int index) {
+    final meanings = words
+        .where((word) => word.additionalMeanings.length > index)
+        .map((word) => word.additionalMeanings[index])
+        .where((meaning) => meaning.trim().isNotEmpty)
+        .toList();
+    final koreanCount = meanings.where((meaning) => RegExp(r'[가-힣]').hasMatch(meaning)).length;
+    final englishCount = meanings.where((meaning) => RegExp(r'[A-Za-z]').hasMatch(meaning)).length;
+    final languageLabel =
+        koreanCount > englishCount
+            ? '한글 뜻'
+            : englishCount > koreanCount
+            ? '영어 뜻'
+            : '추가 뜻';
+    return '$languageLabel ${index + 1}';
   }
 
   Future<bool> _confirmDelete(BuildContext context, Word word) async {
@@ -329,9 +573,11 @@ class _ManageWordsScreenState extends State<ManageWordsScreen> {
             : filtered.where((word) {
               final targetWord = word.word.toLowerCase();
               final targetMeaning = word.meaning.toLowerCase();
+              final targetAdditionalMeanings = word.additionalMeanings.join(' ').toLowerCase();
               final targetExample = (word.exampleSentence ?? '').toLowerCase();
               return targetWord.contains(query) ||
                   targetMeaning.contains(query) ||
+                  targetAdditionalMeanings.contains(query) ||
                   targetExample.contains(query);
             }).toList();
 

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'database_service.dart';
 import '../models/word_model.dart';
+import 'word_data_parser.dart';
 
 enum ImportOption { append, replace }
 
@@ -25,7 +26,6 @@ class CsvService {
     if (result != null) {
       final path = result.files.single.path!;
       final csvString = await File(path).readAsString();
-      final List<List<dynamic>> csvTable = const CsvToListConverter().convert(csvString);
 
       if (context.mounted) {
         final option = await showDialog<ImportOption>(
@@ -56,18 +56,7 @@ class CsvService {
             // deleteAllWords 호출 시 dbFileName 전달
             await _dbService.deleteAllWords(dbFileName);
           }
-          final words =
-              csvTable
-                  .skip(1)
-                  .map((row) {
-                    if (row.length >= 2) {
-                      return Word(word: row[0].toString(), meaning: row[1].toString());
-                    }
-                    return null;
-                  })
-                  .where((word) => word != null)
-                  .cast<Word>()
-                  .toList();
+          final words = WordDataParser.parseCsv(csvString);
 
           for (final word in words) {
             // addWord 호출 시 dbFileName 전달
@@ -87,9 +76,27 @@ class CsvService {
     if (words.isEmpty) {
       return;
     }
+    final maxAdditionalMeaningCount = words.fold<int>(
+      0,
+      (max, word) => word.additionalMeanings.length > max ? word.additionalMeanings.length : max,
+    );
     final List<List<dynamic>> data = [
-      ['word', 'meaning'],
-      ...words.map((w) => [w.word, w.meaning]),
+      [
+        'word',
+        'meaning',
+        ...List.generate(maxAdditionalMeaningCount, (index) => 'additional meaning ${index + 1}'),
+      ],
+      ...words.map(
+        (word) => [
+          word.word,
+          word.meaning,
+          ...List.generate(
+            maxAdditionalMeaningCount,
+            (index) =>
+                index < word.additionalMeanings.length ? word.additionalMeanings[index] : '',
+          ),
+        ],
+      ),
     ];
     final String csvString = const ListToCsvConverter().convert(data);
     final path = '${(await getTemporaryDirectory()).path}/words_export.csv';

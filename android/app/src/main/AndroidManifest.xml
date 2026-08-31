@@ -8,6 +8,7 @@
         android:allowBackup="false">
         <activity
             android:name=".MainActivity"
+            android:screenOrientation="portrait"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
@@ -26,12 +27,6 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="memorizeme" android:host="picker"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

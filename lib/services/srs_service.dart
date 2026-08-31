@@ -8,7 +8,7 @@ import '../models/word_model.dart';
 
 enum SrsDifficulty { again, good }
 
-enum SrsUpdateSource { flashcard, spellingQuiz }
+enum SrsUpdateSource { flashcard, multipleChoiceQuiz, spellingQuiz }
 
 enum SrsStage { newWord, due, learning, mature }
 

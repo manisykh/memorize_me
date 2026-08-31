@@ -21,16 +21,7 @@ After signing is configured, build the release bundle:
 flutter build appbundle --release
 ```
 
-The app uses the default Picker URL:
-
-```text
-https://memorize-me-71f4e.web.app/google_picker.html
-```
-
-If you need to test a different hosted Picker page, override it with:
-
-```powershell
-flutter build appbundle --release --dart-define=GOOGLE_PICKER_WEB_URL=https://memorize-me-71f4e.web.app/google_picker.html
-```
+Google Picker uses the native Android authorization flow, so no Picker URL or
+Picker-related `--dart-define` value is required for release builds.
 
 Before Play Console upload, register the upload key SHA-1/SHA-256 in Google Cloud/Firebase if Google Sign-In is tested with a locally signed release build.

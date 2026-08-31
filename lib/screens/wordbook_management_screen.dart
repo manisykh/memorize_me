@@ -198,7 +198,7 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionTitle(theme, '기본 제공 단어장'),
+          _buildSectionTitle(theme, '필수 영어단어 6000'),
           const SizedBox(height: 12),
           _buildBuiltinWordbookSection(theme, manager),
           const SizedBox(height: 26),
@@ -561,7 +561,7 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
           child: OutlinedButton.icon(
             onPressed: () => manager.createNewWordbookFromCsv(context),
             icon: const Icon(CupertinoIcons.folder_open),
-            label: const Text('CSV 파일에서 가져오기'),
+            label: const Text('CSV · XLSX 파일에서 가져오기'),
           ),
         ),
       ],
@@ -677,7 +677,7 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
             child: OutlinedButton.icon(
               onPressed: () => manager.createNewWordbookFromCsv(context),
               icon: const Icon(CupertinoIcons.folder_open),
-              label: const Text('CSV 파일에서 가져오기'),
+              label: const Text('CSV · XLSX 파일에서 가져오기'),
             ),
           ),
         ],
@@ -783,12 +783,12 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
                   children: [
                     _buildBuiltinMetaPill(
                       theme,
-                      '현재 ${template.count}개',
+                      '${template.count}개 수록',
                       theme.colorScheme.primary,
                     ),
                     _buildBuiltinMetaPill(
                       theme,
-                      '목표 ${template.targetCount}개',
+                      '단계별 학습',
                       theme.colorScheme.tertiary,
                     ),
                   ],

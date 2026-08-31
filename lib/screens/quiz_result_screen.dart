@@ -32,6 +32,7 @@ class QuizResultScreen extends StatelessWidget {
                 itemCount: results.where((r) => !r.isCorrect).length,
                 itemBuilder: (context, index) {
                   final wrongResult = results.where((r) => !r.isCorrect).toList()[index];
+                  final additionalMeanings = wrongResult.word.additionalMeanings;
                   final question = wrongResult.word.meaning;
                   final correctAnswer = wrongResult.word.word;
 
@@ -39,7 +40,11 @@ class QuizResultScreen extends StatelessWidget {
                     color: theme.colorScheme.errorContainer,
                     child: ListTile(
                       title: Text('Q. $question'),
-                      subtitle: Text('정답: $correctAnswer\n내 답변: ${wrongResult.userAnswer}'),
+                      subtitle: Text(
+                        '정답: $correctAnswer\n'
+                        '내 답변: ${wrongResult.userAnswer}'
+                        '${additionalMeanings.isEmpty ? '' : '\n추가 뜻: ${additionalMeanings.join(' · ')}'}',
+                      ),
                       isThreeLine: true,
                     ),
                   );

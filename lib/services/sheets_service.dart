@@ -4,11 +4,34 @@ import 'package:googleapis_auth/googleapis_auth.dart' as auth;
 
 import '../models/word_model.dart';
 import '../providers/auth_provider.dart';
+import 'word_data_parser.dart';
 
 class SheetsService {
   final AuthProvider _authProvider;
 
   SheetsService(this._authProvider);
+
+  Future<String?> getSpreadsheetTitle(String spreadsheetId) async {
+    auth.AuthClient? client;
+    try {
+      client = await _authProvider.getAuthenticatedClient();
+      if (client == null) {
+        throw Exception('Google 로그인이 필요합니다.');
+      }
+
+      final sheetsApi = sheets.SheetsApi(client);
+      final spreadsheet = await sheetsApi.spreadsheets.get(
+        spreadsheetId,
+        $fields: 'properties.title',
+      );
+      return spreadsheet.properties?.title;
+    } catch (error) {
+      debugPrint('SheetsService.getSpreadsheetTitle failed: $error');
+      throw Exception(_friendlySheetsError(error));
+    } finally {
+      client?.close();
+    }
+  }
 
   Future<List<sheets.Sheet>> getSheetInfo(String spreadsheetId) async {
     auth.AuthClient? client;
@@ -33,6 +56,15 @@ class SheetsService {
   }
 
   Future<List<Word>?> getWordsFromSheet(String spreadsheetId, String sheetName) async {
+    final rows = await getRowsFromSheet(spreadsheetId, sheetName);
+    if (rows.isEmpty) return <Word>[];
+    return WordDataParser.parseRows(rows);
+  }
+
+  Future<List<List<Object?>>> getRowsFromSheet(
+    String spreadsheetId,
+    String sheetName,
+  ) async {
     auth.AuthClient? client;
     try {
       client = await _authProvider.getAuthenticatedClient();
@@ -53,26 +85,14 @@ class SheetsService {
 
       final valueRange = await sheetsApi.spreadsheets.values.get(
         spreadsheetId,
-        '$sheetName!A:B',
+        "'${sheetName.replaceAll("'", "''")}'!A:Z",
         valueRenderOption: 'UNFORMATTED_VALUE',
       );
       final values = valueRange.values;
-      if (values == null || values.isEmpty) return <Word>[];
-
-      final words = <Word>[];
-      for (var index = 1; index < values.length; index++) {
-        final row = values[index];
-        if (row.length < 2) continue;
-
-        final word = row[0]?.toString().trim() ?? '';
-        final meaning = row[1]?.toString().trim() ?? '';
-        if (word.isEmpty || meaning.isEmpty) continue;
-
-        words.add(Word(word: word, meaning: meaning));
-      }
-      return words;
+      if (values == null || values.isEmpty) return <List<Object?>>[];
+      return values.map((row) => row.cast<Object?>()).toList();
     } catch (error, stackTrace) {
-      debugPrint('SheetsService.getWordsFromSheet failed: $error');
+      debugPrint('SheetsService.getRowsFromSheet failed: $error');
       debugPrint('$stackTrace');
       throw Exception(_friendlySheetsError(error));
     } finally {
@@ -126,10 +146,10 @@ class SheetsService {
       return 'Google 인증이 만료되었습니다. 다시 로그인해주세요.';
     }
     if (message.contains('403')) {
-      return '스프레드시트 접근 권한이 없습니다. 공유 권한을 확인해주세요.';
+      return '이 앱에 허용되지 않은 스프레드시트입니다. Google Drive에서 파일을 다시 선택해주세요.';
     }
     if (message.contains('404')) {
-      return '스프레드시트를 찾을 수 없습니다. URL 또는 ID를 확인해주세요.';
+      return '스프레드시트를 찾을 수 없거나 이 앱에 아직 허용되지 않았습니다. Google Drive에서 파일을 다시 선택해주세요.';
     }
     if (message.contains('429')) {
       return 'Google API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';

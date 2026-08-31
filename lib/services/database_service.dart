@@ -34,7 +34,7 @@ class DatabaseService {
   Future<Database> _initMetaDB() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, "meta.db");
-    return await openDatabase(path, version: 4, onCreate: _createMetaDB, onUpgrade: _onUpgrade);
+    return await openDatabase(path, version: 5, onCreate: _createMetaDB, onUpgrade: _onUpgrade);
   }
 
   Future<void> _createMetaDB(Database db, int version) async {
@@ -42,7 +42,7 @@ class DatabaseService {
       'CREATE TABLE wordbooks(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, spreadsheetId TEXT, sheetName TEXT, dbFileName TEXT, source TEXT)',
     );
     await db.execute(
-      'CREATE TABLE incorrect_words(id INTEGER PRIMARY KEY AUTOINCREMENT, wordbookName TEXT, word TEXT, meaning TEXT)',
+      "CREATE TABLE incorrect_words(id INTEGER PRIMARY KEY AUTOINCREMENT, wordbookName TEXT, word TEXT, meaning TEXT, additionalMeanings TEXT NOT NULL DEFAULT '[]')",
     );
     await _createStudyPlansTable(db);
   }
@@ -71,6 +71,11 @@ class DatabaseService {
         break;
       case 4:
         await _createStudyPlansTable(db);
+        break;
+      case 5:
+        await db.execute(
+          "ALTER TABLE incorrect_words ADD COLUMN additionalMeanings TEXT NOT NULL DEFAULT '[]'",
+        );
         break;
     }
   }
@@ -128,6 +133,7 @@ class DatabaseService {
           'wordbookName': wordbookName,
           'word': word.word,
           'meaning': word.meaning,
+          'additionalMeanings': word.toMap()['additionalMeanings'],
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
       await batch.commit(noResult: true);
@@ -189,19 +195,22 @@ class DatabaseService {
     return await openDatabase(
       path,
       singleInstance: false,
-      version: 6,
+      version: 8,
       onCreate: (db, version) async {
         await db.execute('''CREATE TABLE words(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             word TEXT NOT NULL,
             meaning TEXT NOT NULL,
+            additionalMeanings TEXT NOT NULL DEFAULT '[]',
             exampleSentence TEXT,
             exampleSentenceTranslation TEXT, -- ▼▼▼ [추가]
             srsLevel INTEGER NOT NULL DEFAULT 0,
             nextReviewDate TEXT,
             lastReviewedAt TEXT,
             incorrectCount INTEGER NOT NULL DEFAULT 0,
-            correctStreak INTEGER NOT NULL DEFAULT 0
+            correctStreak INTEGER NOT NULL DEFAULT 0,
+            pendingMcqReview INTEGER NOT NULL DEFAULT 0,
+            pendingSpellingReview INTEGER NOT NULL DEFAULT 0
           )''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
@@ -228,6 +237,19 @@ class DatabaseService {
       }
       if (version == 6) {
         await db.execute('ALTER TABLE words ADD COLUMN lastReviewedAt TEXT');
+      }
+      if (version == 7) {
+        await db.execute(
+          'ALTER TABLE words ADD COLUMN pendingMcqReview INTEGER NOT NULL DEFAULT 0',
+        );
+        await db.execute(
+          'ALTER TABLE words ADD COLUMN pendingSpellingReview INTEGER NOT NULL DEFAULT 0',
+        );
+      }
+      if (version == 8) {
+        await db.execute(
+          "ALTER TABLE words ADD COLUMN additionalMeanings TEXT NOT NULL DEFAULT '[]'",
+        );
       }
     } catch (e) {
       debugPrint("Error upgrading WordDB to v$version: $e. It might already exist.");
@@ -302,8 +324,8 @@ class DatabaseService {
     final db = await _openWordDB(dbFileName);
     final List<Map<String, dynamic>> maps = await db.query(
       'words',
-      where: 'word LIKE ? OR meaning LIKE ?',
-      whereArgs: ['%$query%', '%$query%'],
+      where: 'word LIKE ? OR meaning LIKE ? OR additionalMeanings LIKE ?',
+      whereArgs: ['%$query%', '%$query%', '%$query%'],
     );
     await db.close();
 

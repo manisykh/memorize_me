@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:math';
-import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,8 +13,9 @@ import '../models/wordbook_model.dart';
 import '../models/study_plan_model.dart';
 import '../services/database_service.dart';
 import '../services/analytics_service.dart';
-import '../services/sheets_service.dart';
+import '../services/local_word_file_service.dart';
 import '../services/srs_service.dart';
+import '../services/word_data_parser.dart';
 import 'word_list_provider.dart';
 
 class WordbookManager extends ChangeNotifier {
@@ -25,49 +25,68 @@ class WordbookManager extends ChangeNotifier {
   static const String _lastActiveWordbookNameKey = 'last_active_wordbook_name';
   static const List<BuiltinWordbookTemplate> _builtinTemplates = [
     BuiltinWordbookTemplate(
-      name: '초등 기본',
-      dbFileName: 'builtin_elementary_core_v1.db',
-      sourceAsset: 'assets/initial_words1.csv',
+      name: '필수 영어단어 1단계',
+      dbFileName: 'builtin_essential_english_stage_1_v1.db',
+      sourceAsset: 'assets/builtin_essential_english_stage_1.csv',
       offset: 0,
-      count: 100,
-      targetCount: 800,
-      levelLabel: '정규',
-      description: '쉬운 일상 단어와 기초 표현',
+      count: 1000,
+      targetCount: 1000,
+      levelLabel: '1단계',
+      description: '빈도 순위 1~1,000위 필수 단어',
     ),
     BuiltinWordbookTemplate(
-      name: '중등 필수',
-      dbFileName: 'builtin_middle_core_v1.db',
-      sourceAsset: 'assets/initial_words1.csv',
-      offset: 100,
-      count: 100,
-      targetCount: 1200,
-      levelLabel: '정규',
-      description: '학교 영어의 기본 체계를 잡는 단어',
-    ),
-    BuiltinWordbookTemplate(
-      name: '고등/수능',
-      dbFileName: 'builtin_high_suneung_v1.db',
-      sourceAsset: 'assets/initial_words1.csv',
-      offset: 200,
-      count: 100,
-      targetCount: 2000,
-      levelLabel: '정규',
-      description: '독해와 시험 빈출 중심 단어',
-    ),
-    BuiltinWordbookTemplate(
-      name: '비즈니스/토익',
-      dbFileName: 'builtin_business_toeic_v1.db',
-      sourceAsset: 'assets/builtin_business_toeic_seed.csv',
+      name: '필수 영어단어 2단계',
+      dbFileName: 'builtin_essential_english_stage_2_v1.db',
+      sourceAsset: 'assets/builtin_essential_english_stage_2.csv',
       offset: 0,
-      count: 100,
-      targetCount: 2000,
-      levelLabel: '특화',
-      description: '업무, 이메일, 회의, 토익 빈출 단어',
+      count: 1000,
+      targetCount: 1000,
+      levelLabel: '2단계',
+      description: '빈도 순위 1,001~2,000위 필수 단어',
+    ),
+    BuiltinWordbookTemplate(
+      name: '필수 영어단어 3단계',
+      dbFileName: 'builtin_essential_english_stage_3_v1.db',
+      sourceAsset: 'assets/builtin_essential_english_stage_3.csv',
+      offset: 0,
+      count: 1000,
+      targetCount: 1000,
+      levelLabel: '3단계',
+      description: '빈도 순위 2,001~3,000위 필수 단어',
+    ),
+    BuiltinWordbookTemplate(
+      name: '필수 영어단어 4단계',
+      dbFileName: 'builtin_essential_english_stage_4_v1.db',
+      sourceAsset: 'assets/builtin_essential_english_stage_4.csv',
+      offset: 0,
+      count: 1000,
+      targetCount: 1000,
+      levelLabel: '4단계',
+      description: '빈도 순위 3,001~4,000위 필수 단어',
+    ),
+    BuiltinWordbookTemplate(
+      name: '필수 영어단어 5단계',
+      dbFileName: 'builtin_essential_english_stage_5_v1.db',
+      sourceAsset: 'assets/builtin_essential_english_stage_5.csv',
+      offset: 0,
+      count: 1000,
+      targetCount: 1000,
+      levelLabel: '5단계',
+      description: '빈도 순위 4,001~5,000위 필수 단어',
+    ),
+    BuiltinWordbookTemplate(
+      name: '필수 영어단어 6단계',
+      dbFileName: 'builtin_essential_english_stage_6_v1.db',
+      sourceAsset: 'assets/builtin_essential_english_stage_6.csv',
+      offset: 0,
+      count: 1000,
+      targetCount: 1000,
+      levelLabel: '6단계',
+      description: '빈도 순위 5,001~6,000위 필수 단어',
     ),
   ];
 
   final DatabaseService _dbService;
-  final SheetsService _sheetsService;
   final WordListNotifier _wordListNotifier;
   final SrsService _srsService = SrsService();
 
@@ -83,38 +102,86 @@ class WordbookManager extends ChangeNotifier {
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
+  bool _isActiveWordbookLoading = false;
+  bool get isActiveWordbookLoading => _isActiveWordbookLoading;
+  Object? _activeWordbookLoadError;
+  Object? get activeWordbookLoadError => _activeWordbookLoadError;
+  Future<void>? _metadataInitializationFuture;
+  Future<void>? _activeWordbookInitializationFuture;
   int _statsRevision = 0;
   int get statsRevision => _statsRevision;
   final Set<String> _studyActivityDates = {};
   int get studyDayStreak => _calculateStudyDayStreak();
 
-  WordbookManager(this._dbService, this._sheetsService, this._wordListNotifier);
+  WordbookManager(this._dbService, this._wordListNotifier);
 
   Future<void> loadInitialData() async {
+    await loadInitialMetadata();
+    await loadActiveWordbookWords();
+  }
+
+  Future<void> loadInitialMetadata() {
+    return _metadataInitializationFuture ??= _loadInitialMetadata().catchError((error) {
+      _metadataInitializationFuture = null;
+      throw error;
+    });
+  }
+
+  Future<void> _loadInitialMetadata() async {
     _setLoading(true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _studyActivityDates
+        ..clear()
+        ..addAll(prefs.getStringList(_studyActivityDatesKey) ?? const []);
+      final lastActiveId = prefs.getInt(_lastActiveWordbookIdKey);
+      final lastActiveDbFileName = prefs.getString(_lastActiveWordbookDbFileNameKey);
 
-    // 1. 기기에서 마지막 활성 단어장 ID를 불러옵니다.
-    final prefs = await SharedPreferences.getInstance();
-    _studyActivityDates
-      ..clear()
-      ..addAll(prefs.getStringList(_studyActivityDatesKey) ?? const []);
-    final lastActiveId = prefs.getInt(_lastActiveWordbookIdKey);
-    final lastActiveDbFileName = prefs.getString(_lastActiveWordbookDbFileNameKey);
+      await _loadWordbooks(shouldNotify: false);
+      await _loadStudyPlans(shouldNotify: false);
 
-    // 2. 전체 단어장 목록을 DB에서 로드합니다.
-    await _loadWordbooks(shouldNotify: false);
-    await _loadStudyPlans(shouldNotify: false);
-
-    // 3. 저장된 ID가 있다면, 해당 단어장을 찾아 활성화합니다.
-    final restoredWordbook = _findRestoredWordbook(lastActiveId, lastActiveDbFileName);
-    if (restoredWordbook != null) {
-      await setActiveWordbook(restoredWordbook);
-    } else if (_wordbooks.isNotEmpty && _activeWordbook == null) {
-      // 저장된 ID가 없고, 현재 활성 단어장도 없다면 첫 번째 단어장을 활성화합니다.
-      await setActiveWordbook(_wordbooks.first);
+      _activeWordbook =
+          _findRestoredWordbook(lastActiveId, lastActiveDbFileName) ??
+          (_wordbooks.isNotEmpty ? _wordbooks.first : null);
+      _statsRevision++;
+      notifyListeners();
+    } finally {
+      _setLoading(false);
     }
+  }
 
-    _setLoading(false);
+  Future<void> loadActiveWordbookWords() {
+    return _activeWordbookInitializationFuture ??=
+        _loadActiveWordbookWords().catchError((error) {
+          _activeWordbookInitializationFuture = null;
+          throw error;
+        });
+  }
+
+  Future<void> retryActiveWordbookWords() {
+    _activeWordbookInitializationFuture = null;
+    return loadActiveWordbookWords();
+  }
+
+  Future<void> _loadActiveWordbookWords() async {
+    await loadInitialMetadata();
+    _activeWordbookLoadError = null;
+    _isActiveWordbookLoading = true;
+    notifyListeners();
+    try {
+      final wordbook = _activeWordbook;
+      if (wordbook == null) {
+        _wordListNotifier.clearWords();
+      } else {
+        await _wordListNotifier.loadWords(wordbook.dbFileName);
+      }
+    } catch (error) {
+      _activeWordbookLoadError = error;
+      rethrow;
+    } finally {
+      _isActiveWordbookLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _loadWordbooks({bool shouldNotify = true}) async {
@@ -159,19 +226,11 @@ class WordbookManager extends ChangeNotifier {
 
   Future<List<Word>> _loadBuiltinWords(BuiltinWordbookTemplate seed) async {
     final csvString = await rootBundle.loadString(seed.sourceAsset);
-    final rows = const CsvToListConverter().convert(csvString);
-    return rows
-        .skip(1 + seed.offset)
-        .take(seed.count)
-        .map((row) {
-          if (row.length < 2) return null;
-          final word = row[0].toString().trim();
-          final meaning = row[1].toString().replaceAll('"', '').trim();
-          if (word.isEmpty || meaning.isEmpty) return null;
-          return Word(word: word, meaning: meaning);
-        })
-        .whereType<Word>()
-        .toList();
+    return WordDataParser.parseCsv(
+      csvString,
+      offset: seed.offset,
+      count: seed.count,
+    );
   }
 
   Future<void> _loadStudyPlans({bool shouldNotify = true}) async {
@@ -256,6 +315,20 @@ class WordbookManager extends ChangeNotifier {
   List<Word> getWordsForReview() {
     if (_activeWordbook == null) return [];
     return _srsService.dueWords(wordsAvailableForPlan(_wordListNotifier.words));
+  }
+
+  List<Word> getPendingMcqReviewWords() {
+    if (_activeWordbook == null) return [];
+    return wordsAvailableForPlan(
+      _wordListNotifier.words,
+    ).where((word) => word.pendingMcqReview > 0).toList();
+  }
+
+  List<Word> getPendingSpellingReviewWords() {
+    if (_activeWordbook == null) return [];
+    return wordsAvailableForPlan(
+      _wordListNotifier.words,
+    ).where((word) => word.pendingSpellingReview > 0).toList();
   }
 
   StudyPlan? planFor(Wordbook? wordbook) {
@@ -465,35 +538,16 @@ class WordbookManager extends ChangeNotifier {
   }
 
   Future<void> createNewWordbookFromCsv(BuildContext context) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['csv'],
-    );
-    if (result == null) return;
     _setLoading(true);
     try {
-      final file = result.files.single;
-      final path = file.path!;
-      final csvString = await File(path).readAsString();
-      final List<List<dynamic>> csvTable = const CsvToListConverter().convert(csvString);
-      final List<Word> words =
-          csvTable
-              .skip(1)
-              .map((row) {
-                if (row.length >= 2) {
-                  return Word(word: row[0].toString().trim(), meaning: row[1].toString().trim());
-                }
-                return null;
-              })
-              .where((word) => word != null && word.word.isNotEmpty && word.meaning.isNotEmpty)
-              .cast<Word>()
-              .toList();
+      final imported = await const LocalWordFileService().pickAndPreview(context);
+      if (imported == null) return;
+      final words = imported.words;
 
       if (words.isEmpty && context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('CSV 파일에서 유효한 단어를 찾을 수 없습니다.')));
-        _setLoading(false);
+        ).showSnackBar(const SnackBar(content: Text('파일에서 유효한 단어와 뜻을 찾을 수 없습니다.')));
         return;
       }
       if (!context.mounted) {
@@ -501,7 +555,7 @@ class WordbookManager extends ChangeNotifier {
         return;
       }
       final theme = Theme.of(context);
-      var draftName = p.basenameWithoutExtension(path);
+      var draftName = imported.fileName;
       void popDialogAfterUnfocus<T>(BuildContext dialogContext, [T? result]) {
         FocusScope.of(dialogContext).unfocus();
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -557,12 +611,12 @@ class WordbookManager extends ChangeNotifier {
       await setActiveWordbook(savedWordbook);
       if (context.mounted) {
         context.read<AnalyticsService>().logWordbookImported(
-          source: 'csv',
+          source: imported.fileType,
           wordbookCount: 1,
         );
       }
     } catch (e) {
-      debugPrint("Error creating wordbook from CSV: $e");
+      debugPrint("Error creating wordbook from local file: $e");
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('파일 처리 중 오류 발생: $e')));
       }
@@ -629,18 +683,19 @@ class WordbookManager extends ChangeNotifier {
   }
 
   Future<List<Wordbook>> createMultipleWordbooksFromSheets(
-    List<sheets.Sheet> selectedSheets,
+    Map<sheets.Sheet, List<Word>> preparedSheets,
     String spreadsheetId,
   ) async {
     _setLoading(true);
     final importedWordbooks = <Wordbook>[];
     try {
-      for (final sheet in selectedSheets) {
+      for (final entry in preparedSheets.entries) {
+        final sheet = entry.key;
         final sheetName = sheet.properties?.title;
         if (sheetName == null || sheetName.isEmpty) continue;
 
-        final words = await _sheetsService.getWordsFromSheet(spreadsheetId, sheetName);
-        if (words == null || words.isEmpty) continue;
+        final words = entry.value;
+        if (words.isEmpty) continue;
 
         final dbFileName =
             'wordbook_${DateTime.now().millisecondsSinceEpoch}_${sheet.properties?.sheetId}.db';

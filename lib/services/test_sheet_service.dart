@@ -136,6 +136,7 @@ class TestSheetService {
       final questionData = <String, dynamic>{
         'question': questionText,
         'answer': answerText,
+        'additionalMeanings': word.additionalMeanings,
         'type': currentType,
         'questionFormat': TestQuestionFormat.shortAnswer,
         'translation':
@@ -182,8 +183,16 @@ class TestSheetService {
     final answer = questionData['answer'] as String? ?? '';
     final options = _questionOptions(questionData);
     final answerIndex = options.indexWhere((option) => option.trim() == answer.trim());
-    if (answerIndex >= 0) return '${_optionLabel(answerIndex)} $answer';
-    return answer;
+    final primaryAnswer = answerIndex >= 0 ? '${_optionLabel(answerIndex)} $answer' : answer;
+    final additionalMeanings = _additionalMeanings(questionData);
+    if (additionalMeanings.isEmpty) return primaryAnswer;
+    return '$primaryAnswer\n추가 뜻: ${additionalMeanings.join(' · ')}';
+  }
+
+  List<String> _additionalMeanings(Map<String, dynamic> questionData) {
+    final raw = questionData['additionalMeanings'];
+    if (raw is! List) return const [];
+    return raw.map((meaning) => meaning.toString().trim()).where((meaning) => meaning.isNotEmpty).toList();
   }
 
   Future<void> exportPdf({
@@ -819,11 +828,14 @@ class TestSheetService {
           final item = entry.value;
           final type = item['type'] as SelfTestType;
           final options = _questionOptions(item);
+          final isMultipleChoice = options.isNotEmpty;
           final question = <String, dynamic>{
             'number': entry.key + 1,
-            'type': _selfTestTypeLabel(type),
+            'type': _selfTestTypeLabel(type, isMultipleChoice: isMultipleChoice),
             'question': item['question'] as String? ?? '',
             'answer': item['answer'] as String? ?? '',
+            'additionalMeanings': _additionalMeanings(item),
+            'selfGraded': type == SelfTestType.wordToMeaning && !isMultipleChoice,
             'hint': item['hint'] as String?,
             'translation': settings.includeTranslation ? item['translation'] as String? : null,
           };
@@ -1072,6 +1084,26 @@ class TestSheetService {
       color: var(--muted);
       font-size: 0.95rem;
     }
+    .self-grade-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-weight: 600;
+      line-height: 1.5;
+    }
+    .self-grade-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .self-grade-actions button {
+      padding: 9px 14px;
+    }
+    .self-grade-actions .review {
+      color: var(--danger);
+      background: #fff0ee;
+      border: 1px solid rgba(201, 79, 79, 0.35);
+    }
     @media (max-width: 640px) {
       header { align-items: stretch; flex-direction: column; }
       .score-card { text-align: left; }
@@ -1102,6 +1134,8 @@ class TestSheetService {
     const quizMode = ${jsonEncode(mode)};
     const questions = $safeDataJson;
     const state = {};
+    const gradedResults = {};
+    const selfGrades = {};
     const quiz = document.getElementById('quiz');
     const total = document.getElementById('total');
     const score = document.getElementById('score');
@@ -1127,6 +1161,18 @@ class TestSheetService {
       return state[index] || '';
     }
 
+    function isSelfGradedQuestion(question) {
+      return question.selfGraded === true &&
+        !(Array.isArray(question.options) && question.options.length > 0);
+    }
+
+    function refreshScore() {
+      const correctCount = Object.values(gradedResults).filter(function(value) {
+        return value === true;
+      }).length;
+      score.textContent = correctCount;
+    }
+
     function render() {
       total.textContent = questions.length;
       quiz.innerHTML = questions.map(function(q, index) {
@@ -1141,7 +1187,7 @@ class TestSheetService {
           ? '<div class="options">' + q.options.map(function(opt, optIndex) {
               return '<label class="option" data-option="' + index + '-' + optIndex + '"><input type="radio" name="q' + index + '" onchange="choose(' + index + ', ' + optIndex + ')"><span>' + escapeHtml(opt) + '</span></label>';
             }).join('') + '</div>'
-          : '<input data-input="' + index + '" type="text" placeholder="답을 입력하세요" oninput="markDirty()">';
+          : '<input data-input="' + index + '" type="text" placeholder="답을 입력하세요" oninput="markDirty(' + index + ')">';
 
         return '<article class="question" id="q' + index + '">' +
           '<div class="meta"><span>문제 ' + number + '</span><span>' + escapeHtml(type) + '</span></div>' +
@@ -1153,13 +1199,22 @@ class TestSheetService {
       }).join('');
     }
 
-    function markDirty() {
+    function markDirty(index) {
       gradeButton.classList.remove('active');
       answerButton.classList.remove('active');
+      if (Number.isInteger(index)) {
+        delete gradedResults[index];
+        delete selfGrades[index];
+        const card = document.getElementById('q' + index);
+        const feedback = document.getElementById('f' + index);
+        if (card) card.classList.remove('correct', 'wrong');
+        if (feedback) feedback.className = 'feedback';
+        refreshScore();
+      }
     }
 
     function choose(index, optIndex) {
-      markDirty();
+      markDirty(index);
       state[index] = questions[index].options[optIndex];
       const labels = document.querySelectorAll('[data-option^="' + index + '-"]');
       labels.forEach(function(label) { label.classList.remove('selected'); });
@@ -1172,7 +1227,35 @@ class TestSheetService {
       const card = document.getElementById('q' + index);
       const feedback = document.getElementById('f' + index);
       const userAnswer = answerOf(index);
+      if (isSelfGradedQuestion(q)) {
+        const selfGrade = selfGrades[index];
+        card.classList.remove('correct', 'wrong');
+        if (selfGrade === true) card.classList.add('correct');
+        if (selfGrade === false) card.classList.add('wrong');
+        feedback.className = 'feedback show' +
+          (selfGrade === true ? ' correct' : selfGrade === false ? ' wrong' : '');
+        feedback.innerHTML = userAnswer
+          ? '<div class="answer">내 답: ' + escapeHtml(userAnswer) + '</div>'
+          : '<div class="answer">입력한 답이 없습니다.</div>';
+        feedback.innerHTML += '<div class="answer">모범 답안: ' +
+          escapeHtml(q.answer) + '</div>';
+        if (Array.isArray(q.additionalMeanings) && q.additionalMeanings.length) {
+          feedback.innerHTML += '<div class="explanation">함께 인정할 수 있는 뜻: ' +
+            q.additionalMeanings.map(escapeHtml).join(' · ') + '</div>';
+        }
+        feedback.innerHTML += selfGrade === true
+          ? '<div class="self-grade-note">정답으로 기록했습니다.</div>'
+          : selfGrade === false
+          ? '<div class="self-grade-note">다시 볼 문제로 기록했습니다.</div>'
+          : '<div class="self-grade-note">표현이 달라도 의미가 같다면 정답으로 선택하세요.</div>';
+        feedback.innerHTML += '<div class="self-grade-actions">' +
+          '<button type="button" onclick="setSelfGrade(' + index + ', true)">맞게 썼어요</button>' +
+          '<button type="button" class="review" onclick="setSelfGrade(' + index + ', false)">다시 볼게요</button>' +
+          '</div>';
+        return selfGrade === true;
+      }
       const correct = normalize(userAnswer) === normalize(q.answer);
+      gradedResults[index] = correct;
 
       card.classList.remove('correct', 'wrong');
       card.classList.add(correct ? 'correct' : 'wrong');
@@ -1183,6 +1266,10 @@ class TestSheetService {
       }
       if (q.explanation) {
         feedback.innerHTML += '<div class="explanation">' + escapeHtml(q.explanation) + '</div>';
+      }
+      if (Array.isArray(q.additionalMeanings) && q.additionalMeanings.length) {
+        feedback.innerHTML += '<div class="explanation">추가 뜻: ' +
+          q.additionalMeanings.map(escapeHtml).join(' · ') + '</div>';
       }
 
       if (Array.isArray(q.options)) {
@@ -1198,12 +1285,18 @@ class TestSheetService {
       return correct;
     }
 
+    function setSelfGrade(index, correct) {
+      selfGrades[index] = correct;
+      gradedResults[index] = correct;
+      gradeQuestion(index, true);
+      refreshScore();
+    }
+
     function gradeAll() {
-      let correctCount = 0;
       questions.forEach(function(_, index) {
-        if (gradeQuestion(index, false)) correctCount++;
+        gradeQuestion(index, false);
       });
-      score.textContent = correctCount;
+      refreshScore();
       gradeButton.classList.add('active');
       answerButton.classList.remove('active');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1217,6 +1310,8 @@ class TestSheetService {
 
     function resetQuiz() {
       Object.keys(state).forEach(function(key) { delete state[key]; });
+      Object.keys(gradedResults).forEach(function(key) { delete gradedResults[key]; });
+      Object.keys(selfGrades).forEach(function(key) { delete selfGrades[key]; });
       score.textContent = '0';
       gradeButton.classList.remove('active');
       answerButton.classList.remove('active');
@@ -1236,12 +1331,15 @@ class TestSheetService {
     return cleaned.isEmpty ? 'interactive_quiz' : cleaned;
   }
 
-  String _selfTestTypeLabel(SelfTestType type) {
+  String _selfTestTypeLabel(
+    SelfTestType type, {
+    bool isMultipleChoice = false,
+  }) {
     switch (type) {
       case SelfTestType.wordToMeaning:
-        return '뜻 쓰기';
+        return isMultipleChoice ? '뜻 고르기' : '뜻 쓰기';
       case SelfTestType.meaningToWord:
-        return '단어 쓰기';
+        return isMultipleChoice ? '단어 고르기' : '단어 쓰기';
       case SelfTestType.sentenceCompletion:
         return '문장 완성';
     }

@@ -62,6 +62,7 @@ dependencies:
   googleapis_auth: ^1.6.0
   flutter_svg: ^2.0.10+1
   flutter_tts: ^4.0.2
+  audioplayers: ^6.5.1
   google_fonts: ^6.2.1
   firebase_core: ^3.15.2
   firebase_crashlytics: ^4.3.10
@@ -72,7 +73,6 @@ dependencies:
   google_generative_ai: ^0.4.0
   dart_openai: ^5.1.0            # ▼▼▼ [추가] ▼▼▼
   flutter_secure_storage: ^9.1.1 # ▼▼▼ [추가] ▼▼▼
-  flip_card: ^0.7.0
   flutter_card_swiper: ^7.0.2
   extension_google_sign_in_as_googleapis_auth: ^2.0.13
   fl_chart: ^1.0.0
@@ -105,6 +105,7 @@ flutter:
     - assets/onboarding/generated/
     - assets/fonts/ # 폰트 폴더 등록
     - assets/icons/
+    - assets/sounds/
 
   fonts:
     - family: NotoSansKR

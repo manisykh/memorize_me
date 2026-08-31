@@ -18,32 +18,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _OnboardingPageData(
       title: 'Google Sheet에서 바로 시작',
       description: '정리해둔 스프레드시트를 선택하면 시트가 단어장으로 만들어집니다.',
-      imageAsset: 'assets/onboarding/generated/01_sheet_import_colored_pencil.png',
+      imageAsset: 'assets/onboarding/generated/01_sheet_import_colored_pencil.webp',
     ),
     _OnboardingPageData(
       title: '카드로 먼저 익히기',
       description: '단어와 뜻을 넘기며 보고, 발음과 예문으로 기억을 붙잡습니다.',
-      imageAsset: 'assets/onboarding/generated/02_flashcard_colored_pencil.png',
+      imageAsset: 'assets/onboarding/generated/02_flashcard_colored_pencil.webp',
     ),
     _OnboardingPageData(
       title: '문제로 기억 점검',
       description: '객관식과 주관식 문제로 헷갈리는 단어를 바로 확인합니다.',
-      imageAsset: 'assets/onboarding/generated/03_quiz_colored_pencil.png',
+      imageAsset: 'assets/onboarding/generated/03_quiz_colored_pencil.webp',
     ),
     _OnboardingPageData(
       title: '오늘 복습만 정리',
       description: 'SRS 흐름에 맞춰 오늘 볼 단어와 기억 상태를 한눈에 봅니다.',
-      imageAsset: 'assets/onboarding/generated/04_srs_stats_colored_pencil.png',
+      imageAsset: 'assets/onboarding/generated/04_srs_stats_colored_pencil.webp',
     ),
     _OnboardingPageData(
       title: 'AI로 시험지까지 생성',
       description: '단어장 기반으로 예문, 퀴즈, PDF 시험지를 만들 수 있습니다.',
-      imageAsset: 'assets/onboarding/generated/05_ai_learning_colored_pencil.png',
+      imageAsset: 'assets/onboarding/generated/05_ai_learning_colored_pencil.webp',
     ),
     _OnboardingPageData(
       title: '이제 학습을 시작하세요',
       description: 'Google Sheet를 가져오거나 기존 단어장으로 바로 학습할 수 있습니다.',
-      imageAsset: 'assets/onboarding/generated/06_start_colored_pencil.png',
+      imageAsset: 'assets/onboarding/generated/06_start_colored_pencil.webp',
     ),
   ];
 

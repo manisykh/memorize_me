@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:provider/provider.dart';
 
+import '../models/word_model.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/analytics_service.dart';
 import '../services/sheets_service.dart';
+import '../services/word_data_parser.dart';
+import '../widgets/word_import_mapping_dialog.dart';
 
 const String selectSheetImportResultDone = 'imported';
 const String selectSheetImportResultStartStudy = 'startStudy';
@@ -41,9 +44,46 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
 
     setState(() => _isLoading = true);
 
+    final sheetsService = context.read<SheetsService>();
+    final preparedSheets = <sheets.Sheet, List<Word>>{};
+    try {
+      for (final sheet in _selectedSheets) {
+        final sheetName = sheet.properties?.title;
+        if (sheetName == null || sheetName.isEmpty) continue;
+        final rows = await sheetsService.getRowsFromSheet(widget.spreadsheetId, sheetName);
+        if (!mounted) return;
+        final selection = await showWordImportMappingDialog(
+          context,
+          sheets: {sheetName: rows},
+          title: '"$sheetName" 데이터 확인',
+        );
+        if (selection == null) {
+          if (mounted) setState(() => _isLoading = false);
+          return;
+        }
+        final mapping = selection.mapping;
+        final words = WordDataParser.parseMappedRows(
+          rows,
+          wordColumn: mapping.wordColumn,
+          primaryMeaningColumn: mapping.primaryMeaningColumn,
+          additionalMeaningColumns: mapping.additionalMeaningColumns,
+          skipHeader: mapping.skipHeader,
+        );
+        if (words.isNotEmpty) preparedSheets[sheet] = words;
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('시트 데이터를 확인하는 중 오류가 발생했습니다: $error')));
+      return;
+    }
+
+    if (!mounted) return;
     final manager = context.read<WordbookManager>();
     final importedWordbooks = await manager.createMultipleWordbooksFromSheets(
-      _selectedSheets.toList(),
+      preparedSheets,
       widget.spreadsheetId,
     );
     if (importedWordbooks.isNotEmpty && mounted) {

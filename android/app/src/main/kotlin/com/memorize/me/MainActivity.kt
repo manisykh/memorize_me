@@ -1,28 +1,25 @@
 package com.memorize.me
 
+import android.accounts.Account
+import android.app.Activity
 import android.content.Intent
-import android.net.Uri
-import android.os.Bundle
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.AuthorizationResult
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.CommonStatusCodes
+import com.google.android.gms.common.api.Scope
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import java.util.UUID
 
 class MainActivity : FlutterActivity() {
     private val googlePickerChannel = "memorize_me/google_picker"
+    private val googlePickerRequestCode = 9134
+    private val driveFileScope = "https://www.googleapis.com/auth/drive.file"
+    private val spreadsheetMimeType = "application/vnd.google-apps.spreadsheet"
     private var pendingPickerResult: MethodChannel.Result? = null
-    private var pendingPickerState: String? = null
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        handlePickerCallback(intent)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handlePickerCallback(intent)
-    }
+    private val authorizationClient by lazy { Identity.getAuthorizationClient(this) }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -33,87 +30,146 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickSpreadsheet" -> {
-                    val pickerUrl = call.argument<String>("pickerUrl").orEmpty()
-                    if (pickerUrl.isBlank()) {
-                        result.error(
-                            "picker_config_missing",
-                            "Google Picker URL is missing.",
-                            null,
-                        )
-                        return@setMethodCallHandler
-                    }
-                    openPickerInBrowser(pickerUrl, result)
+                    val accountEmail = call.argument<String>("accountEmail").orEmpty()
+                    openNativePicker(accountEmail, result)
                 }
                 else -> result.notImplemented()
             }
         }
     }
 
-    private fun openPickerInBrowser(
-        pickerUrl: String,
+    private fun openNativePicker(
+        accountEmail: String,
         result: MethodChannel.Result,
     ) {
         pendingPickerResult?.success(null)
-
-        val state = UUID.randomUUID().toString()
-        pendingPickerState = state
         pendingPickerResult = result
 
-        val uri = Uri.parse(pickerUrl).buildUpon()
-            .appendQueryParameter("redirect_uri", "memorizeme://picker")
-            .appendQueryParameter("state", state)
-            .build()
+        val requestBuilder = AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(Scope(driveFileScope)))
+            .setOptOutIncludingGrantedScopes(true)
+            .setPrompt(AuthorizationRequest.Prompt.CONSENT)
+            .addResourceParameter(
+                AuthorizationRequest.ResourceParameter.PICKER_OAUTH_TRIGGER,
+                "true",
+            )
+            .addResourceParameter(
+                AuthorizationRequest.ResourceParameter.PICKER_MIMETYPES,
+                spreadsheetMimeType,
+            )
+
+        if (accountEmail.isNotBlank()) {
+            requestBuilder.setAccount(Account(accountEmail, "com.google"))
+        } else {
+            requestBuilder.setPrompt(
+                AuthorizationRequest.Prompt.CONSENT or
+                    AuthorizationRequest.Prompt.SELECT_ACCOUNT,
+            )
+        }
+
+        authorizationClient.authorize(requestBuilder.build())
+            .addOnSuccessListener { authorizationResult ->
+                val pendingIntent = authorizationResult.pendingIntent
+                if (authorizationResult.hasResolution() && pendingIntent != null) {
+                    try {
+                        @Suppress("DEPRECATION")
+                        startIntentSenderForResult(
+                            pendingIntent.intentSender,
+                            googlePickerRequestCode,
+                            null,
+                            0,
+                            0,
+                            0,
+                        )
+                    } catch (error: Exception) {
+                        finishPickerWithError(
+                            "picker_launch_failed",
+                            "Google Drive file picker could not be opened.",
+                            error.message,
+                        )
+                    }
+                } else {
+                    finishPicker(authorizationResult)
+                }
+            }
+            .addOnFailureListener { error ->
+                finishPickerWithError(
+                    "picker_authorization_failed",
+                    "Google Drive permission could not be requested.",
+                    error.message,
+                )
+            }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != googlePickerRequestCode) return
+
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            finishPickerAsCancelled()
+            return
+        }
 
         try {
-            startActivity(Intent(Intent.ACTION_VIEW, uri))
-        } catch (error: Exception) {
-            clearPickerPending()
-            result.error(
-                "picker_browser_unavailable",
-                "Could not open a browser for Google Picker.",
-                error.message,
-            )
+            finishPicker(authorizationClient.getAuthorizationResultFromIntent(data))
+        } catch (error: ApiException) {
+            if (error.statusCode == CommonStatusCodes.CANCELED) {
+                finishPickerAsCancelled()
+            } else {
+                finishPickerWithError(
+                    "picker_result_failed",
+                    "The selected Google Drive file could not be authorized.",
+                    error.message,
+                )
+            }
         }
     }
 
-    private fun handlePickerCallback(intent: Intent?) {
-        val uri = intent?.data ?: return
-        if (uri.scheme != "memorizeme" || uri.host != "picker") return
+    private fun finishPicker(authorizationResult: AuthorizationResult) {
+        val fileIds = authorizationResult.tokenResponseParams
+            ?.getString("picked_file_ids")
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            .orEmpty()
 
-        val result = pendingPickerResult ?: return
-        val expectedState = pendingPickerState
-        val receivedState = uri.getQueryParameter("state")
-        if (expectedState == null || expectedState != receivedState) {
-            result.error("picker_state_mismatch", "Invalid Google Picker callback.", null)
-            clearPickerPending()
+        if (fileIds.isEmpty()) {
+            finishPickerAsCancelled()
             return
         }
 
-        val error = uri.getQueryParameter("error")
-        if (!error.isNullOrBlank()) {
-            result.error("picker_failed", error, null)
-            clearPickerPending()
+        val accessToken = authorizationResult.accessToken
+        if (accessToken.isNullOrBlank()) {
+            finishPickerWithError(
+                "picker_token_missing",
+                "Google Drive did not return an access token for the selected file.",
+                null,
+            )
             return
         }
 
-        val spreadsheetId = uri.getQueryParameter("spreadsheetId")
-        if (spreadsheetId.isNullOrBlank()) {
-            result.success(null)
-            clearPickerPending()
-            return
-        }
-
-        result.success(
+        pendingPickerResult?.success(
             mapOf(
-                "id" to spreadsheetId,
-                "name" to (uri.getQueryParameter("name") ?: "Google Sheets"),
+                "id" to fileIds.first(),
+                "name" to "Google Sheets",
+                "accessToken" to accessToken,
             ),
         )
         clearPickerPending()
     }
 
+    private fun finishPickerAsCancelled() {
+        pendingPickerResult?.success(null)
+        clearPickerPending()
+    }
+
+    private fun finishPickerWithError(code: String, message: String, details: String?) {
+        pendingPickerResult?.error(code, message, details)
+        clearPickerPending()
+    }
+
     private fun clearPickerPending() {
         pendingPickerResult = null
-        pendingPickerState = null
     }
 }

@@ -27,30 +27,20 @@ and the `Free / Pro / Founding` entitlement foundation are documented in
 
 ## Google Picker Setup
 
-The Android app opens Google Picker in an external browser and receives the selected spreadsheet through this deep link:
+The Android app uses the Google Identity Services authorization client to open
+Google Picker natively. It no longer sends OAuth access tokens to a hosted web
+page and does not require `GOOGLE_PICKER_WEB_URL` at build or run time.
+
+Required Google OAuth scope:
 
 ```text
-memorizeme://picker
-```
-
-Host `picker_hosting/google_picker.html` on HTTPS, then replace these constants in the hosted file:
-
-```text
-REPLACE_WITH_WEB_OAUTH_CLIENT_ID
-REPLACE_WITH_PICKER_API_KEY
-```
-
-Run locally with:
-
-```powershell
-flutter run --dart-define=GOOGLE_PICKER_WEB_URL=https://your-host.example/google_picker.html
-```
-
-Required Google OAuth scopes:
-
-```text
-https://www.googleapis.com/auth/spreadsheets.readonly
 https://www.googleapis.com/auth/drive.file
 ```
 
-Do not add `drive.readonly` unless the app is intentionally moving back to full Drive read access.
+Enable Google Picker API and Google Sheets API in the same Google Cloud project as
+the Android OAuth client. Register the package name and SHA certificate fingerprints
+for debug, upload, and Play App Signing builds. Google Sheets API calls are limited
+to files the user explicitly grants through Google Picker. Do not add
+`spreadsheets.readonly` or `drive.readonly` unless the product intentionally moves
+back to broad account-wide access and the corresponding OAuth verification is
+completed.

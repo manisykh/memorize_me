@@ -2,17 +2,21 @@
 
 ## Generated Panels
 
-- `generated/01_sheet_import_colored_pencil.png`
+Runtime onboarding panels use WebP quality 82. The original PNG files are
+preserved under `design_archive/onboarding/png/` so they are not bundled with
+the application.
+
+- `generated/01_sheet_import_colored_pencil.webp`
   - Google Sheet 파일 선택과 시트 선택 흐름을 설명하는 첫 페이지용 이미지.
-- `generated/02_flashcard_colored_pencil.png`
+- `generated/02_flashcard_colored_pencil.webp`
   - 플래시카드 앞면/뒷면 학습을 설명하는 이미지.
-- `generated/03_quiz_colored_pencil.png`
+- `generated/03_quiz_colored_pencil.webp`
   - 객관식 퀴즈와 스펠링 퀴즈를 함께 보여주는 이미지.
-- `generated/04_srs_stats_colored_pencil.png`
+- `generated/04_srs_stats_colored_pencil.webp`
   - 오늘 학습, SRS 복습 흐름, 통계 요약을 설명하는 이미지.
-- `generated/05_ai_learning_colored_pencil.png`
+- `generated/05_ai_learning_colored_pencil.webp`
   - AI 학습, 퀴즈 생성, PDF/HTML 내보내기 흐름을 설명하는 이미지.
-- `generated/06_start_colored_pencil.png`
+- `generated/06_start_colored_pencil.webp`
   - 마지막 시작 페이지용 이미지.
 
 ## Source Screenshot Map

@@ -55,3 +55,12 @@ class EntitlementSnapshot {
     );
   }
 }
+
+bool canUseAppFeature({
+  required AppFeature feature,
+  required bool isLaunchFree,
+  required EntitlementSnapshot entitlement,
+}) {
+  if (isLaunchFree || entitlement.hasFullAccess) return true;
+  return feature.isAlwaysFree;
+}

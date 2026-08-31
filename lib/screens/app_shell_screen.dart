@@ -34,6 +34,58 @@ enum _ShellTab { home, review, stats, ai, settings }
 const bool _showStatsMetricCards = false;
 const bool _showDeckSecondaryMetrics = false;
 
+Future<void> _openMistakeReview(BuildContext context) async {
+  final manager = context.read<WordbookManager>();
+  final mcqCount = manager.getPendingMcqReviewWords().length;
+  final spellingCount = manager.getPendingSpellingReviewWords().length;
+  if (mcqCount == 0 && spellingCount == 0) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('지금 다시 확인할 오답이 없습니다.')),
+    );
+    return;
+  }
+
+  final startsWithMcq = mcqCount > 0;
+  final title = startsWithMcq ? '객관식 오답부터 확인합니다' : '주관식 오답을 확인합니다';
+  final message =
+      startsWithMcq
+          ? spellingCount > 0
+              ? '객관식에서 틀린 $mcqCount개를 먼저 다시 풉니다. 모두 맞히면 주관식 오답 $spellingCount개로 이어갈 수 있습니다.'
+              : '객관식에서 틀린 $mcqCount개를 같은 방식으로 다시 풉니다. 모두 맞힌 뒤 주관식으로 이어갈지 선택할 수 있습니다.'
+          : '주관식에서 틀리거나 정답을 확인한 $spellingCount개를 다시 입력합니다.';
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder:
+        (dialogContext) => AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('나중에'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('시작'),
+            ),
+          ],
+        ),
+  );
+  if (confirmed != true || !context.mounted) return;
+
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder:
+          (_) => QuizScreen(
+            initialMode:
+                startsWithMcq ? QuizMode.reviewMultipleChoice : QuizMode.reviewSpelling,
+            origin: LearningRouteOrigin.review,
+            mistakeReview: true,
+          ),
+    ),
+  );
+}
+
 class _ShellPalette {
   final Color background;
   final Color topBar;
@@ -3369,7 +3421,7 @@ class _EmptyWordbookStatusCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Google 시트나 CSV 파일에서 단어를 가져오면 오늘 루틴을 바로 시작할 수 있습니다.',
+                      'Google 시트나 CSV·XLSX 파일에서 단어를 가져오면 오늘 루틴을 바로 시작할 수 있습니다.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
@@ -3956,15 +4008,15 @@ class _BloomReviewTab extends _ReviewTab {
   @override
   Widget build(BuildContext context) {
     final palette = _ShellPalette.of(Theme.of(context));
+    final wordbookManager = context.watch<WordbookManager>();
     final reviewCount = dailyPlan.dueWords.length;
     final newCount = dailyPlan.newWords.length;
     final todayNewCount = min(newWordSessionCount, newCount);
     final hasTodayNewWords = todayNewCount > 0;
     final learningCount = dailyPlan.learningWords.length;
-    final weakReviewCount =
-        dailyPlan.dueWords
-            .where((word) => word.incorrectCount > 0 || word.correctStreak == 0)
-            .length;
+    final pendingMcqCount = wordbookManager.getPendingMcqReviewWords().length;
+    final pendingSpellingCount = wordbookManager.getPendingSpellingReviewWords().length;
+    final pendingMistakeCount = pendingMcqCount + pendingSpellingCount;
     const showReviewSummaryCards = false;
 
     return SingleChildScrollView(
@@ -4090,41 +4142,25 @@ class _BloomReviewTab extends _ReviewTab {
           ),
           const SizedBox(height: 12),
           _BloomFeatureCard(
-            title: '오답/복습 재확인',
+            title: '오답 다시 확인',
             subtitle:
-                reviewCount == 0
-                    ? '틀린 단어가 복습일에 도달하면 활성화됩니다.'
-                    : weakReviewCount == 0
-                    ? '$reviewCount개를 다시 점검합니다.'
-                    : '오답 이력 단어 $weakReviewCount개를 포함해 복습합니다.',
+                pendingMistakeCount == 0
+                    ? '객관식과 주관식에서 틀린 단어가 여기에 모입니다.'
+                    : pendingMcqCount > 0 && pendingSpellingCount > 0
+                    ? '객관식 $pendingMcqCount개 · 주관식 $pendingSpellingCount개'
+                    : pendingMcqCount > 0
+                    ? '객관식에서 틀린 $pendingMcqCount개를 다시 확인합니다.'
+                    : '주관식에서 틀린 $pendingSpellingCount개를 다시 확인합니다.',
             icon: CupertinoIcons.arrow_2_circlepath_circle_fill,
             accentColor: palette.warning,
-            onTap: () => _startWeakReview(context, reviewCount),
+            onTap: () => _startWeakReview(context),
           ),
         ],
       ),
     );
   }
 
-  void _startWeakReview(BuildContext context, int reviewCount) {
-    if (reviewCount == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('오답 복습은 틀린 단어가 다시 복습 대상이 되면 시작할 수 있습니다.'),
-        ),
-      );
-      return;
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (_) => const QuizScreen(
-              initialMode: QuizMode.reviewSpelling,
-              origin: LearningRouteOrigin.review,
-            ),
-      ),
-    );
-  }
+  void _startWeakReview(BuildContext context) => _openMistakeReview(context);
 }
 
 class _BloomStatsTab extends StatefulWidget {
@@ -5757,20 +5793,11 @@ class _ReviewTab extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _ActionCard(
-            title: 'Incorrect Review',
-            subtitle: '오답 복습과 약한 단어 재확인을 빠르게 이어갑니다.',
+            title: '오답 다시 확인',
+            subtitle: '틀린 문제를 같은 유형으로 먼저 다시 확인합니다.',
             icon: CupertinoIcons.arrow_2_circlepath_circle_fill,
             accentColor: palette.warning,
-            onTap:
-                () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder:
-                        (_) => const QuizScreen(
-                          initialMode: QuizMode.reviewSpelling,
-                          origin: LearningRouteOrigin.review,
-                        ),
-                  ),
-                ),
+            onTap: () => _openMistakeReview(context),
           ),
         ],
       ),

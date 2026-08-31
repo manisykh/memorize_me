@@ -45,6 +45,7 @@
     <script>
       const CLIENT_ID = '1089946281483-5nu4bjsb01fdmcq63eoo48s8sfo30joq.apps.googleusercontent.com';
       const API_KEY = 'AIzaSyCp8oCvdql3MfjzCtwQ-ZhB7W-wO4ZeSyk';
+      const APP_ID = '1089946281483';
       const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
       const params = new URLSearchParams(window.location.search);
@@ -117,6 +118,7 @@
 
         const picker = new google.picker.PickerBuilder()
           .setDeveloperKey(API_KEY)
+          .setAppId(APP_ID)
           .setOAuthToken(accessToken)
           .addView(view)
           .setCallback((data) => {

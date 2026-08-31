@@ -19,13 +19,22 @@ import '../providers/wordbook_manager.dart';
 import '../services/srs_service.dart';
 import '../services/analytics_service.dart';
 import '../services/test_sheet_service.dart';
+import '../services/study_sound_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/glassmorphic_card.dart';
 import '../widgets/wordbook_selection_button.dart';
 import 'flashcard_screen.dart';
 import '../services/mode_state_service.dart';
+import '../services/quiz_answer_logic.dart';
 
-enum QuizMode { none, multipleChoice, spelling, reviewSpelling, exportSheet }
+enum QuizMode {
+  none,
+  multipleChoice,
+  reviewMultipleChoice,
+  spelling,
+  reviewSpelling,
+  exportSheet,
+}
 
 enum SpellingAnswerState { none, correct, incorrect, showAnswer }
 
@@ -63,11 +72,13 @@ class SpellingQuizResult {
 class QuizScreen extends StatefulWidget {
   final QuizMode initialMode;
   final LearningRouteOrigin origin;
+  final bool mistakeReview;
 
   const QuizScreen({
     super.key,
     this.initialMode = QuizMode.none,
     this.origin = LearningRouteOrigin.standalone,
+    this.mistakeReview = false,
   });
 
   @override
@@ -79,6 +90,10 @@ class _QuizScreenState extends State<QuizScreen> {
   StudyPlan? _studyPlan;
   List<Word> _words = [];
   List<Word> _reviewWords = [];
+  List<Word> _pendingMcqWords = [];
+  List<Word> _pendingSpellingWords = [];
+  List<Word> _reviewMcqSessionWords = [];
+  List<Word> _bridgedSpellingWords = [];
   int _totalWordCount = 0;
   int _lockedNewWordCount = 0;
   bool _isLoading = false;
@@ -149,7 +164,16 @@ class _QuizScreenState extends State<QuizScreen> {
         _canDoSentenceCompletion = _words.any(
           (w) => w.exampleSentence != null && w.exampleSentence!.isNotEmpty,
         );
-        _reviewWords = wordbookManager.getWordsForReview();
+        _pendingMcqWords = wordbookManager.getPendingMcqReviewWords();
+        _pendingSpellingWords = wordbookManager.getPendingSpellingReviewWords();
+        _reviewMcqSessionWords = List<Word>.from(_pendingMcqWords);
+        _reviewWords =
+            widget.mistakeReview
+                ? _pendingSpellingWords
+                : wordbookManager.getWordsForReview();
+        if (_currentMode == QuizMode.reviewMultipleChoice && _pendingMcqWords.isEmpty) {
+          _currentMode = _pendingSpellingWords.isEmpty ? QuizMode.none : QuizMode.reviewSpelling;
+        }
         if (_currentMode == QuizMode.reviewSpelling && _reviewWords.isEmpty) {
           _currentMode = QuizMode.none;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -184,7 +208,29 @@ class _QuizScreenState extends State<QuizScreen> {
       ).showSnackBar(const SnackBar(content: Text('지금은 복습 대기 단어가 없습니다.')));
       return;
     }
+    if (newMode == QuizMode.reviewMultipleChoice && _pendingMcqWords.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('다시 확인할 객관식 오답이 없습니다.')));
+      return;
+    }
     setState(() => _currentMode = newMode);
+  }
+
+  void _continueReviewSpelling() {
+    final seen = <String>{};
+    final combinedWords = <Word>[
+      ..._reviewMcqSessionWords,
+      ..._pendingSpellingWords,
+    ].where((word) {
+      final key = word.id?.toString() ?? word.word.trim().toLowerCase();
+      return seen.add(key);
+    }).toList();
+    setState(() {
+      _bridgedSpellingWords = combinedWords;
+      _reviewWords = _bridgedSpellingWords;
+      _currentMode = QuizMode.reviewSpelling;
+    });
   }
 
   String _defaultExportTitle() {
@@ -375,7 +421,13 @@ class _QuizScreenState extends State<QuizScreen> {
     }
     final theme = Theme.of(context);
     if (_selectedWordbook != null) {
-      _reviewWords = context.watch<WordbookManager>().getWordsForReview();
+      final manager = context.watch<WordbookManager>();
+      _pendingMcqWords = manager.getPendingMcqReviewWords();
+      _pendingSpellingWords = manager.getPendingSpellingReviewWords();
+      if (_bridgedSpellingWords.isEmpty) {
+        _reviewWords =
+            widget.mistakeReview ? _pendingSpellingWords : manager.getWordsForReview();
+      }
     }
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -397,10 +449,22 @@ class _QuizScreenState extends State<QuizScreen> {
           QuizMode.multipleChoice => _MultipleChoiceQuizView(
             key: ValueKey('mcq_${_selectedWordbook?.id}'),
             words: _words,
+            optionPool: _words,
             selectedWordbook: _selectedWordbook!,
             sessionLabel: '뜻 고르기',
             sessionHint: '의미를 빠르게 구분하며 오늘 기억을 점검하는 단계입니다.',
             onContinueSpelling: () => _changeMode(QuizMode.spelling),
+            onFinish: _finishActiveMode,
+          ),
+          QuizMode.reviewMultipleChoice => _MultipleChoiceQuizView(
+            key: ValueKey('review_mcq_${_selectedWordbook?.id}'),
+            words: _reviewMcqSessionWords,
+            optionPool: _words,
+            selectedWordbook: _selectedWordbook!,
+            sessionLabel: '객관식 오답 다시 확인',
+            sessionHint: '객관식에서 헷갈린 단어를 같은 방식으로 먼저 확인합니다.',
+            mistakeReview: true,
+            onContinueSpelling: _continueReviewSpelling,
             onFinish: _finishActiveMode,
           ),
           QuizMode.spelling =>
@@ -450,6 +514,8 @@ class _QuizScreenState extends State<QuizScreen> {
         return '시험지 생성';
       case QuizMode.multipleChoice:
         return '객관식 퀴즈 - ${_currentScopeName()}';
+      case QuizMode.reviewMultipleChoice:
+        return '객관식 오답 - ${_currentScopeName()}';
       case QuizMode.spelling:
         return '스펠링 퀴즈 - ${_currentScopeName()}';
       case QuizMode.reviewSpelling:
@@ -1498,18 +1564,22 @@ class _QuizScreenState extends State<QuizScreen> {
 
 class _MultipleChoiceQuizView extends StatefulWidget {
   final List<Word> words;
+  final List<Word> optionPool;
   final Wordbook selectedWordbook;
   final String sessionLabel;
   final String sessionHint;
+  final bool mistakeReview;
   final VoidCallback onContinueSpelling;
   final VoidCallback onFinish;
 
   const _MultipleChoiceQuizView({
     super.key,
     required this.words,
+    required this.optionPool,
     required this.selectedWordbook,
     required this.sessionLabel,
     required this.sessionHint,
+    this.mistakeReview = false,
     required this.onContinueSpelling,
     required this.onFinish,
   });
@@ -1569,7 +1639,8 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView>
 
   void _prepareQuestion() {
     final currentWord = _sessionWords[_currentIndex];
-    final otherWords = List<Word>.from(widget.words)..removeWhere((w) => w.id == currentWord.id);
+    final otherWords = List<Word>.from(widget.optionPool)
+      ..removeWhere((w) => w.id == currentWord.id);
     otherWords.shuffle();
     _currentOptions = [currentWord, ...otherWords.take(3)]..shuffle();
     _selectedOption = null;
@@ -1585,12 +1656,15 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView>
   bool? _commitCurrentAnswer() {
     if (_selectedOption == null || _isAnswered) return null;
     final currentWord = _sessionWords[_currentIndex];
-    final isCorrect = _selectedOption!.id == currentWord.id;
+    final isCorrect = QuizAnswerLogic.isCorrectChoice(
+      selected: _selectedOption!,
+      answer: currentWord,
+    );
     final updatedWord = _srsService.updateWordSrs(
       word: currentWord,
-      source: SrsUpdateSource.flashcard,
+      source: SrsUpdateSource.multipleChoiceQuiz,
       difficulty: isCorrect ? SrsDifficulty.good : SrsDifficulty.again,
-    );
+    ).copyWith(pendingMcqReview: isCorrect ? 0 : 1);
     _wordbookManager.updateWordsSrsData(widget.selectedWordbook.dbFileName, [updatedWord]);
     setState(() {
       _isAnswered = true;
@@ -1602,6 +1676,11 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView>
   void _nextQuestion() {
     final isCorrect = _commitCurrentAnswer();
     if (isCorrect == null) return;
+    unawaited(
+      context.read<StudySoundService>().play(
+        isCorrect ? StudySoundEffect.correct : StudySoundEffect.incorrect,
+      ),
+    );
     _playScorePulse(
       isCorrect ? _McqScorePulse.correct : _McqScorePulse.incorrect,
     );
@@ -1624,9 +1703,13 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView>
 
   void _advanceQuestion() {
     _autoAdvanceTimer?.cancel();
-    if (_currentIndex < _sessionWords.length - 1) {
+    final nextIndex = QuizAnswerLogic.nextIndex(
+      currentIndex: _currentIndex,
+      totalCount: _sessionWords.length,
+    );
+    if (nextIndex != null) {
       setState(() {
-        _currentIndex++;
+        _currentIndex = nextIndex;
         _prepareQuestion();
       });
     } else {
@@ -1692,7 +1775,8 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView>
         builder:
             (_) => _McqQuizResultScreen(
               results: _results,
-              onRestart: () => _closeResultsThen(_startSession),
+              mistakeReview: widget.mistakeReview,
+              onRestart: () => _closeResultsThen(_restartIncorrectSession),
               onContinueSpelling: _continueSpellingFromResults,
               onFinish: _finishFromResults,
             ),
@@ -2111,12 +2195,14 @@ class _McqQuizResultScreen extends StatelessWidget {
   final VoidCallback onRestart;
   final VoidCallback onContinueSpelling;
   final VoidCallback onFinish;
+  final bool mistakeReview;
 
   const _McqQuizResultScreen({
     required this.results,
     required this.onRestart,
     required this.onContinueSpelling,
     required this.onFinish,
+    this.mistakeReview = false,
   });
 
   @override
@@ -2183,6 +2269,7 @@ class _McqQuizResultScreen extends StatelessWidget {
               onRestart: onRestart,
               onContinueSpelling: onContinueSpelling,
               onFinish: onFinish,
+              mistakeReview: mistakeReview,
             ),
             const SizedBox(height: 20),
             GlassmorphicCard(
@@ -2262,6 +2349,7 @@ class _McqQuizResultScreen extends StatelessWidget {
     required VoidCallback onRestart,
     required VoidCallback onContinueSpelling,
     required VoidCallback onFinish,
+    required bool mistakeReview,
   }) {
     return GlassmorphicCard(
       child: Column(
@@ -2281,31 +2369,44 @@ class _McqQuizResultScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            hasIncorrect
+            mistakeReview && hasIncorrect
+                ? '객관식 오답 $incorrectCount개가 남았습니다. 모두 맞힌 뒤 주관식 문제로 이어갈 수 있습니다.'
+                : hasIncorrect
                 ? '틀린 $incorrectCount개는 복습에 반영됩니다. 객관식을 다시 섞어 보거나 주관식 문제로 이어갈 수 있습니다.'
                 : '객관식 확인을 마쳤습니다. 한 번 더 섞어 보거나 주관식 문제로 기억을 고정하세요.',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onRestart,
-                  icon: const Icon(CupertinoIcons.arrow_2_circlepath, size: 18),
-                  label: const Text('객관식 다시'),
-                ),
+          if (mistakeReview && hasIncorrect)
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton.icon(
+                onPressed: onRestart,
+                icon: const Icon(CupertinoIcons.arrow_2_circlepath, size: 18),
+                label: Text('남은 객관식 오답 $incorrectCount개 다시'),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: onContinueSpelling,
-                  icon: const Icon(CupertinoIcons.pencil, size: 18),
-                  label: const Text('주관식 문제'),
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onRestart,
+                    icon: const Icon(CupertinoIcons.arrow_2_circlepath, size: 18),
+                    label: const Text('객관식 다시'),
+                  ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onContinueSpelling,
+                    icon: const Icon(CupertinoIcons.pencil, size: 18),
+                    label: const Text('주관식 문제'),
+                  ),
+                ),
+              ],
+            ),
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -2366,6 +2467,15 @@ class _McqQuizResultScreen extends StatelessWidget {
                   style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 Text(result.questionWord.meaning, style: theme.textTheme.bodyMedium),
+                if (result.questionWord.additionalMeanings.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '추가 뜻 · ${result.questionWord.additionalMeanings.join(' · ')}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -2415,6 +2525,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
   bool _isClosingResults = false;
   _SpellingScorePulse _scorePulse = _SpellingScorePulse.none;
   Timer? _autoAdvanceTimer;
+  bool _showAdditionalMeaningHint = false;
 
   @override
   void initState() {
@@ -2508,26 +2619,31 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
 
   void _checkAnswer() {
     if (_answerState != SpellingAnswerState.none) return;
-    String normalizeSpelling(String value) =>
-        value.toLowerCase().replaceAll(RegExp(r'[\s\-_]'), '');
-    final userInput = normalizeSpelling(_textController.text);
-    final correctAnswer = normalizeSpelling(_sessionWords[_currentIndex].word);
     final wasRetryAttempt = _isRetryAttempt;
+    final attemptResult = QuizAnswerLogic.evaluateSpelling(
+      input: _textController.text,
+      answer: _sessionWords[_currentIndex].word,
+      isRetry: wasRetryAttempt,
+    );
+    final isCorrect = attemptResult != SpellingAttemptResult.incorrect;
     setState(() {
-      if (userInput == correctAnswer) {
+      if (isCorrect) {
         _answerState = SpellingAnswerState.correct;
         _results.add(
           SpellingQuizResult(
             word: _sessionWords[_currentIndex],
-            isCorrectOnFirstTry: !wasRetryAttempt,
-            isCorrectOnRetry: wasRetryAttempt,
+            isCorrectOnFirstTry:
+                attemptResult == SpellingAttemptResult.correctFirstTry,
+            isCorrectOnRetry:
+                attemptResult == SpellingAttemptResult.correctOnRetry,
           ),
         );
       } else {
         _answerState = SpellingAnswerState.incorrect;
       }
     });
-    if (userInput == correctAnswer) {
+    if (isCorrect) {
+      unawaited(context.read<StudySoundService>().play(StudySoundEffect.correct));
       _playScorePulse(
         wasRetryAttempt
             ? _SpellingScorePulse.correctRetry
@@ -2535,6 +2651,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
       );
       _scheduleAutomaticAdvance();
     } else {
+      unawaited(context.read<StudySoundService>().play(StudySoundEffect.incorrect));
       _playScorePulse(_SpellingScorePulse.wrongAttempt);
     }
   }
@@ -2559,7 +2676,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
       text: firstChar,
       selection: TextSelection.collapsed(offset: firstChar.length),
     );
-    setState(() {});
+    setState(() => _showAdditionalMeaningHint = true);
     _ensureKeyboardVisible();
   }
 
@@ -2569,18 +2686,24 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
       _textController.text = _sessionWords[_currentIndex].word;
       _results.add(SpellingQuizResult(word: _sessionWords[_currentIndex], isSkipped: true));
     });
+    unawaited(context.read<StudySoundService>().play(StudySoundEffect.incorrect));
     _playScorePulse(_SpellingScorePulse.wrongCommitted);
     _scheduleAutomaticAdvance();
   }
 
   void _nextQuestion() {
     _autoAdvanceTimer?.cancel();
-    if (_currentIndex < _sessionWords.length - 1) {
+    final nextIndex = QuizAnswerLogic.nextIndex(
+      currentIndex: _currentIndex,
+      totalCount: _sessionWords.length,
+    );
+    if (nextIndex != null) {
       setState(() {
-        _currentIndex++;
+        _currentIndex = nextIndex;
         _answerState = SpellingAnswerState.none;
         _isRetryAttempt = false;
         _scorePulse = _SpellingScorePulse.none;
+        _showAdditionalMeaningHint = false;
         _textController.clear();
       });
       _ensureKeyboardVisible();
@@ -2596,6 +2719,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
       _answerState = SpellingAnswerState.none;
       _isRetryAttempt = true;
       _scorePulse = _SpellingScorePulse.none;
+      _showAdditionalMeaningHint = false;
       _textController.clear();
     });
     _ensureKeyboardVisible();
@@ -2645,12 +2769,12 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
               word: result.word,
               source: SrsUpdateSource.flashcard,
               difficulty: SrsDifficulty.good,
-            );
+            ).copyWith(pendingSpellingReview: 0);
           }
           return _srsService.updateWordSrs(
             word: result.word,
             source: SrsUpdateSource.spellingQuiz,
-          );
+          ).copyWith(pendingSpellingReview: 1);
         }).toList();
 
     _hasSavedSessionSrs = true;
@@ -2755,6 +2879,25 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
                     style: theme.textTheme.headlineSmall,
                     textAlign: TextAlign.center,
                   ),
+                  if (_showAdditionalMeaningHint &&
+                      currentWord.additionalMeanings.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        '추가 뜻 · ${currentWord.additionalMeanings.join(' · ')}',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
                   SizedBox(height: keyboardVisible ? 18 : 30),
                   Opacity(
                     opacity: 0,
@@ -3447,6 +3590,15 @@ class _SpellingQuizResultScreen extends StatelessWidget {
                   style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 Text(result.word.meaning, style: theme.textTheme.bodyMedium),
+                if (result.word.additionalMeanings.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '추가 뜻 · ${result.word.additionalMeanings.join(' · ')}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

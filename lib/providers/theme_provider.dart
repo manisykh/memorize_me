@@ -22,11 +22,7 @@ class ThemeNotifier extends ChangeNotifier {
   ThemeData getTheme() {
     final theme = AppTheme.appThemes[_currentTheme]!;
     if (_currentTheme != AppThemeType.visionProtection) return theme;
-
-    final levelIndex =
-        (_eyeCareLevel - 1).clamp(0, AppTheme.visionProtectionColors.length - 1).toInt();
-    final backgroundColor = AppTheme.visionProtectionColors[levelIndex];
-    return theme.copyWith(scaffoldBackgroundColor: backgroundColor);
+    return AppTheme.visionProtectionThemeForLevel(_eyeCareLevel);
   }
 
   Future<void> _initPrefs() async {
@@ -58,7 +54,6 @@ class ThemeNotifier extends ChangeNotifier {
   }
 
   void setEyeCareLevel(int level) {
-    // ▼▼▼ [수정] 최대 레벨을 3에서 5로 변경 ▼▼▼
     if (_eyeCareLevel == level || level < 1 || level > 5) return;
     _eyeCareLevel = level;
     _saveToPrefs();

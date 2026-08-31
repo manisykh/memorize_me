@@ -614,6 +614,55 @@ class AppTheme {
     ),
   );
 
+  static ThemeData visionProtectionThemeForLevel(int level) {
+    final index = (level - 1).clamp(0, visionProtectionColors.length - 1).toInt();
+    final amount = index / (visionProtectionColors.length - 1);
+    final base = visionProtectionTheme;
+    final background = visionProtectionColors[index];
+    final surface = Color.lerp(
+      const Color(0xFFFBF6EC),
+      const Color(0xFFE6D2B4),
+      amount,
+    )!;
+    final raisedSurface = Color.lerp(
+      const Color(0xFFF2E6D3),
+      const Color(0xFFD8BE98),
+      amount,
+    )!;
+    final outline = Color.lerp(
+      const Color(0xFFE5D6BD),
+      const Color(0xFFB9976E),
+      amount,
+    )!;
+    final navigationSurface = Color.lerp(surface, raisedSurface, 0.18)!;
+
+    return base.copyWith(
+      scaffoldBackgroundColor: background,
+      cardColor: surface,
+      colorScheme: base.colorScheme.copyWith(
+        surface: surface,
+        surfaceContainerHighest: raisedSurface,
+        outline: outline,
+      ),
+      cardTheme: base.cardTheme.copyWith(
+        color: surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: outline),
+        ),
+      ),
+      dialogTheme: base.dialogTheme.copyWith(backgroundColor: surface),
+      bottomSheetTheme: base.bottomSheetTheme.copyWith(backgroundColor: surface),
+      popupMenuTheme: base.popupMenuTheme.copyWith(color: surface),
+      navigationBarTheme: base.navigationBarTheme.copyWith(
+        backgroundColor: navigationSurface,
+        indicatorColor: raisedSurface,
+      ),
+      inputDecorationTheme: base.inputDecorationTheme.copyWith(fillColor: surface),
+      dividerTheme: base.dividerTheme.copyWith(color: outline),
+    );
+  }
+
   static final Map<AppThemeType, ThemeData> appThemes = {
     AppThemeType.lightGreen: lightGreenTheme,
     AppThemeType.dark: darkTheme,
