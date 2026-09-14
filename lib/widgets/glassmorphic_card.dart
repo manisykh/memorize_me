@@ -80,7 +80,8 @@ class GlassmorphicCard extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             borderRadius: radius,
-            child: Container(
+            // Paint on Material so child tiles and tap effects stay visible.
+            child: Ink(
               padding: padding,
               decoration: BoxDecoration(
                 color: fillColor,

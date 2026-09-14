@@ -1,6 +1,7 @@
 // lib/services/database_service.dart
 
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -34,7 +35,7 @@ class DatabaseService {
   Future<Database> _initMetaDB() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, "meta.db");
-    return await openDatabase(path, version: 5, onCreate: _createMetaDB, onUpgrade: _onUpgrade);
+    return await openDatabase(path, version: 6, onCreate: _createMetaDB, onUpgrade: _onUpgrade);
   }
 
   Future<void> _createMetaDB(Database db, int version) async {
@@ -45,6 +46,8 @@ class DatabaseService {
       "CREATE TABLE incorrect_words(id INTEGER PRIMARY KEY AUTOINCREMENT, wordbookName TEXT, word TEXT, meaning TEXT, additionalMeanings TEXT NOT NULL DEFAULT '[]')",
     );
     await _createStudyPlansTable(db);
+    await _addFlexiblePlanColumns(db);
+    await _createStudyHistoryTables(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -77,6 +80,10 @@ class DatabaseService {
           "ALTER TABLE incorrect_words ADD COLUMN additionalMeanings TEXT NOT NULL DEFAULT '[]'",
         );
         break;
+      case 6:
+        await _addFlexiblePlanColumns(db);
+        await _createStudyHistoryTables(db);
+        break;
     }
   }
 
@@ -93,6 +100,45 @@ class DatabaseService {
         status TEXT NOT NULL DEFAULT 'active',
         createdAt TEXT NOT NULL
       )''');
+  }
+
+  Future<void> _addFlexiblePlanColumns(Database db) async {
+    await db.execute("ALTER TABLE study_plans ADD COLUMN mode TEXT NOT NULL DEFAULT 'scheduled'");
+    await db.execute('ALTER TABLE study_plans ADD COLUMN bundleCount INTEGER NOT NULL DEFAULT 0');
+    await db.execute('ALTER TABLE study_plans ADD COLUMN selectedBundle INTEGER NOT NULL DEFAULT 1');
+    await db.execute('ALTER TABLE study_plans ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
+    await db.execute("ALTER TABLE study_plans ADD COLUMN wordOrder TEXT NOT NULL DEFAULT '[]'");
+    await db.execute('ALTER TABLE study_plans ADD COLUMN scheduleWordKeys TEXT');
+  }
+
+  Future<void> _createStudyHistoryTables(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS study_sessions(
+      sessionId TEXT PRIMARY KEY, dbFileName TEXT NOT NULL,
+      startedAt TEXT NOT NULL, data TEXT NOT NULL)''');
+    await db.execute('CREATE INDEX IF NOT EXISTS study_sessions_book_date ON study_sessions(dbFileName, startedAt)');
+    await db.execute('''CREATE TABLE IF NOT EXISTS study_plan_versions(
+      dbFileName TEXT NOT NULL, revision INTEGER NOT NULL,
+      effectiveFrom TEXT NOT NULL, data TEXT NOT NULL,
+      PRIMARY KEY(dbFileName, revision))''');
+  }
+
+  Future<List<Map<String, dynamic>>> getStudySessions() async {
+    final db = await _metaDatabase;
+    final rows = await db.query('study_sessions', orderBy: 'startedAt');
+    return rows.map((row) => jsonDecode(row['data'] as String) as Map<String, dynamic>).toList();
+  }
+
+  Future<void> saveStudySession(Map<String, dynamic> data) async {
+    final db = await _metaDatabase;
+    await db.insert('study_sessions', {
+      'sessionId': data['id'], 'dbFileName': data['dbFileName'],
+      'startedAt': data['startedAt'], 'data': jsonEncode(data),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> getStudyPlanVersions() async {
+    final db = await _metaDatabase;
+    return db.query('study_plan_versions', orderBy: 'effectiveFrom');
   }
 
   Future<List<Wordbook>> getWordbooks() async {
@@ -115,6 +161,8 @@ class DatabaseService {
     final db = await _metaDatabase;
     await db.delete('wordbooks', where: 'id = ?', whereArgs: [id]);
     await db.delete('study_plans', where: 'dbFileName = ?', whereArgs: [dbFileName]);
+    await db.delete('study_sessions', where: 'dbFileName = ?', whereArgs: [dbFileName]);
+    await db.delete('study_plan_versions', where: 'dbFileName = ?', whereArgs: [dbFileName]);
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, dbFileName);
     final file = File(path);
@@ -169,23 +217,77 @@ class DatabaseService {
   Future<List<StudyPlan>> getStudyPlans() async {
     final db = await _metaDatabase;
     final maps = await db.query('study_plans', orderBy: 'createdAt DESC');
-    return maps.map(StudyPlan.fromMap).toList();
+    final plans = <StudyPlan>[];
+    for (final map in maps) {
+      var plan = StudyPlan.fromMap(map);
+      if (plan.wordOrder.isEmpty && plan.totalWords > 0) {
+        // Freeze legacy ordering once, without loading all word content at startup.
+        final wordDb = await _openWordDB(plan.dbFileName);
+        late final List<Map<String, dynamic>> rows;
+        try {
+          rows = await wordDb.query('words', columns: ['id'], orderBy: 'id ASC');
+        } finally {
+          await wordDb.close();
+        }
+        final keys = rows.map((row) => '${row['id']}').toList();
+        plan = plan.copyWith(wordOrder: keys, scheduleWordKeys: keys);
+        final frozen = plan;
+        await db.transaction((txn) async {
+          await txn.update('study_plans', {
+            'wordOrder': jsonEncode(keys), 'scheduleWordKeys': jsonEncode(keys),
+          }, where: 'id = ?', whereArgs: [frozen.id]);
+          await txn.insert('study_plan_versions', {
+            'dbFileName': frozen.dbFileName, 'revision': frozen.revision,
+            'effectiveFrom': frozen.startDate, 'data': jsonEncode(frozen.toMap()),
+          }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        });
+      }
+      plans.add(plan);
+    }
+    return plans;
+  }
+
+  Future<int> nextStudyPlanRevision(String dbFileName) async {
+    final db = await _metaDatabase;
+    final rows = await db.rawQuery(
+      'SELECT MAX(revision) AS revision FROM study_plan_versions WHERE dbFileName = ?', [dbFileName]);
+    return ((rows.first['revision'] as int?) ?? 0) + 1;
   }
 
   Future<StudyPlan> saveStudyPlan(StudyPlan plan) async {
     final db = await _metaDatabase;
     final map = plan.toMap();
     map.remove('id');
-    final id = await db.insert(
-      'study_plans',
-      map,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final id = await db.transaction((txn) async {
+      final previous = await txn.query('study_plans', where: 'dbFileName = ?', whereArgs: [plan.dbFileName]);
+      if (previous.isNotEmpty) {
+        final old = StudyPlan.fromMap(previous.first);
+        await txn.insert('study_plan_versions', {
+          'dbFileName': old.dbFileName, 'revision': old.revision,
+          'effectiveFrom': old.startDate, 'data': jsonEncode(old.toMap()),
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      await txn.insert('study_plan_versions', {
+        'dbFileName': plan.dbFileName, 'revision': plan.revision,
+        'effectiveFrom': studyDateKey(DateTime.now()), 'data': jsonEncode(plan.toMap()),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      if (previous.isNotEmpty) {
+        final existingId = previous.first['id'] as int;
+        await txn.update('study_plans', map, where: 'id = ?', whereArgs: [existingId]);
+        return existingId;
+      }
+      return txn.insert('study_plans', map);
+    });
     return plan.copyWith(id: id);
   }
 
   Future<void> deleteStudyPlan(int id) async {
     final db = await _metaDatabase;
+    final rows = await db.query('study_plans', where: 'id = ?', whereArgs: [id]);
+    if (rows.isNotEmpty) {
+      final old = StudyPlan.fromMap(rows.first);
+      await saveStudyPlan(old.copyWith(status: StudyPlanStatus.paused, revision: old.revision + 1));
+    }
     await db.delete('study_plans', where: 'id = ?', whereArgs: [id]);
   }
 

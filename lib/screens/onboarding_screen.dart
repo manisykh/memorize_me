@@ -16,8 +16,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   static const List<_OnboardingPageData> _pages = [
     _OnboardingPageData(
-      title: 'Google Sheet에서 바로 시작',
-      description: '정리해둔 스프레드시트를 선택하면 시트가 단어장으로 만들어집니다.',
+      title: '내 단어장으로 바로 시작',
+      description: 'Google Sheets나 CSV·XLSX 파일을 선택하면 학습용 단어장으로 만들어집니다.',
       imageAsset: 'assets/onboarding/generated/01_sheet_import_colored_pencil.webp',
     ),
     _OnboardingPageData(
@@ -42,7 +42,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     _OnboardingPageData(
       title: '이제 학습을 시작하세요',
-      description: 'Google Sheet를 가져오거나 기존 단어장으로 바로 학습할 수 있습니다.',
+      description: '기본 단어장을 추가하거나 Google Sheets·CSV·XLSX를 가져와 학습할 수 있습니다.',
       imageAsset: 'assets/onboarding/generated/06_start_colored_pencil.webp',
     ),
   ];

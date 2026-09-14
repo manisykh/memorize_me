@@ -338,8 +338,6 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
     final opened = _scopedWords.length;
     final progress =
         plan.totalWords == 0 ? 0.0 : (opened / plan.totalWords).clamp(0.0, 1.0).toDouble();
-    final totalDays = plan.estimatedTotalDays();
-    final currentDay = totalDays == 0 ? 0 : plan.currentChunk().clamp(1, totalDays).toInt();
 
     return GlassmorphicCard(
       child: Column(
@@ -359,7 +357,7 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '현재 학습 기준 · 플랜 $currentDay/$totalDays일차',
+                  plan.scopeLabel,
                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                 ),
               ),

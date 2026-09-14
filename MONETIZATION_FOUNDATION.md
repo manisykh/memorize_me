@@ -2,6 +2,8 @@
 
 이 문서는 Memorize Me의 무료 출시 정책과 향후 유료 전환을 위해 준비된 기술 구조, Firebase 설정 및 운영 절차를 설명합니다.
 
+앱 화면과 사용자 안내에서는 `초기 사용자 혜택`이라는 이름을 사용합니다. 이 문서의 `Founding`, `founding_program_open`, `foundingMember`는 기존 서버 데이터와 코드에서 사용하는 내부 기술 명칭입니다.
+
 ## 1. 출시 초기 운영 정책
 
 출시 초기에는 다음 정책을 적용합니다.
@@ -11,7 +13,7 @@
 - 유료 결제 화면을 표시하지 않습니다.
 - 초기 사용자는 `Founding` 사용자로 등록합니다.
 - `Founding` 사용자는 향후 추가되는 유료 기능도 무료로 이용할 수 있습니다.
-- Google Sheets 가져오기, CSV 가져오기, 기본 단어장, 플래시카드, SRS 복습, 기본 문제와 기본 통계는 유료 전환 이후에도 계속 무료로 제공합니다.
+- Google Sheets·CSV·XLSX 가져오기, 기본 단어장, 플래시카드, SRS 복습, 기본 문제와 기본 통계는 유료 전환 이후에도 계속 무료로 제공합니다.
 
 앱의 기본 Remote Config 값은 다음과 같습니다.
 
@@ -35,6 +37,7 @@ Remote Config 또는 네트워크 연결에 문제가 발생하더라도 출시 
 
 - Google Sheets 가져오기
 - CSV 가져오기
+- XLSX 가져오기
 - 기본 단어장
 - 플래시카드
 - SRS 복습
@@ -75,7 +78,7 @@ Google Play 결제 또는 향후 구축할 결제 시스템을 통해 유료 권
 
 권장 고지 예시는 다음과 같습니다.
 
-> Memorize Me의 초기 무료 이용자 혜택이 20XX년 X월 X일 종료됩니다. 종료일 이전에 Founding 혜택 등록을 완료한 사용자는 향후 추가되는 유료 기능도 계속 무료로 이용할 수 있습니다.
+> Memorize Me의 초기 사용자 혜택 등록이 20XX년 X월 X일 종료됩니다. 종료일 이전에 혜택 등록을 완료한 사용자는 향후 추가되는 유료 기능도 계속 무료로 이용할 수 있습니다.
 
 ## 4. Founding 등록 종료 방법
 
@@ -238,7 +241,7 @@ Firebase Console의 Remote Config에서 다음 파라미터를 생성합니다.
 | `enable_paywall` | `false` | 유료 안내 화면 표시 여부 |
 | `founding_program_open` | `true` | Founding 모집 안내 표시 여부 |
 | `show_launch_notice` | `true` | 무료 출시 안내 표시 여부 |
-| `launch_notice_version` | `1` | 안내문 재표시 버전 |
+| `launch_notice_version` | `2` | 안내문 재표시 버전 |
 | `launch_notice_title` | `출시 초기 모든 기능 무료` | 안내 제목 |
 | `launch_notice_message` | 앱의 무료 출시 안내 문구 | 안내 본문 |
 | `free_wordbook_limit` | `-1` | 무료 단어장 제한, `-1`은 무제한 |
@@ -247,7 +250,7 @@ Firebase Console의 Remote Config에서 다음 파라미터를 생성합니다.
 
 무료 출시 안내 문구를 수정하고 사용자에게 다시 보여주려면 `launch_notice_version` 값을 증가시킵니다.
 
-예를 들어 기존 값이 `1`이면 다음 게시에서 `2`로 변경합니다.
+예를 들어 기존 값이 `2`이면 다음 게시에서 `3`으로 변경합니다.
 
 ## 10. Remote Config에 저장하면 안 되는 정보
 
@@ -306,7 +309,7 @@ Remote Config는 보안 저장소가 아닙니다. 사용자가 앱 내부의 Re
 - [ ] `firestore.rules` 배포
 - [ ] Google Analytics 활성화
 - [ ] Remote Config 파라미터 생성 및 게시
-- [ ] 앱 설정에서 `Founding 혜택 등록 완료` 표시 확인
+- [ ] 앱 설정에서 `초기 사용자 혜택 활성화됨` 또는 `초기 사용자 혜택 보호됨` 표시 확인
 - [ ] Google 로그인 후에도 Founding 상태 유지 확인
 - [ ] 앱 재실행 후 Founding 상태 복원 확인
 - [ ] 무료 출시 안내 문구 확인

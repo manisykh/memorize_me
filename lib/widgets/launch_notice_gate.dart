@@ -49,8 +49,9 @@ class _LaunchNoticeGateState extends State<LaunchNoticeGate> {
               children: [
                 Text(config.launchNoticeMessage),
                 const SizedBox(height: 16),
-                const _NoticePoint(text: 'Google Sheets/CSV와 기본 학습 기능은 계속 무료'),
+                const _NoticePoint(text: 'Google Sheets·CSV·XLSX와 기본 학습 기능은 계속 무료'),
                 const _NoticePoint(text: '초기 사용자는 향후 유료 기능도 무료 이용'),
+                const _NoticePoint(text: 'Google 계정 연결 시 다른 기기에서도 혜택 복원'),
                 const _NoticePoint(text: '광고 없이 모든 기능 제공'),
                 const SizedBox(height: 14),
                 Container(
@@ -62,8 +63,8 @@ class _LaunchNoticeGateState extends State<LaunchNoticeGate> {
                   ),
                   child: Text(
                     entitlement.isServerConfirmed
-                        ? 'Founding 혜택이 등록되었습니다.'
-                        : 'Founding 혜택 등록을 준비 중입니다. 네트워크 연결 후 자동으로 다시 시도합니다.',
+                        ? '초기 사용자 혜택이 등록되었습니다.'
+                        : '초기 사용자 혜택 등록을 준비 중입니다. 네트워크 연결 후 자동으로 다시 시도합니다.',
                     style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                   ),
                 ),

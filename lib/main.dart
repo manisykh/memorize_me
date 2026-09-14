@@ -181,19 +181,6 @@ class MyApp extends StatelessWidget {
     );
   }
 
-  Color _backgroundColorFor(
-    ThemeData theme,
-    AppThemeType themeType,
-    int eyeCareLevel,
-  ) {
-    if (themeType == AppThemeType.visionProtection) {
-      final levelIndex =
-          (eyeCareLevel - 1).clamp(0, AppTheme.visionProtectionColors.length - 1).toInt();
-      return AppTheme.visionProtectionColors[levelIndex];
-    }
-    return theme.scaffoldBackgroundColor;
-  }
-
   SystemUiOverlayStyle _systemUiOverlayStyle(
     ThemeData theme,
     AppThemeType themeType,
@@ -308,8 +295,9 @@ class _AppInitializerState extends State<AppInitializer> {
   }
 
   Future<void> _finishOnboarding() async {
+    final analytics = context.read<AnalyticsService>();
     await _onboardingState.markSeen();
-    await context.read<AnalyticsService>().logOnboardingCompleted();
+    await analytics.logOnboardingCompleted();
     if (mounted) {
       setState(() {
         _onboardingDecisionFuture = Future.value(false);

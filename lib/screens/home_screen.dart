@@ -192,7 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: '새 단어 익히기',
                     subtitle:
                         dailyPlan.hasNewWords
-                            ? '새 단어 ${dailyPlan.newWords.length}개 중 ${newWordSessionCount}개부터 시작합니다'
+                            ? '새 단어 ${dailyPlan.newWords.length}개 중 $newWordSessionCount개부터 시작합니다'
                             : '새로 SRS에 넣을 단어가 없습니다',
                     icon: CupertinoIcons.plus_circle_fill,
                     color: AppTheme.primaryGreen,

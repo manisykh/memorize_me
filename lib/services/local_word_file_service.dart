@@ -47,7 +47,7 @@ class LocalWordFileService {
       final workbook = Excel.decodeBytes(bytes);
       for (final entry in workbook.tables.entries) {
         final table = entry.value;
-        if (table == null || table.rows.isEmpty) continue;
+        if (table.rows.isEmpty) continue;
         sheets[entry.key] =
             table.rows
                 .map(
@@ -58,6 +58,7 @@ class LocalWordFileService {
     }
 
     if (sheets.isEmpty) throw StateError('가져올 수 있는 데이터가 없습니다.');
+    if (!context.mounted) return null;
     final selection = await showWordImportMappingDialog(context, sheets: sheets);
     if (selection == null) return null;
 

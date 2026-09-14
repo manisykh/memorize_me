@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Memorize Me 사용 가이드",
-  description: "Google 시트 가져오기부터 복습, 통계, AI 문제 생성과 PDF 내보내기까지 설명하는 Memorize Me 사용 가이드.",
+  description: "Google 시트·CSV·XLSX 가져오기부터 복습, 통계, AI 문제 생성과 PDF·HTML 내보내기까지 설명하는 Memorize Me 사용 가이드.",
 };
 
 type ManualFigureProps = {
@@ -94,11 +94,11 @@ export default function ManualPage() {
               <div>
                 <p>FIRST OPEN</p>
                 <h2>첫 실행은 기능을 훑고 끝냅니다</h2>
-                <p>온보딩은 네 장면으로 구성됩니다. 건너뛰어도 설정에서 언제든 다시 볼 수 있습니다.</p>
+                <p>온보딩은 여섯 장면으로 구성됩니다. 건너뛰어도 설정의 가이드 항목에서 언제든 다시 볼 수 있습니다.</p>
               </div>
             </header>
 
-            <div className="manual-onboarding-strip" aria-label="온보딩 화면 미리보기">
+            <div className="manual-onboarding-strip" aria-label="여섯 온보딩 장면 중 주요 화면 미리보기">
               <ManualFigure src="onboarding-start.jpg" alt="Google Sheet 가져오기 온보딩" caption="Google Sheet에서 시작" />
               <ManualFigure src="onboarding-flashcard.jpg" alt="플래시카드 온보딩" caption="카드로 먼저 익히기" />
               <ManualFigure src="onboarding-stats.jpg" alt="통계 온보딩" caption="기억 상태 확인" />
@@ -107,8 +107,8 @@ export default function ManualPage() {
 
             <ol className="manual-steps">
               <Step number="1" title="핵심 기능을 넘겨봅니다">Google 시트, 플래시카드, 복습과 통계, AI 학습의 역할을 짧게 확인합니다.</Step>
-              <Step number="2" title="시작하기를 누릅니다">Google 로그인 후 단어장 관리 화면에서 첫 단어장을 만들 수 있습니다.</Step>
-              <Step number="3" title="다시 보고 싶을 때">설정의 ‘온보딩 다시 보기’를 누르면 처음부터 다시 열립니다.</Step>
+              <Step number="2" title="시작하기를 누릅니다">로그인 없이 기본 단어장을 추가하거나 CSV·XLSX 파일로 바로 시작할 수 있습니다. Google 시트를 고를 때만 Google 연결을 요청합니다.</Step>
+              <Step number="3" title="다시 보고 싶을 때">설정에서 ‘가이드’를 펼치고 ‘온보딩 다시 보기’를 누르면 처음부터 다시 열립니다.</Step>
             </ol>
           </section>
 
@@ -117,17 +117,17 @@ export default function ManualPage() {
               <span>02</span>
               <div>
                 <p>BUILD YOUR WORD BOOK</p>
-                <h2>Google 시트를 단어장으로 가져오기</h2>
-                <p>앱은 사용자가 Picker에서 직접 고른 스프레드시트만 불러옵니다. CSV 파일도 같은 화면에서 가져올 수 있습니다.</p>
+                <h2>Google 시트·CSV·XLSX를 단어장으로 가져오기</h2>
+                <p>Google 시트는 Picker에서 직접 고른 파일만 불러옵니다. 로컬 파일은 CSV와 XLSX를 지원하며 PDF 가져오기는 지원하지 않습니다.</p>
               </div>
             </header>
 
             <div className="manual-spread manual-spread-wide">
               <div>
                 <ol className="manual-steps manual-steps-compact">
-                  <Step number="1" title="단어장 관리로 이동">‘Google 시트에서 가져오기’를 누릅니다.</Step>
-                  <Step number="2" title="Drive에서 파일 선택">Google 파일 선택기에서 원하는 스프레드시트를 직접 고릅니다.</Step>
-                  <Step number="3" title="학습할 시트 선택">파일 안의 시트 목록에서 하나 이상을 체크하고 가져오기를 누릅니다.</Step>
+                  <Step number="1" title="단어장 관리로 이동">Google 시트 또는 로컬 파일 가져오기 중 원하는 방식을 선택합니다.</Step>
+                  <Step number="2" title="파일 선택">Google Picker에서 스프레드시트를 고르거나 기기에서 CSV·XLSX 파일을 선택합니다.</Step>
+                  <Step number="3" title="시트와 열 확인">워크시트를 고른 뒤 단어 열과 대표 뜻 열을 확인합니다. 추가 뜻 열은 선택 사항입니다.</Step>
                   <Step number="4" title="활성 단어장 확인">목록에 추가된 단어장에서 ‘이 단어장 사용’을 선택합니다.</Step>
                 </ol>
                 <div className="manual-note">
@@ -255,7 +255,7 @@ export default function ManualPage() {
               <h3>제공자와 모델을 선택합니다</h3>
               <ol className="manual-steps manual-steps-compact">
                 <Step number="1" title="설정에서 AI 모델과 API 열기">접혀 있는 항목을 펼치면 제공자, 모델, API 키와 자동 대체 설정이 나타납니다.</Step>
-                <Step number="2" title="AI 회사 선택">Google Gemini, Groq 또는 Custom OpenAI Compatible 중 사용할 제공자를 선택합니다.</Step>
+                <Step number="2" title="AI 회사 선택">Gemini, OpenAI, Claude, Groq, Z.AI 등 지원 목록에서 사용할 제공자를 선택합니다.</Step>
                 <Step number="3" title="모델 선택">현재 제공자가 실제로 지원하는 모델을 고릅니다. 무료 표시는 제공자의 정책에 따라 달라질 수 있습니다.</Step>
               </ol>
               <div className="manual-gallery manual-gallery-two">
@@ -337,13 +337,20 @@ export default function ManualPage() {
               <span>06</span>
               <div>
                 <p>SETTINGS</p>
-                <h2>화면과 도움말은 설정에서 관리합니다</h2>
-                <p>기본 밝음, 어두운 테마, 시력 보호 모드 중 하나를 선택합니다. 시력 보호 모드에서는 배경 농도를 별도로 조절할 수 있습니다.</p>
+                <h2>설정은 필요한 항목만 펼쳐서 관리합니다</h2>
+                <p>계정, 디자인, 가이드, 소리와 음성, AI 모델과 API가 같은 방식으로 접혀 있습니다. 제목을 누르면 세부 설정이 바로 아래에 나타납니다.</p>
               </div>
             </header>
-            <div className="manual-gallery manual-gallery-two">
-              <ManualFigure src="eye-comfort.jpg" alt="시력 보호 모드와 배경 농도 설정" caption="디자인 · 시력 보호 농도" />
-              <ManualFigure src="settings-guide.jpg" alt="설정의 사용 가이드와 온보딩 다시 보기" caption="가이드 · 온보딩 다시 보기" />
+            <div className="manual-two-column-copy">
+              <div><strong>계정과 Google 시트</strong><p>Google 연결, 선택한 시트, 초기 사용자 혜택을 관리합니다. Drive 연결만 해제하면 로컬 단어장과 혜택은 유지됩니다.</p></div>
+              <div><strong>디자인</strong><p>밝음, 어두움, 시력 보호 테마를 선택합니다. 시력 보호 모드에서는 배경 농도를 조절할 수 있습니다.</p></div>
+              <div><strong>가이드</strong><p>전체 사용 가이드와 여섯 장면의 온보딩을 다시 볼 수 있습니다.</p></div>
+              <div><strong>소리와 음성</strong><p>정답·오답과 카드 스와이프 효과음을 켜거나 끄고, 단어 발음과 AI 대화의 두 화자를 선택합니다.</p></div>
+              <div><strong>AI 모델과 API</strong><p>제공자, 모델, API 키와 자동 대체 순서를 같은 화면에서 관리합니다.</p></div>
+            </div>
+            <div className="manual-note">
+              <strong>초기 사용자 혜택</strong>
+              <span>혜택 등록 기간에는 앱을 시작하면 자동 등록됩니다. Google 연결은 필수가 아니지만, 연결해 두면 재설치하거나 다른 기기에서도 혜택을 복원할 수 있습니다. ‘계정 및 초기 사용자 혜택 삭제’는 현재 계정의 클라우드 기록을 삭제하고 로컬 학습 데이터는 유지합니다. 등록 기간에는 새 기기 계정에 재등록될 수 있지만, 등록 종료 후에는 복구하지 못할 수 있습니다.</span>
             </div>
           </section>
 

@@ -144,6 +144,7 @@ class _SelectSpreadsheetScreenState extends State<SelectSpreadsheetScreen> {
       spreadsheetId: spreadsheetId,
       spreadsheetName: spreadsheetName,
     );
+    if (!mounted) return;
 
     final result = await Navigator.of(context).push<String>(
       MaterialPageRoute(

@@ -1363,7 +1363,7 @@ class TestSheetService {
       await file.writeAsBytes(bytesList[i]);
       xFiles.add(XFile(path));
     }
-    await Share.shareXFiles(xFiles, text: subject);
+    await SharePlus.instance.share(ShareParams(files: xFiles, text: subject));
   }
 
   Future<void> _shareFile(String fileName, List<int> bytes, String subject) async {

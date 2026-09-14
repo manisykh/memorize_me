@@ -91,7 +91,7 @@ class AuthProvider extends ChangeNotifier {
       throw StateError('클라우드 계정을 삭제하려면 연결했던 Google 계정을 먼저 다시 연결해주세요.');
     }
     if (firebaseUser.email != null && firebaseUser.email != googleUser.email) {
-      throw StateError('Founding 혜택을 보관한 Google 계정으로 다시 연결해주세요.');
+      throw StateError('초기 사용자 혜택을 보관한 Google 계정으로 다시 연결해주세요.');
     }
 
     final authentication = await googleUser.authentication;

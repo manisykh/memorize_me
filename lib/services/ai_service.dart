@@ -12,6 +12,7 @@ import '../models/grammar_curriculum.dart';
 import '../models/word_model.dart';
 import '../providers/ai_settings_provider.dart';
 import 'api_key_service.dart';
+import 'ai_difficulty_profile.dart';
 import 'ai_quiz_validator.dart';
 import 'custom_api_exception.dart';
 
@@ -44,7 +45,10 @@ class AiService {
   }) async {
     final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
-      throw CustomApiException('api_key_missing', '${provider.label} API 키가 등록되지 않았습니다.');
+      throw CustomApiException(
+        'api_key_missing',
+        '${provider.label} API 키가 등록되지 않았습니다.',
+      );
     }
     final prompt = """
     Create a simple and natural example sentence using the English word "$word".
@@ -79,7 +83,10 @@ class AiService {
   ) async {
     final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
-      throw CustomApiException('api_key_missing', '${provider.name} API 키가 등록되지 않았습니다.');
+      throw CustomApiException(
+        'api_key_missing',
+        '${provider.name} API 키가 등록되지 않았습니다.',
+      );
     }
     final wordListJson = jsonEncode(
       words.map((w) => {'word': w.word, 'meaning': w.meaning}).toList(),
@@ -102,7 +109,8 @@ class AiService {
     }
     """;
     try {
-      final responseText = await _sendPrompt(
+      final responseText =
+          await _sendPrompt(
             provider: provider,
             modelName: modelName,
             apiKey: apiKey,
@@ -119,11 +127,15 @@ class AiService {
       if (mappedError.code != 'unknown_error') {
         throw mappedError;
       }
-      throw CustomApiException('model_response_invalid', 'AI 예문 응답 형식이 올바르지 않습니다.');
+      throw CustomApiException(
+        'model_response_invalid',
+        'AI 예문 응답 형식이 올바르지 않습니다.',
+      );
     }
   }
 
-  Future<AiFallbackResult<Map<String, Map<String, String>>>> generateSentencesForWordsWithFallback(
+  Future<AiFallbackResult<Map<String, Map<String, String>>>>
+  generateSentencesForWordsWithFallback(
     List<Word> words,
     List<AiRequestOption> options,
   ) async {
@@ -146,7 +158,10 @@ class AiService {
   }) async {
     final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
-      throw CustomApiException('api_key_missing', '${provider.label} API 키가 등록되지 않았습니다.');
+      throw CustomApiException(
+        'api_key_missing',
+        '${provider.label} API 키가 등록되지 않았습니다.',
+      );
     }
     final responseText = await _sendPrompt(
       provider: provider,
@@ -158,7 +173,10 @@ class AiService {
     final cleaned = _cleanModelText(responseText ?? '');
     final decoded = jsonDecode(cleaned);
     if (decoded is! Map<String, dynamic> || decoded['ok'] != true) {
-      throw CustomApiException('model_response_invalid', 'AI 연결 테스트 응답 형식이 올바르지 않습니다.');
+      throw CustomApiException(
+        'model_response_invalid',
+        'AI 연결 테스트 응답 형식이 올바르지 않습니다.',
+      );
     }
   }
 
@@ -171,11 +189,15 @@ class AiService {
     required String difficulty,
     required bool includeExplanation,
     required String questionLanguage,
+    required List<Word> selectedWords,
     String? endpoint,
   }) async {
     final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
-      throw CustomApiException('api_key_missing', '${provider.name} API 키가 등록되지 않았습니다.');
+      throw CustomApiException(
+        'api_key_missing',
+        '${provider.name} API 키가 등록되지 않았습니다.',
+      );
     }
     final prompt = _buildGrammarPrompt(
       category,
@@ -184,6 +206,7 @@ class AiService {
       difficulty,
       includeExplanation,
       questionLanguage,
+      selectedWords,
     );
     try {
       String? responseText;
@@ -198,6 +221,10 @@ class AiService {
         return _parseAndValidateQuizResponse(
           responseText,
           expectedAnswerableCount: questionCount,
+          allowedTargetWords: selectedWords.map((word) => word.word),
+          expectedTypes: const {'grammar'},
+          difficultyProfile: AiDifficultyProfiles.fromLabel(difficulty),
+          requireFormatDiversity: true,
         );
       }
       return null;
@@ -216,6 +243,7 @@ class AiService {
     required String difficulty,
     required bool includeExplanation,
     required String questionLanguage,
+    required List<Word> selectedWords,
   }) async {
     return _runWithFallback<AiQuizResponse?>(
       options: options,
@@ -229,6 +257,7 @@ class AiService {
             difficulty: difficulty,
             includeExplanation: includeExplanation,
             questionLanguage: questionLanguage,
+            selectedWords: selectedWords,
             endpoint: option.endpoint,
           ),
     );
@@ -247,7 +276,10 @@ class AiService {
   }) async {
     final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
-      throw CustomApiException('api_key_missing', '${provider.name} API 키가 등록되지 않았습니다.');
+      throw CustomApiException(
+        'api_key_missing',
+        '${provider.name} API 키가 등록되지 않았습니다.',
+      );
     }
     final prompt = _buildImprovedPrompt(
       selectedWords,
@@ -270,6 +302,14 @@ class AiService {
         return _parseAndValidateQuizResponse(
           responseText,
           expectedAnswerableCount: questionCount,
+          allowedTargetWords: selectedWords.map((word) => word.word),
+          expectedTypes:
+              _canonicalQuizType(quizType) == 'mixed'
+                  ? null
+                  : {_canonicalQuizType(quizType)},
+          difficultyProfile: AiDifficultyProfiles.fromLabel(difficulty),
+          requireFormatDiversity: true,
+          requireTypeDiversity: _canonicalQuizType(quizType) == 'mixed',
         );
       }
       return null;
@@ -277,8 +317,12 @@ class AiService {
       rethrow;
     } on Exception catch (e) {
       if (e.toString().contains('overloaded') || e.toString().contains('503')) {
-        throw CustomApiException('server_overloaded', 'AI 서버가 현재 바쁩니다. 잠시 후 다시 시도해주세요.');
-      } else if (e.toString().contains('quota') || e.toString().contains('429')) {
+        throw CustomApiException(
+          'server_overloaded',
+          'AI 서버가 현재 바쁩니다. 잠시 후 다시 시도해주세요.',
+        );
+      } else if (e.toString().contains('quota') ||
+          e.toString().contains('429')) {
         throw CustomApiException('quota_exceeded', 'API 사용량 한도를 초과했습니다.');
       } else if (e.toString().contains('TimeoutException')) {
         throw CustomApiException('request_timeout', 'AI 요청 시간이 초과되었습니다.');
@@ -357,6 +401,11 @@ class AiService {
     }
 
     if (lastFallbackError != null) {
+      // Content-shape failures are not API configuration failures. Preserve the
+      // real reason so the UI can offer regeneration without opening settings.
+      if (lastFallbackError.code == 'model_response_invalid') {
+        throw lastFallbackError;
+      }
       throw CustomApiException(
         'fallback_exhausted',
         '등록된 AI 제공자를 모두 시도했지만 실패했습니다.\n${attempts.join('\n')}',
@@ -396,7 +445,11 @@ class AiService {
             .timeout(_requestTimeout);
         return response.text;
       case AiProvider.anthropic:
-        return _sendAnthropicPrompt(modelName: modelName, apiKey: apiKey, prompt: prompt);
+        return _sendAnthropicPrompt(
+          modelName: modelName,
+          apiKey: apiKey,
+          prompt: prompt,
+        );
       case AiProvider.openAI:
       case AiProvider.groq:
       case AiProvider.openRouter:
@@ -426,9 +479,14 @@ class AiService {
     String? endpoint,
   }) async {
     final resolvedEndpoint =
-        provider == AiProvider.customOpenAI ? endpoint?.trim() : provider.chatCompletionsEndpoint;
+        provider == AiProvider.customOpenAI
+            ? endpoint?.trim()
+            : provider.chatCompletionsEndpoint;
     if (resolvedEndpoint == null || resolvedEndpoint.isEmpty) {
-      throw CustomApiException('endpoint_missing', '${provider.label} 엔드포인트를 입력해주세요.');
+      throw CustomApiException(
+        'endpoint_missing',
+        '${provider.label} 엔드포인트를 입력해주세요.',
+      );
     }
 
     final response = await http
@@ -443,7 +501,8 @@ class AiService {
             'messages': [
               {
                 'role': 'system',
-                'content': 'Return only valid JSON. Do not wrap the response in markdown.',
+                'content':
+                    'Return only valid JSON. Do not wrap the response in markdown.',
               },
               {'role': 'user', 'content': prompt},
             ],
@@ -455,18 +514,28 @@ class AiService {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final body = utf8.decode(response.bodyBytes);
       if (response.statusCode == 401 || response.statusCode == 403) {
-        throw CustomApiException('api_key_invalid', '${provider.label} API 키를 확인해주세요.');
+        throw CustomApiException(
+          'api_key_invalid',
+          '${provider.label} API 키를 확인해주세요.',
+        );
       }
       if (response.statusCode == 429) {
         throw CustomApiException('quota_exceeded', 'API 사용량 한도를 초과했습니다.');
       }
       if (response.statusCode == 503 || response.statusCode == 529) {
-        throw CustomApiException('server_overloaded', '${provider.label} 서버가 현재 바쁩니다.');
+        throw CustomApiException(
+          'server_overloaded',
+          '${provider.label} 서버가 현재 바쁩니다.',
+        );
       }
-      throw CustomApiException('openai_request_failed', '${provider.label} 요청에 실패했습니다. ($body)');
+      throw CustomApiException(
+        'openai_request_failed',
+        '${provider.label} 요청에 실패했습니다. ($body)',
+      );
     }
 
-    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final decoded =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final choices = decoded['choices'] as List<dynamic>?;
     if (choices == null || choices.isEmpty) return null;
     final message = choices.first['message'] as Map<String, dynamic>?;
@@ -490,7 +559,8 @@ class AiService {
             'model': modelName,
             'max_tokens': 4096,
             'temperature': 0.7,
-            'system': 'Return only valid JSON. Do not wrap the response in markdown.',
+            'system':
+                'Return only valid JSON. Do not wrap the response in markdown.',
             'messages': [
               {'role': 'user', 'content': prompt},
             ],
@@ -509,10 +579,14 @@ class AiService {
       if (response.statusCode == 503 || response.statusCode == 529) {
         throw CustomApiException('server_overloaded', 'Anthropic 서버가 현재 바쁩니다.');
       }
-      throw CustomApiException('anthropic_request_failed', 'Anthropic 요청에 실패했습니다. ($body)');
+      throw CustomApiException(
+        'anthropic_request_failed',
+        'Anthropic 요청에 실패했습니다. ($body)',
+      );
     }
 
-    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final decoded =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final content = decoded['content'] as List<dynamic>?;
     if (content == null || content.isEmpty) return null;
     final firstText = content.firstWhere(
@@ -537,11 +611,10 @@ class AiService {
       if (value is! Map<String, dynamic>) continue;
       final sentence = value['sentence']?.toString().trim() ?? '';
       final translation = value['translation']?.toString().trim() ?? '';
-      if (entry.key.trim().isEmpty || sentence.isEmpty || translation.isEmpty) continue;
-      result[entry.key] = {
-        'sentence': sentence,
-        'translation': translation,
-      };
+      if (entry.key.trim().isEmpty || sentence.isEmpty || translation.isEmpty) {
+        continue;
+      }
+      result[entry.key] = {'sentence': sentence, 'translation': translation};
     }
 
     if (result.isEmpty) {
@@ -553,27 +626,50 @@ class AiService {
   AiQuizResponse _parseAndValidateQuizResponse(
     String responseText, {
     int? expectedAnswerableCount,
+    Iterable<String>? allowedTargetWords,
+    Set<String>? expectedTypes,
+    AiDifficultyProfile? difficultyProfile,
+    bool requireFormatDiversity = false,
+    bool requireTypeDiversity = false,
   }) {
     try {
       final response = AiQuizResponse.parse(_cleanModelText(responseText));
       return _sanitizeAndValidateQuizResponse(
         response,
         expectedAnswerableCount: expectedAnswerableCount,
+        allowedTargetWords: allowedTargetWords,
+        expectedTypes: expectedTypes,
+        difficultyProfile: difficultyProfile,
+        requireFormatDiversity: requireFormatDiversity,
+        requireTypeDiversity: requireTypeDiversity,
       );
     } on CustomApiException {
       rethrow;
     } catch (e) {
-      throw CustomApiException('model_response_invalid', 'AI 퀴즈 응답 형식이 올바르지 않습니다.');
+      throw CustomApiException(
+        'model_response_invalid',
+        'AI 퀴즈 응답 형식이 올바르지 않습니다.',
+      );
     }
   }
 
   AiQuizResponse _sanitizeAndValidateQuizResponse(
     AiQuizResponse response, {
     int? expectedAnswerableCount,
+    Iterable<String>? allowedTargetWords,
+    Set<String>? expectedTypes,
+    AiDifficultyProfile? difficultyProfile,
+    bool requireFormatDiversity = false,
+    bool requireTypeDiversity = false,
   }) {
     return AiQuizValidator.sanitize(
       response,
       expectedAnswerableCount: expectedAnswerableCount,
+      allowedTargetWords: allowedTargetWords,
+      expectedTypes: expectedTypes,
+      difficultyProfile: difficultyProfile,
+      requireFormatDiversity: requireFormatDiversity,
+      requireTypeDiversity: requireTypeDiversity,
     );
   }
 
@@ -600,7 +696,11 @@ class AiService {
   }
 
   String _cleanModelText(String text) {
-    final cleaned = text.replaceAll(RegExp(r'```(?:json)?|```'), '').replaceAll('**', '').trim();
+    final cleaned =
+        text
+            .replaceAll(RegExp(r'```(?:json)?|```'), '')
+            .replaceAll('**', '')
+            .trim();
     final start = cleaned.indexOf('{');
     final end = cleaned.lastIndexOf('}');
     if (start >= 0 && end > start) {
@@ -651,7 +751,14 @@ class AiService {
     String difficulty,
     bool includeExplanation,
     String questionLanguage,
+    List<Word> selectedWords,
   ) {
+    final promptWords = _wordsForPrompt(selectedWords, count);
+    final wordListJson = jsonEncode(
+      promptWords
+          .map((word) => {'word': word.word, 'meaning': word.meaning})
+          .toList(),
+    );
     final chaptersJson = jsonEncode(
       chapters
           .map(
@@ -663,22 +770,7 @@ class AiService {
           )
           .toList(),
     );
-    final difficultyMap = {
-      '기초':
-          "Beginner level for elementary school students. Use simple S+V+O sentences and basic vocabulary.",
-      '기본':
-          "Basic level for middle school students. Use compound sentences and essential vocabulary.",
-      '중급':
-          "Intermediate level for high school students. Use complex sentences with various clauses, and include more nuanced vocabulary.",
-      '중고급':
-          "High-intermediate level for college entrance exam preparation. Use advanced vocabulary and complex sentence structures.",
-      '고급': "Advanced level for TOEIC preparation. Use business and formal vocabulary.",
-      '최상급':
-          "Expert level for TOEFL/TEPS preparation. Use academic vocabulary and sophisticated sentence structures.",
-      '전문가':
-          "Professional level. Use vocabulary and sentence structures found in academic papers and reputable news sources like CNN or Newsweek.",
-    };
-    final difficultyDescription = difficultyMap[difficulty] ?? difficultyMap['중급']!;
+    final difficultyProfile = AiDifficultyProfiles.fromLabel(difficulty);
     final languageGuide = _questionLanguageGuide(questionLanguage);
     final explanationRule =
         includeExplanation
@@ -694,17 +786,27 @@ class AiService {
 
     # Core Rules
     1. Scope: Every question MUST test one of the selected chapters. Do not introduce unrelated grammar points.
-    2. Difficulty: Sentence length, vocabulary, and distractor subtlety MUST match the target difficulty.
-    3. Count: The response MUST contain exactly `$count` answerable questions.
-    4. Options: Every question MUST have exactly 4 unique options.
-    5. Answer: The `answer` value MUST exactly match one string from `options`.
-    6. Explanation: $explanationRule
-    7. JSON only: Return one valid JSON object. No markdown, no comments, no trailing commas.
-    8. Language:
+    2. Wordbook anchor: Every question MUST use at least one exact English `word` from Vocabulary Candidates in its stem or options and declare it in `targetWord`.
+       The `targetWord` MUST exactly match a candidate `word`; never invent or inflect this field. Its use must agree with the supplied Korean meaning.
+    3. Difficulty: Sentence length, vocabulary, reasoning, and distractor subtlety MUST match every part of the level guide below.
+       Each question MUST contain a complete contextual English sentence of ${difficultyProfile.contextMinWords}–${difficultyProfile.contextMaxWords} words.
+    4. Count: The response MUST contain exactly `$count` answerable questions.
+    5. Options: Every question MUST have exactly 4 unique options.
+    6. Answer: The `answer` value MUST exactly match one string from `options`.
+    7. Explanation: $explanationRule
+    8. JSON only: Return one valid JSON object. No markdown, no comments, no trailing commas.
+    9. Language:
 $languageGuide
+
+    # 7-Level Difficulty Standard
+    ${difficultyProfile.toPromptGuide()}
+    Lexile is a composition target, not a claimed official score. Apply it together with the audience, syntax, length, reasoning, and format requirements. Do not make a hard question merely by inserting rare words.
 
     # Quality Rules
     - Do NOT repeat the same question stem, sentence, answer, or option set.
+    - Set `questionFormat` to exactly one allowed format name below.
+    - For 4–7 questions use at least 2 different questionFormat values; for 8 or more use at least 3.
+    - Do not use the same questionFormat more than twice consecutively.
     - If multiple chapters are selected, distribute questions across chapters as evenly as possible.
     - Do NOT create more than 2 consecutive questions from the same chapter group unless only one group is selected.
     - Each distractor MUST be plausible and test the same grammar point as the correct answer.
@@ -717,22 +819,26 @@ $languageGuide
 
     # Quiz Configuration
     - **Target Level:** ${category.title}
-    - **Target Difficulty:** $difficulty. ($difficultyDescription)
+    - **Target Difficulty:** ${difficultyProfile.level}단계 ${difficultyProfile.label}
     - **Question Count:** $count
     - **Question Language:** $questionLanguage
     - **Selected Chapters JSON:** $chaptersJson
+    - **Vocabulary Candidates JSON:** $wordListJson
 
     # Allowed Question Formats
-    - Fill in the blank.
-    - Choose the grammatically correct sentence.
-    - Choose the grammatically incorrect sentence.
-    - Choose the best correction.
+    - `fill_blank`: fill in a grammatically necessary blank.
+    - `correct_sentence`: choose the only grammatically correct sentence.
+    - `incorrect_sentence`: choose the only grammatically incorrect sentence.
+    - `error_correction`: choose the best correction of a marked error.
+    - `sentence_transformation`: choose an equivalent sentence using a different structure.
 
     # Required JSON Schema
     {
       "questions": [
         {
           "type": "grammar",
+          "questionFormat": "fill_blank",
+          "targetWord": "an exact candidate word",
           "question": "...",
           "options": ["...", "...", "...", "..."],
           "answer": "...",
@@ -759,29 +865,15 @@ $languageGuide
             (w) => {
               'word': w.word,
               'meaning': w.meaning,
-              if (w.exampleSentence != null && w.exampleSentence!.trim().isNotEmpty)
+              if (w.exampleSentence != null &&
+                  w.exampleSentence!.trim().isNotEmpty)
                 'exampleSentence': w.exampleSentence,
             },
           )
           .toList(),
     );
 
-    final difficultyMap = {
-      '기초':
-          "Beginner level for elementary school students. Use simple S+V+O sentences and basic vocabulary.",
-      '기본':
-          "Basic level for middle school students. Use compound sentences and essential vocabulary.",
-      '중급':
-          "Intermediate level for high school students. Use complex sentences with various clauses, and include more nuanced vocabulary.",
-      '중고급':
-          "High-intermediate level for college entrance exam preparation. Use advanced vocabulary and complex sentence structures.",
-      '고급': "Advanced level for TOEIC. Use business and formal vocabulary.",
-      '최상급':
-          "Expert level for TOEFL/TEPS. Use academic vocabulary and sophisticated sentence structures.",
-      '전문가':
-          "Professional level. Use vocabulary and structures from news articles or academic papers.",
-    };
-    final difficultyDescription = difficultyMap[difficulty] ?? difficultyMap['중급']!;
+    final difficultyProfile = AiDifficultyProfiles.fromLabel(difficulty);
     final canonicalType = _canonicalQuizType(quizType);
     final languageGuide = _questionLanguageGuide(questionLanguage);
     final explanationRule =
@@ -796,6 +888,7 @@ $languageGuide
     const vocabularyInstructions = """
   Vocabulary questions:
   - Use type exactly "vocabulary".
+  - Set questionFormat to one of: `sentence_completion`, `meaning_in_context`, `definition_match`, `synonym`, `antonym`, `collocation`.
   - Prefer the selected English words as the correct answers.
   - Good formats: sentence completion, definition matching, Korean meaning matching, synonym/antonym.
   - If using sentence completion, the sentence must contain exactly one blank: "______".
@@ -808,7 +901,8 @@ $languageGuide
     const grammarInstructions = """
   Grammar questions:
   - Use type exactly "grammar".
-  - Test grammar through selected vocabulary when natural, but do not force awkward sentences.
+  - Set questionFormat to one of: `fill_blank`, `correct_sentence`, `incorrect_sentence`, `error_correction`, `sentence_transformation`.
+  - Test grammar through the declared targetWord while keeping the sentence natural.
   - Good formats: fill in the blank, sentence correction, choosing the grammatical sentence, choosing the incorrect sentence.
   - Do not repeat the same grammar pattern more than once unless the requested count is larger than the available patterns.
   - Distractors must represent realistic learner errors, not vocabulary misunderstandings.
@@ -817,11 +911,9 @@ $languageGuide
     const readingInstructions = """
   Reading questions:
   - Use type exactly "reading_section".
+  - Set each sub-question's questionFormat to one of: `main_idea`, `detail`, `inference`, `vocabulary_in_context`, `purpose_tone`, `rhetorical_function`, `sentence_insertion`, `summary`.
   - A reading_section counts by the number of sub-questions inside its `questions` list.
-  - Passage length and complexity MUST match the Target Difficulty.
-    - '기초'/'기본': 1-3 simple sentences.
-    - '중급'/'중고급': 1-2 paragraphs with some complex sentences.
-    - '고급' or higher: 2-4 paragraphs with advanced vocabulary and complex structures.
+  - Passage length and complexity MUST match the complete 7-Level Difficulty Standard.
   - Every reading_section MUST contain a non-empty `questions` list.
   - Each sub-question MUST have exactly 4 unique options and an answer that exactly matches one option.
   - Do not create a passage that directly repeats the answer phrase from the correct option unless the question is explicit detail lookup.
@@ -845,8 +937,12 @@ $languageGuide
         areaInstruction = 'Generate questions for the `$canonicalType` type.';
       }
     } else {
-      areaInstruction =
-          "Generate a useful mix from `vocabulary`, `grammar`, and `reading_section`. Listening is intentionally excluded from the MVP quiz generator. If the requested count is small, choose the most appropriate types without exceeding the exact answerable count.";
+      areaInstruction = """
+Generate a balanced mix from `vocabulary`, `grammar`, and `reading_section`. Listening is intentionally excluded from this generator.
+$vocabularyInstructions
+$grammarInstructions
+$readingInstructions
+""";
     }
 
     return """
@@ -856,6 +952,11 @@ $languageGuide
     # 1. MANDATORY RULES
     $strictTypeConstraint
     - Difficulty: Vocabulary, sentence structure, and passage length MUST match the Target Difficulty.
+    - Vocabulary and grammar items MUST include a complete contextual English sentence of ${difficultyProfile.contextMinWords}–${difficultyProfile.contextMaxWords} words.
+    - Every reading passage MUST contain ${difficultyProfile.passageMinWords}–${difficultyProfile.passageMaxWords} English words. Do not fall below the minimum.
+    - Wordbook anchor: Every answerable question MUST use at least one exact English `word` from Vocabulary Candidates and declare it in `targetWord`.
+    - `targetWord` MUST exactly match a candidate `word`; never invent, translate, or inflect the field value.
+    - The declared word MUST visibly occur in that question's stem/options, or in its reading passage/sub-question/options, and its use MUST match the supplied Korean meaning.
     - Count: Total answerable questions MUST be exactly `$count`. A reading_section with 3 sub-questions counts as 3.
     - Options: Every answerable question MUST have exactly 4 unique options.
     - Answer: The `answer` value MUST exactly match one string from `options`.
@@ -864,8 +965,16 @@ $languageGuide
     - Language:
 $languageGuide
 
+    # 1-C. 7-LEVEL DIFFICULTY STANDARD
+    ${difficultyProfile.toPromptGuide()}
+    Lexile is a composition target, not a claimed official score. Apply it together with the audience, syntax, length, reasoning, and format requirements. Do not simulate difficulty by inserting rare words into otherwise easy questions.
+    Sentence-length targets apply to prose and context sentences, not short option fragments. Stay within the ranges without padding or damaging naturalness.
+
     # 1-B. QUALITY RULES
     - Do NOT repeat the same question stem, sentence, answer, or set of options.
+    - Every answerable item MUST declare an allowed `questionFormat`.
+    - For 4–7 answerable questions use at least 2 different questionFormat values; for 8 or more use at least 3.
+    - Do not repeat the same questionFormat more than twice consecutively. Rotate formats naturally within the requested area.
     - Use the provided candidate words broadly. Avoid using the same correct word twice unless unavoidable.
     - Correct answer positions must be varied across questions.
     - Distractors must be plausible and close enough to test knowledge, but only one option may be correct.
@@ -873,13 +982,13 @@ $languageGuide
     - Avoid questions that can be answered without understanding the target word, grammar point, or passage.
     - When using Korean meanings, keep them concise and aligned with the supplied word meanings.
     - If the requested type is not `종합`, every answerable question MUST use only the requested type.
-    - If the requested type is `종합` and count >= 4, include at least two different question types.
+    - For `종합`, use at least 2 top-level types for 4–7 questions and all 3 types (`vocabulary`, `grammar`, `reading_section`) for 8 or more.
     - Do NOT generate `listening` questions in this generator. Listening will be handled by a separate feature later.
 
     # 2. QUIZ CONFIGURATION
     - **Vocabulary Candidates JSON:** $wordListJson
     - **Candidate Note:** $candidateNote
-    - **Target Difficulty:** $difficulty. ($difficultyDescription)
+    - **Target Difficulty:** ${difficultyProfile.level}단계 ${difficultyProfile.label}
     - **Requested Quiz Type:** $quizType
     - **Question Language:** $questionLanguage
 
@@ -892,6 +1001,8 @@ $languageGuide
       "questions": [
         {
           "type": "vocabulary",
+          "questionFormat": "meaning_in_context",
+          "targetWord": "an exact candidate word",
           "question": "...",
           "options": ["...", "...", "...", "..."],
           "answer": "...",
@@ -899,6 +1010,8 @@ $languageGuide
         },
         {
           "type": "grammar",
+          "questionFormat": "fill_blank",
+          "targetWord": "an exact candidate word",
           "question": "...",
           "options": ["...", "...", "...", "..."],
           "answer": "...",
@@ -909,6 +1022,8 @@ $languageGuide
           "passage": "...",
           "questions": [
             {
+              "questionFormat": "inference",
+              "targetWord": "an exact candidate word used in this passage or sub-question",
               "question": "...",
               "options": ["...", "...", "...", "..."],
               "answer": "...",
@@ -921,6 +1036,9 @@ $languageGuide
 
     FINAL CHECK:
     - Exactly `$count` answerable questions.
+    - Every answerable question declares and actually uses a Vocabulary Candidate as `targetWord`.
+    - Required context/passage word-count range is satisfied.
+    - questionFormat diversity is satisfied.
     - Every answer exactly matches one option.
     - No duplicate question stems, no duplicate correct answers unless unavoidable, and no duplicate option sets.
     - Distractors are plausible, same-category alternatives.

@@ -15,7 +15,12 @@ class StudySoundService extends ChangeNotifier {
     StudySoundEffect.unknownSwipe: 'sounds/study_unknown_swipe.wav',
   };
 
-  static const _playbackVolume = 0.80;
+  static const Map<StudySoundEffect, double> _playbackVolumes = {
+    StudySoundEffect.correct: 0.80,
+    StudySoundEffect.incorrect: 0.92,
+    StudySoundEffect.knownSwipe: 0.68,
+    StudySoundEffect.unknownSwipe: 1.00,
+  };
 
   final Map<StudySoundEffect, AudioPlayer> _players = {};
   late final Future<void> _prepareFuture;
@@ -29,17 +34,28 @@ class StudySoundService extends ChangeNotifier {
     _prepareFuture = _preparePlayers();
   }
 
+  @visibleForTesting
+  static AudioContext buildEffectAudioContext() {
+    return AudioContextConfig(
+      focus: AudioContextConfigFocus.duckOthers,
+      respectSilence: false,
+    ).build();
+  }
+
   Future<void> _preparePlayers() async {
+    final audioContext = buildEffectAudioContext();
     for (final entry in _assetPaths.entries) {
       final player = AudioPlayer();
       try {
+        // Keep music/video playing and lower it only while this short effect plays.
+        await player.setAudioContext(audioContext);
         await player.setPlayerMode(PlayerMode.lowLatency);
       } catch (_) {
         // Keep the platform default when low-latency mode is unavailable.
       }
       try {
         await player.setReleaseMode(ReleaseMode.stop);
-        await player.setVolume(_playbackVolume);
+        await player.setVolume(_playbackVolumes[entry.key] ?? 0.80);
         await player.setSource(AssetSource(entry.value));
         _players[entry.key] = player;
       } catch (_) {

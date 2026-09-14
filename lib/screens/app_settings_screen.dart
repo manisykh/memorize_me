@@ -26,6 +26,10 @@ class AppSettingsScreen extends StatefulWidget {
 class _AppSettingsScreenState extends State<AppSettingsScreen> {
   static const _recentSpreadsheetsKey = 'recent_google_spreadsheets';
 
+  bool _isAccountSettingsExpanded = false;
+  bool _isDesignSettingsExpanded = false;
+  bool _isGuideSettingsExpanded = false;
+  bool _isSoundSettingsExpanded = false;
   bool _isAiSettingsExpanded = false;
   bool _isAccountActionRunning = false;
   int _connectedSheetCount = 0;
@@ -60,86 +64,68 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                 ),
               ),
               const SizedBox(height: 18),
-              _buildSectionTitle(theme, '계정'),
-              const SizedBox(height: 12),
-              _buildGoogleAccountSection(context),
-
-              const SizedBox(height: 24),
-              _buildSectionTitle(theme, '디자인'),
-              const SizedBox(height: 12),
-              _buildThemeSettingsSection(context),
-
-              const SizedBox(height: 24),
-              _buildSectionTitle(theme, '가이드'),
-              const SizedBox(height: 12),
-              GlassmorphicCard(
-                borderRadius: 14,
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  leading: const Icon(CupertinoIcons.question_circle_fill),
-                  title: const Text('사용 가이드'),
-                  subtitle: const Text('오늘 학습, 학습 플랜, SRS 기준을 다시 보기'),
-                  trailing: const Icon(CupertinoIcons.right_chevron),
-                  onTap:
-                      () => Navigator.of(
-                        context,
-                      ).push(MaterialPageRoute(builder: (_) => const StudyGuideScreen())),
-                ),
-              ),
-              const SizedBox(height: 12),
-              GlassmorphicCard(
-                borderRadius: 14,
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  leading: const Icon(CupertinoIcons.book_fill),
-                  title: const Text('온보딩 다시 보기'),
-                  subtitle: const Text('앱의 주요 기능 소개를 다시 봅니다.'),
-                  trailing: const Icon(CupertinoIcons.right_chevron),
-                  onTap:
-                      () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder:
-                              (_) => OnboardingScreen(
-                                onFinished: () => Navigator.of(context).pop(),
-                              ),
-                        ),
-                      ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-              _buildSectionTitle(theme, '소리'),
-              const SizedBox(height: 12),
-              GlassmorphicCard(
-                borderRadius: 14,
-                child: Column(
-                  children: [
-                    SwitchListTile.adaptive(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      secondary: const Icon(CupertinoIcons.music_note_2),
-                      title: const Text('학습 효과음'),
-                      subtitle: const Text('정답·오답과 카드 스와이프를 소리로 구분'),
-                      value: context.watch<StudySoundService>().enabled,
-                      onChanged:
-                          (value) => context.read<StudySoundService>().setEnabled(value),
+              _buildSettingsExpansion(
+                theme: theme,
+                icon: CupertinoIcons.person_crop_circle,
+                title: '계정과 Google 시트',
+                description: 'Google 연결, 초기 사용자 혜택과 클라우드 정보를 관리합니다.',
+                expanded: _isAccountSettingsExpanded,
+                onToggle:
+                    () => setState(
+                      () => _isAccountSettingsExpanded = !_isAccountSettingsExpanded,
                     ),
-                    const Divider(height: 1),
-                    ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      leading: const Icon(CupertinoIcons.speaker_2_fill),
-                      title: const Text('TTS 목소리 설정'),
-                      trailing: const Icon(CupertinoIcons.right_chevron),
-                      onTap:
-                          () => Navigator.of(
-                            context,
-                          ).push(MaterialPageRoute(builder: (_) => const TtsSettingsScreen())),
-                    ),
-                  ],
-                ),
+                child: _buildGoogleAccountSection(context),
               ),
-
-              const SizedBox(height: 24),
-              _buildAiSettingsExpansion(theme),
+              const SizedBox(height: 12),
+              _buildSettingsExpansion(
+                theme: theme,
+                icon: CupertinoIcons.paintbrush_fill,
+                title: '디자인',
+                description: '밝음, 어두움, 시력 보호 테마를 선택합니다.',
+                expanded: _isDesignSettingsExpanded,
+                onToggle:
+                    () => setState(
+                      () => _isDesignSettingsExpanded = !_isDesignSettingsExpanded,
+                    ),
+                child: _buildThemeSettingsSection(context),
+              ),
+              const SizedBox(height: 12),
+              _buildSettingsExpansion(
+                theme: theme,
+                icon: CupertinoIcons.question_circle_fill,
+                title: '가이드',
+                description: '사용 방법과 주요 기능 소개를 다시 확인합니다.',
+                expanded: _isGuideSettingsExpanded,
+                onToggle:
+                    () => setState(
+                      () => _isGuideSettingsExpanded = !_isGuideSettingsExpanded,
+                    ),
+                child: _buildGuideSettingsSection(),
+              ),
+              const SizedBox(height: 12),
+              _buildSettingsExpansion(
+                theme: theme,
+                icon: CupertinoIcons.speaker_2_fill,
+                title: '소리와 음성',
+                description: '학습 효과음과 발음·듣기 음성을 설정합니다.',
+                expanded: _isSoundSettingsExpanded,
+                onToggle:
+                    () => setState(
+                      () => _isSoundSettingsExpanded = !_isSoundSettingsExpanded,
+                    ),
+                child: _buildSoundSettingsSection(),
+              ),
+              const SizedBox(height: 12),
+              _buildSettingsExpansion(
+                theme: theme,
+                icon: CupertinoIcons.sparkles,
+                title: 'AI 모델과 API',
+                description: '사용할 AI와 API 키, 자동 대체 후보를 관리합니다.',
+                expanded: _isAiSettingsExpanded,
+                onToggle:
+                    () => setState(() => _isAiSettingsExpanded = !_isAiSettingsExpanded),
+                child: const AiSettingsCard(embedded: true),
+              ),
             ],
           ),
         ),
@@ -197,7 +183,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             title: const Text('Google Drive 연결을 해제할까요?'),
             content: const Text(
               'Google 시트 접근 권한과 최근 연결 목록만 해제합니다. '
-              '이미 가져온 단어장, 학습 기록과 Founding 혜택은 유지됩니다.',
+              '이미 가져온 단어장, 학습 기록과 초기 사용자 혜택은 유지됩니다.',
             ),
             actions: [
               TextButton(
@@ -232,10 +218,10 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       context: context,
       builder:
           (dialogContext) => AlertDialog(
-            title: const Text('계정과 클라우드 혜택을 삭제할까요?'),
+            title: const Text('계정과 초기 사용자 혜택을 삭제할까요?'),
             content: const Text(
-              'Google 계정에 연결된 앱 계정과 Founding 혜택, 최근 Google 시트 연결 기록을 영구 삭제합니다. '
-              '가져온 로컬 단어장과 학습 기록은 유지됩니다. Founding 등록 기간이 끝난 뒤에는 혜택을 복구할 수 없습니다.',
+              '현재 계정에 연결된 앱 계정, 초기 사용자 혜택 등록과 최근 Google 시트 연결 기록을 삭제합니다. '
+              '가져온 로컬 단어장과 학습 기록은 유지됩니다. 혜택 등록 기간에는 앱을 다시 시작하면 새 기기 계정에 재등록될 수 있지만, 등록 종료 후에는 복구하지 못할 수 있습니다.',
             ),
             actions: [
               TextButton(
@@ -258,12 +244,13 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     setState(() => _isAccountActionRunning = true);
     try {
       final authProvider = context.read<AuthProvider>();
+      final entitlement = context.read<EntitlementProvider>();
       await authProvider.reauthenticateForCloudDeletion();
-      await context.read<EntitlementProvider>().deleteCloudIdentity();
+      await entitlement.deleteCloudIdentity();
       await authProvider.disconnectGoogleDrive();
       await _clearConnectedSheetHistory();
       if (mounted) {
-        _showMessage('계정과 클라우드 혜택을 삭제했습니다. 로컬 학습 데이터는 유지됩니다.');
+        _showMessage('현재 계정의 클라우드 정보와 혜택 등록을 삭제했습니다. 로컬 학습 데이터는 유지됩니다.');
       }
     } catch (error) {
       if (mounted) _showMessage(_readableError(error));
@@ -288,12 +275,12 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
     final foundingTitle =
         isProtected
-            ? 'Founding 혜택 보호됨'
+            ? '초기 사용자 혜택 보호됨'
             : isFounding
-            ? 'Founding 혜택 활성화됨'
+            ? '초기 사용자 혜택 활성화됨'
             : entitlement.loading
-            ? 'Founding 혜택 확인 중'
-            : 'Founding 혜택 등록 준비 중';
+            ? '초기 사용자 혜택 확인 중'
+            : '초기 사용자 혜택 등록 준비 중';
     final foundingDescription =
         isProtected
             ? '${accountEmail ?? 'Google 계정'}에 연결되어 다른 기기에서 복원할 수 있습니다.'
@@ -301,8 +288,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             ? '현재 기기에서 사용할 수 있습니다. Google 계정에 연결하면 다른 기기에서도 복원할 수 있습니다.'
             : '네트워크 연결 후 자동으로 등록 상태를 확인합니다.';
 
-    return GlassmorphicCard(
-      borderRadius: 14,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -340,7 +327,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                     Text(
                       accountEmail ??
                           (isConnected
-                              ? 'Google 시트와 Founding 혜택에 사용됩니다.'
+                              ? 'Google 시트와 초기 사용자 혜택에 사용됩니다.'
                               : '로그인 없이도 앱의 기본 기능을 사용할 수 있습니다.'),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -373,8 +360,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             isConnected
                 ? 'Google Drive에서 선택한 시트만 가져옵니다. 연결을 해제해도 이미 만든 단어장은 기기에 남습니다.'
                 : hasCloudIdentity
-                ? 'Founding 혜택은 계정에 보관되어 있습니다. Google 시트를 가져올 때 Drive를 다시 연결하세요.'
-                : 'Google 시트 가져오기와 Founding 혜택의 다른 기기 복원에만 계정을 사용합니다.',
+                ? '초기 사용자 혜택은 계정에 보관되어 있습니다. Google 시트를 가져올 때 Drive를 다시 연결하세요.'
+                : 'Google 시트 가져오기와 초기 사용자 혜택의 다른 기기 복원에만 계정을 사용합니다.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colors.onSurfaceVariant,
               height: 1.45,
@@ -471,10 +458,10 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             style: TextButton.styleFrom(foregroundColor: colors.error),
             onPressed: isBusy ? null : _deleteCloudAccount,
             icon: const Icon(CupertinoIcons.delete, size: 19),
-            label: const Text('계정 및 클라우드 혜택 삭제'),
+            label: const Text('계정 및 초기 사용자 혜택 삭제'),
           ),
           Text(
-            '앱 계정과 Founding 혜택을 영구 삭제합니다. 로컬 학습 데이터는 유지됩니다.',
+            '현재 계정의 클라우드 정보와 혜택 등록을 삭제합니다. 로컬 학습 데이터는 유지됩니다.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(
               color: colors.onSurfaceVariant,
@@ -501,34 +488,31 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
   Widget _buildThemeSettingsSection(BuildContext context) {
     final themeNotifier = context.watch<ThemeNotifier>();
-    return GlassmorphicCard(
-      borderRadius: 14,
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
       child: Column(
         children: [
-          RadioListTile<AppThemeType>(
-            title: const Text('기본 (밝음)'),
-            value: AppThemeType.lightGreen,
+          RadioGroup<AppThemeType>(
             groupValue: themeNotifier.currentTheme,
             onChanged: (value) {
               if (value != null) themeNotifier.setTheme(value);
             },
-          ),
-          RadioListTile<AppThemeType>(
-            title: const Text('어두운 테마'),
-            value: AppThemeType.dark,
-            groupValue: themeNotifier.currentTheme,
-            onChanged: (value) {
-              if (value != null) themeNotifier.setTheme(value);
-            },
-          ),
-          RadioListTile<AppThemeType>(
-            title: const Text('시력 보호'),
-            value: AppThemeType.visionProtection,
-            groupValue: themeNotifier.currentTheme,
-            onChanged: (value) {
-              if (value != null) themeNotifier.setTheme(value);
-            },
+            child: const Column(
+              children: [
+                RadioListTile<AppThemeType>(
+                  title: Text('기본 (밝음)'),
+                  value: AppThemeType.lightGreen,
+                ),
+                RadioListTile<AppThemeType>(
+                  title: Text('어두운 테마'),
+                  value: AppThemeType.dark,
+                ),
+                RadioListTile<AppThemeType>(
+                  title: Text('시력 보호'),
+                  value: AppThemeType.visionProtection,
+                ),
+              ],
+            ),
           ),
           if (themeNotifier.currentTheme == AppThemeType.visionProtection)
             Padding(
@@ -556,53 +540,121 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     );
   }
 
-  Widget _buildAiSettingsExpansion(ThemeData theme) {
-    return Column(
-      children: [
-        GlassmorphicCard(
-          borderRadius: 14,
-          child: ListTile(
+  Widget _buildGuideSettingsSection() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        children: [
+          ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
-            leading: const Icon(CupertinoIcons.sparkles),
-            title: Text(
-              'AI 모델과 API',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            subtitle: const Text('사용할 AI와 API 키, 자동 대체 후보를 관리합니다.'),
-            trailing: AnimatedRotation(
-              turns: _isAiSettingsExpanded ? 0.5 : 0,
-              duration: const Duration(milliseconds: 180),
-              child: const Icon(CupertinoIcons.chevron_down),
-            ),
+            leading: const Icon(CupertinoIcons.question_circle_fill),
+            title: const Text('사용 가이드'),
+            subtitle: const Text('처음 시작, 초기 사용자 혜택, 학습과 AI 안내'),
+            trailing: const Icon(CupertinoIcons.right_chevron),
             onTap:
-                () => setState(() {
-                  _isAiSettingsExpanded = !_isAiSettingsExpanded;
-                }),
+                () => Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const StudyGuideScreen())),
           ),
-        ),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          child:
-              _isAiSettingsExpanded
-                  ? const Padding(
-                    key: ValueKey('ai-settings-expanded'),
-                    padding: EdgeInsets.only(top: 12),
-                    child: AiSettingsCard(),
-                  )
-                  : const SizedBox.shrink(key: ValueKey('ai-settings-collapsed')),
-        ),
-      ],
+          const Divider(height: 1),
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+            leading: const Icon(CupertinoIcons.book_fill),
+            title: const Text('온보딩 다시 보기'),
+            subtitle: const Text('앱의 주요 기능 소개를 다시 봅니다.'),
+            trailing: const Icon(CupertinoIcons.right_chevron),
+            onTap:
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder:
+                        (_) => OnboardingScreen(
+                          onFinished: () => Navigator.of(context).pop(),
+                        ),
+                  ),
+                ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildSectionTitle(ThemeData theme, String title) {
-    return Text(
-      title,
-      style: theme.textTheme.titleLarge?.copyWith(
-        fontSize: 18,
-        fontWeight: FontWeight.w900,
+  Widget _buildSoundSettingsSection() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile.adaptive(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+            secondary: const Icon(CupertinoIcons.music_note_2),
+            title: const Text('학습 효과음'),
+            subtitle: const Text('정답·오답과 카드 스와이프를 소리로 구분'),
+            value: context.watch<StudySoundService>().enabled,
+            onChanged: (value) => context.read<StudySoundService>().setEnabled(value),
+          ),
+          const Divider(height: 1),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 18),
+            child: TtsVoiceSettingsPanel(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsExpansion({
+    required ThemeData theme,
+    required IconData icon,
+    required String title,
+    required String description,
+    required bool expanded,
+    required VoidCallback onToggle,
+    required Widget child,
+  }) {
+    return GlassmorphicCard(
+      borderRadius: 14,
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+            leading: Icon(icon),
+            title: Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text(description),
+            trailing: AnimatedRotation(
+              turns: expanded ? 0.5 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: const Icon(CupertinoIcons.chevron_down),
+            ),
+            onTap: onToggle,
+          ),
+          ClipRect(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeInOutCubic,
+              alignment: Alignment.topCenter,
+              child:
+                  expanded
+                      ? Column(
+                        key: ValueKey('$title-expanded'),
+                        children: [
+                          Divider(
+                            height: 1,
+                            color: theme.colorScheme.outlineVariant,
+                          ),
+                          child,
+                        ],
+                      )
+                      : SizedBox(
+                        key: ValueKey('$title-collapsed'),
+                        width: double.infinity,
+                      ),
+            ),
+          ),
+        ],
       ),
     );
   }

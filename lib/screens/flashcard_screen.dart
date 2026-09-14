@@ -17,12 +17,14 @@ import '../services/srs_service.dart';
 import '../services/analytics_service.dart';
 import '../services/tts_service.dart';
 import '../services/study_sound_service.dart';
+import '../services/study_history_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/glassmorphic_card.dart';
 import '../widgets/wordbook_selection_button.dart';
+import '../widgets/study_plan_panel.dart';
 import 'quiz_screen.dart';
 
-enum FlashcardLaunchMode { setup, review, newWords }
+enum FlashcardLaunchMode { setup, review, newWords, allWords }
 
 enum FlashcardSessionType { allWords, review, newWords }
 
@@ -47,11 +49,13 @@ class _SessionEndContent {
 class FlashcardScreen extends StatefulWidget {
   final FlashcardLaunchMode initialMode;
   final LearningRouteOrigin origin;
+  final List<Word>? reviewWordsOverride;
 
   const FlashcardScreen({
     super.key,
     this.initialMode = FlashcardLaunchMode.setup,
     this.origin = LearningRouteOrigin.standalone,
+    this.reviewWordsOverride,
   });
 
   @override
@@ -77,6 +81,8 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   int _knownCount = 0;
   bool _pendingInitialLaunch = true;
   bool _isEndingSession = false;
+  bool _isLeavingSession = false;
+  StudySessionRecorder? _historyRecorder;
   bool _showEmptyDeckCompletion = false;
   String? _revealedAdditionalMeaningKey;
 
@@ -121,6 +127,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
     if (mounted) {
       final words = await _wordbookManager.getAllWordsFrom(wordbook);
+      if (!mounted) return;
       setState(() {
         _selectedWordbook = wordbook;
         _allWords = words;
@@ -132,12 +139,9 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
   Future<void> _saveUpdatedSrsData() async {
     if (_updatedWordsInSession.isEmpty || _selectedWordbook == null) return;
-
-    await _wordbookManager.updateWordsSrsData(
-      _selectedWordbook!.dbFileName,
-      _updatedWordsInSession,
-    );
-    for (final updatedWord in _updatedWordsInSession) {
+    final snapshot = List<Word>.from(_updatedWordsInSession);
+    await _wordbookManager.pendingSrsWrites;
+    for (final updatedWord in snapshot) {
       final allIndex = _allWords.indexWhere((word) => word.id == updatedWord.id);
       if (allIndex != -1) {
         _allWords[allIndex] = updatedWord;
@@ -147,7 +151,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         _sessionWords[sessionIndex] = updatedWord;
       }
     }
-    _updatedWordsInSession.clear();
+    _updatedWordsInSession.removeWhere(snapshot.contains);
   }
 
   bool _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) {
@@ -169,9 +173,12 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
       source: SrsUpdateSource.flashcard,
       difficulty: difficulty,
     );
+    _historyRecorder?.answer(word, success: difficulty == SrsDifficulty.good,
+      nextReviewDate: updatedWord.nextReviewDate);
 
     _updatedWordsInSession.removeWhere((w) => w.id == updatedWord.id);
     _updatedWordsInSession.add(updatedWord);
+    unawaited(_wordbookManager.queueWordsSrsData(_selectedWordbook!.dbFileName, [updatedWord]));
     _sessionDecisions[previousIndex] = difficulty;
 
     setState(() {
@@ -190,6 +197,8 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     if (currentIndex < 0 || currentIndex >= _sessionWords.length) return true;
     final difficulty = _sessionDecisions.remove(currentIndex);
     final word = _sessionWords[currentIndex];
+    _historyRecorder?.undo(word);
+    unawaited(_wordbookManager.queueWordsSrsData(_selectedWordbook!.dbFileName, [word]));
 
     _updatedWordsInSession.removeWhere((updatedWord) => updatedWord.id == word.id);
     setState(() {
@@ -205,7 +214,10 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   }
 
   void _runInitialLaunchIfNeeded() {
-    if (!_pendingInitialLaunch || _selectedWordbook == null || _sessionWords.isEmpty) return;
+    if (!_pendingInitialLaunch || _selectedWordbook == null ||
+        (_sessionWords.isEmpty && (widget.reviewWordsOverride?.isEmpty ?? true))) {
+      return;
+    }
     _pendingInitialLaunch = false;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -214,11 +226,22 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         _startSession(srsOnly: true);
       } else if (widget.initialMode == FlashcardLaunchMode.newWords) {
         _startNewWordSession();
+      } else if (widget.initialMode == FlashcardLaunchMode.allWords) {
+        _startSession(srsOnly: false);
       }
     });
   }
 
   void _resetSessionProgress() {
+    final book = _selectedWordbook;
+    if (book != null) {
+      _sessionWords = _wordbookManager.latestStudyWords(book.dbFileName, _sessionWords);
+      _historyRecorder = StudyHistoryService.instance.start(
+        wordbook: book, mode: StudyHistoryMode.flashcard,
+        expectedCount: _sessionWords.length,
+        plan: _wordbookManager.planForSession(book, _sessionWords),
+      );
+    }
     _updatedWordsInSession.clear();
     _sessionDecisions.clear();
     _unknownCount = 0;
@@ -236,13 +259,13 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
     List<Word> wordsForSession;
     if (srsOnly) {
-      wordsForSession = _wordbookManager.getWordsForReview();
+      wordsForSession = widget.reviewWordsOverride ?? _wordbookManager.getWordsForReview();
       if (wordsForSession.isEmpty) {
         _showSnackbar('오늘 복습할 단어가 없습니다!');
         return;
       }
     } else {
-      wordsForSession = _availableWordsForCurrentPlan;
+      wordsForSession = widget.reviewWordsOverride ?? _availableWordsForCurrentPlan;
       if (wordsForSession.isEmpty) {
         _showSnackbar('단어장에 학습할 단어가 없습니다.');
         return;
@@ -303,6 +326,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
       mode: 'flashcard_${_sessionType.name}',
       wordCount: _sessionWords.length,
     );
+    _historyRecorder?.complete();
 
     setState(() {
       _currentCardIndex = _sessionWords.length;
@@ -326,6 +350,18 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   }
 
   _SessionEndContent _sessionEndContent() {
+    final plan = _wordbookManager.planFor(_selectedWordbook);
+    if (plan?.mode == StudyPlanMode.free && _sessionType != FlashcardSessionType.review) {
+      final hasNext = plan!.currentChunk() < plan.chunkCount;
+      return _SessionEndContent(
+        title: '${plan.currentChunk()}번 묶음 학습 완료',
+        message: '알아요 $_knownCount개 · 몰라요 $_unknownCount개. 다시 학습하거나 원하는 시점에 다음 묶음으로 이동하세요.',
+        primaryLabel: hasNext ? '다음 묶음' : '완료',
+        secondaryLabel: '이 묶음 다시 학습',
+        onPrimary: hasNext ? () => _nextPlanBundle(plan) : _finishSession,
+        onSecondary: _restartCurrentSession,
+      );
+    }
     switch (_sessionType) {
       case FlashcardSessionType.review:
         if (_unknownCount > 0) {
@@ -385,6 +421,17 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     }
   }
 
+  Future<void> _nextPlanBundle(StudyPlan plan) async {
+    try {
+      await _wordbookManager.selectPlanBundle(plan, plan.currentChunk() + 1);
+      if (!mounted) return;
+      _startSession(srsOnly: false);
+      _swiperController.moveTo(0);
+    } catch (_) {
+      _showSnackbar('다음 묶음을 열지 못했습니다. 다시 시도해주세요.');
+    }
+  }
+
   void _restartCurrentSession() {
     if (!mounted) return;
     setState(() {
@@ -440,6 +487,15 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     }
   }
 
+  Future<void> _leaveSession() async {
+    if (_isLeavingSession) return;
+    _isLeavingSession = true;
+    await _saveUpdatedSrsData();
+    if (!mounted) return;
+    final popped = await Navigator.of(context).maybePop();
+    if (!popped && mounted) setState(() => _isLeavingSession = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope<void>(
@@ -477,7 +533,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
             ),
             if (studyPlan != null) ...[
               const SizedBox(height: 12),
-              _buildLearningScopeNotice(theme, studyPlan, availableWords.length),
+              _buildLearningScopeNotice(studyPlan),
             ],
             const SizedBox(height: 18),
             GlassmorphicCard(
@@ -557,23 +613,25 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
             const SizedBox(height: 10),
             GlassmorphicCard(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                children: [
-                  RadioListTile<FlashcardFrontType>(
-                    title: const Text('단어 먼저 보기'),
-                    subtitle: const Text('소리와 철자를 먼저 확인합니다.'),
-                    value: FlashcardFrontType.word,
-                    groupValue: settings.frontType,
-                    onChanged: (value) => settings.setFrontType(value!),
-                  ),
-                  RadioListTile<FlashcardFrontType>(
-                    title: const Text('뜻 먼저 보기'),
-                    subtitle: const Text('뜻에서 단어를 떠올립니다.'),
-                    value: FlashcardFrontType.meaning,
-                    groupValue: settings.frontType,
-                    onChanged: (value) => settings.setFrontType(value!),
-                  ),
-                ],
+              child: RadioGroup<FlashcardFrontType>(
+                groupValue: settings.frontType,
+                onChanged: (value) {
+                  if (value != null) settings.setFrontType(value);
+                },
+                child: const Column(
+                  children: [
+                    RadioListTile<FlashcardFrontType>(
+                      title: Text('단어 먼저 보기'),
+                      subtitle: Text('소리와 철자를 먼저 확인합니다.'),
+                      value: FlashcardFrontType.word,
+                    ),
+                    RadioListTile<FlashcardFrontType>(
+                      title: Text('뜻 먼저 보기'),
+                      subtitle: Text('뜻에서 단어를 떠올립니다.'),
+                      value: FlashcardFrontType.meaning,
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 18),
@@ -627,7 +685,8 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         title: Text(_selectedWordbook?.name ?? '플래시카드'),
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () => setState(() => _sessionActive = false),
+          tooltip: '학습 나가기',
+          onPressed: _leaveSession,
         ),
       ),
       body: SafeArea(
@@ -813,52 +872,10 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     );
   }
 
-  Widget _buildLearningScopeNotice(ThemeData theme, StudyPlan plan, int openedCount) {
-    final totalDays = plan.estimatedTotalDays();
-    final currentDay = totalDays == 0 ? 0 : plan.currentChunk().clamp(1, totalDays).toInt();
-    final lockedCount = _wordbookManager.lockedNewWordCount(_allWords, plan: plan);
-
-    return GlassmorphicCard(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      borderRadius: 20,
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.tertiary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(CupertinoIcons.calendar, color: theme.colorScheme.tertiary, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '현재 학습 기준 · 플랜 $currentDay/$totalDays일차',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '열린 단어 $openedCount/${plan.totalWords}개만 사용합니다. 잠긴 $lockedCount개는 나중에 열립니다.',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+  Widget _buildLearningScopeNotice(StudyPlan plan) {
+    return StudyPlanPanel(plan: plan, onChanged: () async {
+      if (_selectedWordbook != null) await _onWordbookSelected(_selectedWordbook!);
+    });
   }
 
   Widget _buildHeaderMetric(ThemeData theme, String label, String value, Color accentColor) {

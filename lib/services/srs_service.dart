@@ -48,6 +48,29 @@ class DailyLearningPlan {
 }
 
 class SrsService {
+  // Always pass the question's initial snapshot so retries cannot stack penalties.
+  Word updateQuizSrs({required Word word, required bool spelling,
+      required bool cleanCorrect, DateTime? now}) {
+    final date = now ?? DateTime.now();
+    final day = DateTime(date.year, date.month, date.day);
+    final sameDay = wasReviewedToday(word, baseDate: day);
+    final level = cleanCorrect
+        ? (sameDay ? word.srsLevel : min(_srsIntervals.length - 1, word.srsLevel + 1))
+        : max(0, word.srsLevel - 1);
+    final previousDue = reviewDateFor(word);
+    final next = !cleanCorrect ? day : sameDay && previousDue != null
+        ? (previousDue.isAfter(day) ? previousDue : day.add(const Duration(days: 1)))
+        : day.add(Duration(days: _srsIntervals[level]));
+    return word.copyWith(
+      srsLevel: level, nextReviewDate: DateFormat('yyyy-MM-dd').format(next),
+      lastReviewedAt: DateFormat('yyyy-MM-dd').format(day),
+      correctStreak: cleanCorrect ? word.correctStreak + (sameDay ? 0 : 1) : 0,
+      incorrectCount: word.incorrectCount + (cleanCorrect ? 0 : 1),
+      pendingMcqReview: spelling ? word.pendingMcqReview : (cleanCorrect ? 0 : 1),
+      pendingSpellingReview: spelling ? (cleanCorrect ? 0 : 1) : word.pendingSpellingReview,
+    );
+  }
+
   // New words have no nextReviewDate yet. After the first exposure, review
   // intervals progress through short-term reinforcement before spacing out.
   final List<int> _srsIntervals = const [0, 1, 3, 7, 15, 30, 60, 120];

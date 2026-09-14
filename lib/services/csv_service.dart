@@ -7,7 +7,6 @@ import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'database_service.dart';
-import '../models/word_model.dart';
 import 'word_data_parser.dart';
 
 enum ImportOption { append, replace }
@@ -101,6 +100,6 @@ class CsvService {
     final String csvString = const ListToCsvConverter().convert(data);
     final path = '${(await getTemporaryDirectory()).path}/words_export.csv';
     await File(path).writeAsString(csvString);
-    await Share.shareXFiles([XFile(path)], text: '내보낸 단어장');
+    await SharePlus.instance.share(ShareParams(files: [XFile(path)], text: '내보낸 단어장'));
   }
 }

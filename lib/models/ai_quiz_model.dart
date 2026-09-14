@@ -13,11 +13,13 @@ class AiQuizResponse {
   final List<AiQuestion> questions;
   final int requestedQuestionCount;
   final int droppedDuplicateCount;
+  final int difficultyMismatchCount;
 
   AiQuizResponse({
     required this.questions,
     this.requestedQuestionCount = 0,
     this.droppedDuplicateCount = 0,
+    this.difficultyMismatchCount = 0,
   });
 
   int get answerableQuestionCount {
@@ -42,13 +44,16 @@ class AiQuizResponse {
               .map(AiQuestion.fromJson)
               .toList();
     } else if (questionsData is Map) {
-      questionsList = [AiQuestion.fromJson(Map<String, dynamic>.from(questionsData))];
+      questionsList = [
+        AiQuestion.fromJson(Map<String, dynamic>.from(questionsData)),
+      ];
     }
     return AiQuizResponse(questions: questionsList);
   }
 
   static AiQuizResponse parse(String jsonString) {
-    final cleanedJson = jsonString.replaceAll('```json', '').replaceAll('```', '').trim();
+    final cleanedJson =
+        jsonString.replaceAll('```json', '').replaceAll('```', '').trim();
     final decoded = jsonDecode(cleanedJson);
     return AiQuizResponse.fromJson(decoded);
   }
@@ -56,12 +61,20 @@ class AiQuizResponse {
 
 class AiQuestion {
   final String type;
-  final String? passage, script, question, answer, explanation;
+  final String? questionFormat,
+      targetWord,
+      passage,
+      script,
+      question,
+      answer,
+      explanation;
   final List<String>? options;
   final List<AiReadingSubQuestion>? questions;
 
   AiQuestion({
     required this.type,
+    this.questionFormat,
+    this.targetWord,
     this.passage,
     this.script,
     this.question,
@@ -75,12 +88,15 @@ class AiQuestion {
     var subQuestionsList = json['questions'] as List?;
     return AiQuestion(
       type: _stringOrEmpty(json['type']),
+      questionFormat: _stringOrNull(json['questionFormat']),
+      targetWord: _stringOrNull(json['targetWord']),
       passage: _stringOrNull(json['passage']),
       script: _stringOrNull(json['script']),
       question: _stringOrNull(json['question']),
-      options: json['options'] is List
-          ? (json['options'] as List).map(_stringOrEmpty).toList()
-          : null,
+      options:
+          json['options'] is List
+              ? (json['options'] as List).map(_stringOrEmpty).toList()
+              : null,
       answer: _stringOrNull(json['answer']),
       explanation: _stringOrNull(json['explanation']),
       questions:
@@ -93,12 +109,16 @@ class AiQuestion {
 }
 
 class AiReadingSubQuestion {
+  final String questionFormat;
+  final String targetWord;
   final String question;
   final List<String> options;
   final String answer;
   final String? explanation;
 
   AiReadingSubQuestion({
+    this.questionFormat = '',
+    this.targetWord = '',
     required this.question,
     required this.options,
     required this.answer,
@@ -107,6 +127,8 @@ class AiReadingSubQuestion {
 
   factory AiReadingSubQuestion.fromJson(Map<String, dynamic> json) {
     return AiReadingSubQuestion(
+      questionFormat: _stringOrEmpty(json['questionFormat']),
+      targetWord: _stringOrEmpty(json['targetWord']),
       question: _stringOrEmpty(json['question']),
       options:
           json['options'] is List

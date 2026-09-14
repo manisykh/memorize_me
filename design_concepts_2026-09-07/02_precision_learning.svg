@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">
+  <defs>
+    <style>
+      .ui { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif; }
+      .en { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif; }
+    </style>
+    <filter id="lift" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#243B69" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <rect width="390" height="844" fill="#F8FAFD"/>
+
+  <!-- Navigation -->
+  <g class="ui">
+    <circle cx="28" cy="36" r="18" fill="#FFFFFF" stroke="#E4E9F2"/>
+    <path d="M33 31L23 41M23 31L33 41" stroke="#182033" stroke-width="1.8" stroke-linecap="round"/>
+    <text x="195" y="41" text-anchor="middle" fill="#182033" font-size="16" font-weight="700">오늘의 학습</text>
+    <circle cx="362" cy="36" r="18" fill="#FFFFFF" stroke="#E4E9F2"/>
+    <circle cx="356" cy="36" r="1.5" fill="#566176"/>
+    <circle cx="362" cy="36" r="1.5" fill="#566176"/>
+    <circle cx="368" cy="36" r="1.5" fill="#566176"/>
+  </g>
+
+  <!-- Progress -->
+  <rect x="20" y="75" width="350" height="4" rx="2" fill="#E5EAF3"/>
+  <rect x="20" y="75" width="88" height="4" rx="2" fill="#2764E7"/>
+  <text class="ui" x="370" y="99" text-anchor="end" fill="#738096" font-size="12" font-weight="650">3 / 12</text>
+
+  <!-- Prompt -->
+  <g class="ui">
+    <rect x="20" y="126" width="75" height="27" rx="13.5" fill="#E9F0FF"/>
+    <text x="57.5" y="144" text-anchor="middle" fill="#2764E7" font-size="11" font-weight="750" letter-spacing=".4">CONTEXT</text>
+    <text x="20" y="187" fill="#182033" font-size="23" font-weight="760">문장의 빈칸에 알맞은</text>
+    <text x="20" y="218" fill="#182033" font-size="23" font-weight="760">단어를 고르세요.</text>
+  </g>
+
+  <!-- Sentence stage -->
+  <g filter="url(#lift)">
+    <rect x="20" y="247" width="350" height="142" rx="22" fill="#FFFFFF"/>
+  </g>
+  <g class="en">
+    <circle cx="336" cy="276" r="18" fill="#F1F5FB"/>
+    <path d="M328 275H332L337 270V282L332 277H328Z" fill="#566176"/>
+    <path d="M340 273C342 275 342 278 340 280" fill="none" stroke="#566176" stroke-width="1.6" stroke-linecap="round"/>
+    <text x="195" y="324" text-anchor="middle" fill="#1A2235" font-size="22" font-weight="590">She was able to</text>
+    <text x="195" y="356" text-anchor="middle" fill="#1A2235" font-size="22" font-weight="590">___ the difficult passage.</text>
+  </g>
+
+  <!-- Answer list -->
+  <g class="en">
+    <rect x="20" y="414" width="350" height="58" rx="15" fill="#EAF8F2" stroke="#2B78EB" stroke-width="2"/>
+    <circle cx="48" cy="443" r="12" fill="#2B78EB"/>
+    <path d="M42.5 443L46.5 447L53.5 439.5" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="72" y="450" fill="#152A27" font-size="17" font-weight="650">understand</text>
+
+    <line x1="20" y1="492" x2="370" y2="492" stroke="#E0E6F0"/>
+    <circle cx="48" cy="522" r="11" fill="#FFFFFF" stroke="#CAD2DF" stroke-width="1.5"/>
+    <text x="72" y="529" fill="#344055" font-size="17" font-weight="540">remove</text>
+
+    <line x1="20" y1="552" x2="370" y2="552" stroke="#E0E6F0"/>
+    <circle cx="48" cy="582" r="11" fill="#FFFFFF" stroke="#CAD2DF" stroke-width="1.5"/>
+    <text x="72" y="589" fill="#344055" font-size="17" font-weight="540">repeat</text>
+
+    <line x1="20" y1="612" x2="370" y2="612" stroke="#E0E6F0"/>
+    <circle cx="48" cy="642" r="11" fill="#FFFFFF" stroke="#CAD2DF" stroke-width="1.5"/>
+    <text x="72" y="649" fill="#344055" font-size="17" font-weight="540">borrow</text>
+  </g>
+
+  <!-- Coaching and CTA -->
+  <g class="ui">
+    <path d="M23 693C23 689.7 25.7 687 29 687H31C34.3 687 37 689.7 37 693V695C37 698.3 34.3 701 31 701H29L25 705V700.3C23.8 699.2 23 697.3 23 695Z" fill="#DCE5F5"/>
+    <text x="46" y="700" fill="#77849A" font-size="12.5" font-weight="520">뜻을 떠올린 뒤 선택하면 더 오래 기억돼요.</text>
+    <rect x="20" y="738" width="350" height="62" rx="18" fill="#2764E7"/>
+    <text x="195" y="777" text-anchor="middle" fill="#FFFFFF" font-size="17" font-weight="760">정답 확인</text>
+  </g>
+</svg>

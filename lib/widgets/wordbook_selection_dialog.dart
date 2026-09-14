@@ -40,21 +40,24 @@ Future<Wordbook?> showWordbookSelectionDialog(BuildContext context) async {
               else
                 // 단어장이 있을 경우, 스크롤 가능한 리스트로 보여줌
                 Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true, // 내용물에 맞게 높이를 조절
-                    itemCount: wordbooks.length,
-                    itemBuilder: (_, index) {
-                      final wordbook = wordbooks[index];
-                      return RadioListTile<int>(
-                        title: Text(wordbook.name, style: Theme.of(ctx).textTheme.bodyLarge),
-                        value: wordbook.id!,
-                        groupValue: activeWordbookId, // 현재 활성화된 단어장에 체크 표시
-                        onChanged: (value) {
-                          // 라디오 버튼을 탭하면 선택된 단어장 정보를 반환하며 다이얼로그를 닫음
-                          Navigator.of(ctx).pop(wordbook);
-                        },
-                      );
+                  child: RadioGroup<int>(
+                    groupValue: activeWordbookId,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      final wordbook = wordbooks.firstWhere((book) => book.id == value);
+                      Navigator.of(ctx).pop(wordbook);
                     },
+                    child: ListView.builder(
+                      shrinkWrap: true, // 내용물에 맞게 높이를 조절
+                      itemCount: wordbooks.length,
+                      itemBuilder: (_, index) {
+                        final wordbook = wordbooks[index];
+                        return RadioListTile<int>(
+                          title: Text(wordbook.name, style: Theme.of(ctx).textTheme.bodyLarge),
+                          value: wordbook.id!,
+                        );
+                      },
+                    ),
                   ),
                 ),
             ],

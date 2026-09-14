@@ -107,17 +107,24 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                     autofocus: true,
                   ),
                   const SizedBox(height: 20),
-                  RadioListTile<PdfExportType>(
-                    title: const Text('문제와 정답'),
-                    value: PdfExportType.withAnswers,
+                  RadioGroup<PdfExportType>(
                     groupValue: tempSelectedType,
-                    onChanged: (value) => setDialogState(() => tempSelectedType = value!),
-                  ),
-                  RadioListTile<PdfExportType>(
-                    title: const Text('문제만'),
-                    value: PdfExportType.questionsOnly,
-                    groupValue: tempSelectedType,
-                    onChanged: (value) => setDialogState(() => tempSelectedType = value!),
+                    onChanged: (value) {
+                      if (value != null) setDialogState(() => tempSelectedType = value);
+                    },
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        RadioListTile<PdfExportType>(
+                          title: Text('문제와 정답'),
+                          value: PdfExportType.withAnswers,
+                        ),
+                        RadioListTile<PdfExportType>(
+                          title: Text('문제만'),
+                          value: PdfExportType.questionsOnly,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

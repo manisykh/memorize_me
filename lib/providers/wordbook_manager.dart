@@ -1,10 +1,7 @@
-import 'dart:io';
 import 'dart:math';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
-import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,6 +12,9 @@ import '../services/database_service.dart';
 import '../services/analytics_service.dart';
 import '../services/local_word_file_service.dart';
 import '../services/srs_service.dart';
+import '../services/study_schedule_service.dart';
+import '../services/study_history_service.dart';
+import '../services/quiz_review_service.dart';
 import '../services/word_data_parser.dart';
 import 'word_list_provider.dart';
 
@@ -110,10 +110,28 @@ class WordbookManager extends ChangeNotifier {
   Future<void>? _activeWordbookInitializationFuture;
   int _statsRevision = 0;
   int get statsRevision => _statsRevision;
+  Future<void> _srsWrites = Future<void>.value();
+  final Map<String, Map<String, Word>> _unsavedSrs = {};
+  Object? srsSaveError;
+  Future<void> get pendingSrsWrites => _srsWrites;
   final Set<String> _studyActivityDates = {};
+  Set<String> get studyActivityDates => Set.unmodifiable(_studyActivityDates);
   int get studyDayStreak => _calculateStudyDayStreak();
 
-  WordbookManager(this._dbService, this._wordListNotifier);
+  WordbookManager(this._dbService, this._wordListNotifier) {
+    StudyHistoryService.instance.addListener(_onHistoryChanged);
+  }
+
+  void _onHistoryChanged() {
+    _statsRevision++;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    StudyHistoryService.instance.removeListener(_onHistoryChanged);
+    super.dispose();
+  }
 
   Future<void> loadInitialData() async {
     await loadInitialMetadata();
@@ -139,6 +157,7 @@ class WordbookManager extends ChangeNotifier {
 
       await _loadWordbooks(shouldNotify: false);
       await _loadStudyPlans(shouldNotify: false);
+      await StudyHistoryService.instance.ensureLoaded();
 
       _activeWordbook =
           _findRestoredWordbook(lastActiveId, lastActiveDbFileName) ??
@@ -314,21 +333,24 @@ class WordbookManager extends ChangeNotifier {
 
   List<Word> getWordsForReview() {
     if (_activeWordbook == null) return [];
-    return _srsService.dueWords(wordsAvailableForPlan(_wordListNotifier.words));
+    return _srsService.dueWords(wordsAvailableForPlan(_wordListNotifier.words, plan: activeStudyPlan));
   }
 
   List<Word> getPendingMcqReviewWords() {
-    if (_activeWordbook == null) return [];
-    return wordsAvailableForPlan(
-      _wordListNotifier.words,
-    ).where((word) => word.pendingMcqReview > 0).toList();
+    return quizReviewEntries().where((e) =>
+        e.pendingModes.contains(StudyHistoryMode.multipleChoice)).map((e) => e.word).toList();
   }
 
   List<Word> getPendingSpellingReviewWords() {
+    return quizReviewEntries().where((e) =>
+        e.pendingModes.contains(StudyHistoryMode.spelling)).map((e) => e.word).toList();
+  }
+
+  List<QuizReviewEntry> quizReviewEntries({bool cumulative = false}) {
     if (_activeWordbook == null) return [];
-    return wordsAvailableForPlan(
-      _wordListNotifier.words,
-    ).where((word) => word.pendingSpellingReview > 0).toList();
+    return const QuizReviewService().entries(dbFileName: _activeWordbook!.dbFileName,
+      words: _wordListNotifier.words, sessions: StudyHistoryService.instance.sessions,
+      cumulative: cumulative);
   }
 
   StudyPlan? planFor(Wordbook? wordbook) {
@@ -339,96 +361,93 @@ class WordbookManager extends ChangeNotifier {
     return null;
   }
 
+  StudyPlan? planForSession(Wordbook wordbook, List<Word> words) {
+    final plan = planFor(wordbook);
+    if (plan == null || plan.status != StudyPlanStatus.active || words.isEmpty) return null;
+    if (plan.mode == StudyPlanMode.free) {
+      final keys = StudyScheduleService().bundleKeys(_wordListNotifier.words, plan);
+      if (words.any((word) => !keys.contains(StudyScheduleService.wordKey(word)))) return null;
+    }
+    return plan;
+  }
+
   StudyPlan? get activeStudyPlan => planFor(_activeWordbook);
 
-  List<Word> wordsAvailableForPlan(List<Word> words, {StudyPlan? plan}) {
-    final activePlan = plan ?? activeStudyPlan;
-    if (activePlan == null || activePlan.status != StudyPlanStatus.active) return words;
-
-    final orderedWords = _orderedPlanWords(words);
-    final unlockedLimit = activePlan.unlockedNewLimit();
-    if (unlockedLimit >= activePlan.totalWords || unlockedLimit >= orderedWords.length) {
-      return words;
-    }
-    final unlockedWordKeys = orderedWords.take(unlockedLimit).map(_wordKey).toSet();
-
-    return words.where((word) => unlockedWordKeys.contains(_wordKey(word))).toList();
-  }
-
-  int lockedNewWordCount(List<Word> words, {StudyPlan? plan}) {
-    final activePlan = plan ?? activeStudyPlan;
-    if (activePlan == null || activePlan.status != StudyPlanStatus.active) return 0;
-    final orderedWords = _orderedPlanWords(words);
-    final unlockedLimit = activePlan.unlockedNewLimit();
-    if (unlockedLimit >= activePlan.totalWords || unlockedLimit >= orderedWords.length) return 0;
-    return (orderedWords.length - unlockedLimit).clamp(0, orderedWords.length).toInt();
-  }
-
-  int plannedNewWordSessionCount(List<Word> words, {StudyPlan? plan}) {
-    final availablePlanWords = wordsAvailableForPlan(words, plan: plan);
-    final newWordCount = availablePlanWords.where(_srsService.isNewWord).length;
-    final activePlan = plan ?? activeStudyPlan;
-    if (activePlan == null) return newWordCount;
-    return min(activePlan.dailyNewTarget, newWordCount);
-  }
-
-  int recommendedNewWordSessionCount(List<Word> words, {StudyPlan? plan}) {
-    final activePlan = plan ?? activeStudyPlan;
-    final plannedCount = plannedNewWordSessionCount(words, plan: activePlan);
-    if (activePlan == null || plannedCount == 0) return plannedCount;
-
-    final availablePlanWords = wordsAvailableForPlan(words, plan: activePlan);
-    final reviewCount = _srsService.dueWords(availablePlanWords).length;
-    final adjustedCount = _adjustNewWordCountForReviewLoad(
-      plannedCount: plannedCount,
-      dailyTarget: activePlan.dailyNewTarget,
-      reviewCount: reviewCount,
+  List<Word> wordsAvailableForPlan(List<Word> words, {required StudyPlan? plan}) {
+    final activePlan = plan;
+    return StudyScheduleService().availableWords(
+      words, activePlan,
+      introducedToday: activePlan == null ? 0 :
+          StudyHistoryService.instance.introducedKeys(activePlan.dbFileName, DateTime.now()).length,
     );
-    return min(plannedCount, adjustedCount);
   }
 
-  int _adjustNewWordCountForReviewLoad({
-    required int plannedCount,
-    required int dailyTarget,
-    required int reviewCount,
-  }) {
-    if (plannedCount <= 0 || reviewCount <= 0) return plannedCount;
-
-    final heavyReviewLine = max(30, dailyTarget * 3);
-    if (reviewCount >= heavyReviewLine) return 0;
-    if (reviewCount >= dailyTarget * 2) return max(1, (plannedCount * 0.25).ceil());
-    if (reviewCount >= dailyTarget) return max(1, (plannedCount * 0.5).ceil());
-    if (reviewCount >= (dailyTarget * 0.6).ceil()) return max(1, (plannedCount * 0.75).ceil());
-    return plannedCount;
+  int lockedNewWordCount(List<Word> words, {required StudyPlan? plan}) {
+    final available = wordsAvailableForPlan(words, plan: plan).map(StudyScheduleService.wordKey).toSet();
+    return words.where((w) => _srsService.isNewWord(w) && !available.contains(StudyScheduleService.wordKey(w))).length;
   }
+
+  int plannedNewWordSessionCount(List<Word> words, {required StudyPlan? plan}) {
+    final activePlan = plan;
+    final available = wordsAvailableForPlan(words, plan: activePlan);
+    final newCount = available.where(_srsService.isNewWord).length;
+    if (activePlan == null || activePlan.status != StudyPlanStatus.active || activePlan.mode == StudyPlanMode.free) return newCount;
+    return min(activePlan.dailyNewTarget, newCount);
+  }
+
+  int recommendedNewWordSessionCount(List<Word> words, {required StudyPlan? plan}) =>
+      plannedNewWordSessionCount(words, plan: plan);
 
   Future<StudyPlan?> createStudyPlanForWordbook(
     Wordbook wordbook, {
     required int chunkSize,
     required int dailyNewTarget,
+    StudyPlanMode mode = StudyPlanMode.free,
+    int? bundleCount,
+    bool resetSchedule = false,
   }) async {
     final words = await getAllWordsFrom(wordbook);
     if (words.isEmpty) return null;
     final now = DateTime.now();
-    final today = _dateKey(now);
-    final existingPlan = planFor(wordbook);
+    final existing = planFor(wordbook);
+    final keys = _orderedPlanWords(words).map(StudyScheduleService.wordKey).toList();
+    final oldOrder = existing?.wordOrder ?? const <String>[];
+    final oldKeys = oldOrder.toSet();
+    final order = [...oldOrder, ...keys.where((key) => !oldKeys.contains(key))];
+    final restart = existing == null || existing.mode != mode || resetSchedule;
+    final revision = max((existing?.revision ?? 0) + 1,
+        await _dbService.nextStudyPlanRevision(wordbook.dbFileName));
+    final groups = (bundleCount ?? existing?.chunkCount ?? 10).clamp(1, order.length).toInt();
     final plan = StudyPlan(
-      id: existingPlan?.id,
-      wordbookId: wordbook.id,
-      dbFileName: wordbook.dbFileName,
-      wordbookName: wordbook.name,
-      totalWords: words.length,
-      chunkSize: chunkSize,
-      dailyNewTarget: dailyNewTarget,
-      startDate: existingPlan?.startDate ?? today,
-      createdAt: existingPlan?.createdAt ?? now.toIso8601String(),
+      id: existing?.id, wordbookId: wordbook.id, dbFileName: wordbook.dbFileName,
+      wordbookName: wordbook.name, totalWords: order.length,
+      chunkSize: max(1, chunkSize), dailyNewTarget: max(1, dailyNewTarget),
+      startDate: restart ? studyDateKey(now) : existing.startDate,
+      createdAt: existing?.createdAt ?? now.toIso8601String(),
+      mode: mode, bundleCount: groups,
+      selectedBundle: (existing?.selectedBundle ?? 1).clamp(1, groups).toInt(),
+      revision: revision, wordOrder: order,
+      scheduleWordKeys: restart
+          ? _orderedPlanWords(words).where(_srsService.isNewWord).map(StudyScheduleService.wordKey).toList()
+          : existing.scheduleWordKeys,
     );
-    final savedPlan = await _dbService.saveStudyPlan(plan);
-    _studyPlans.removeWhere((item) => item.dbFileName == wordbook.dbFileName);
-    _studyPlans.insert(0, savedPlan);
+    final saved = await _dbService.saveStudyPlan(plan);
+    _studyPlans.removeWhere((p) => p.dbFileName == wordbook.dbFileName);
+    _studyPlans.insert(0, saved);
     _statsRevision++;
     notifyListeners();
-    return savedPlan;
+    return saved;
+  }
+
+  Future<void> selectPlanBundle(StudyPlan plan, int bundle) async {
+    final current = _studyPlans.where((p) => p.dbFileName == plan.dbFileName).firstOrNull;
+    if (current == null || current.mode != StudyPlanMode.free) return;
+    final saved = await _dbService.saveStudyPlan(current.copyWith(
+      selectedBundle: bundle.clamp(1, current.chunkCount).toInt(),
+    ));
+    _studyPlans[_studyPlans.indexOf(current)] = saved;
+    _statsRevision++;
+    notifyListeners();
   }
 
   Future<void> deleteStudyPlan(StudyPlan plan) async {
@@ -449,6 +468,44 @@ class WordbookManager extends ChangeNotifier {
       return;
     }
     notifyListeners();
+  }
+
+  Future<void> queueWordsSrsData(String dbFileName, List<Word> words) {
+    final snapshot = List<Word>.from(words);
+    final pending = _unsavedSrs.putIfAbsent(dbFileName, () => {});
+    for (final word in snapshot) {
+      pending[StudyScheduleService.wordKey(word)] = word;
+    }
+    _srsWrites = _srsWrites.then((_) async {
+      try {
+        await updateWordsSrsData(dbFileName, snapshot);
+        for (final word in snapshot) {
+          final key = StudyScheduleService.wordKey(word);
+          if (identical(pending[key], word)) pending.remove(key);
+        }
+        if (_unsavedSrs.values.every((words) => words.isEmpty)) srsSaveError = null;
+      } catch (error) {
+        srsSaveError = error;
+      }
+      notifyListeners();
+    });
+    return _srsWrites;
+  }
+
+  Future<void> retrySrsSaving() async {
+    await _srsWrites;
+    for (final entry in _unsavedSrs.entries.toList()) {
+      if (entry.value.isNotEmpty) await queueWordsSrsData(entry.key, entry.value.values.toList());
+    }
+  }
+
+  List<Word> latestStudyWords(String dbFileName, List<Word> words) {
+    final latest = <String, Word>{
+      if (_wordListNotifier.activeDbFileName == dbFileName)
+        for (final word in _wordListNotifier.words) StudyScheduleService.wordKey(word): word,
+      ...?_unsavedSrs[dbFileName],
+    };
+    return words.map((word) => latest[StudyScheduleService.wordKey(word)] ?? word).toList();
   }
 
   Future<List<Word>> getAllWordsFrom(Wordbook wordbook) async {
@@ -495,10 +552,6 @@ class WordbookManager extends ChangeNotifier {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     return '$year-$month-$day';
-  }
-
-  String _wordKey(Word word) {
-    return '${word.id ?? ''}|${word.word}|${word.meaning}';
   }
 
   List<Word> _orderedPlanWords(List<Word> words) {
@@ -627,9 +680,12 @@ class WordbookManager extends ChangeNotifier {
 
   Future<void> deleteWordbook(Wordbook wordbook) async {
     _setLoading(true);
+    await _srsWrites;
+    _unsavedSrs.remove(wordbook.dbFileName);
     if (_activeWordbook?.id == wordbook.id) {
       await setActiveWordbook(null);
     }
+    await StudyHistoryService.instance.forgetWordbook(wordbook.dbFileName);
     await _dbService.deleteWordbook(wordbook.id!, wordbook.dbFileName);
     _studyPlans.removeWhere((plan) => plan.dbFileName == wordbook.dbFileName);
     await _loadWordbooks();

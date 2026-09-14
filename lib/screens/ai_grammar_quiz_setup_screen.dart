@@ -4,13 +4,18 @@ import 'package:provider/provider.dart';
 
 import '../models/ai_quiz_model.dart';
 import '../models/grammar_curriculum.dart';
+import '../models/word_model.dart';
+import '../models/wordbook_model.dart';
 import '../providers/ai_settings_provider.dart';
+import '../providers/wordbook_manager.dart';
+import '../services/ai_difficulty_profile.dart';
 import '../services/ai_service.dart';
 import '../services/analytics_service.dart';
 import '../services/api_key_service.dart';
 import '../utils/ai_error_utils.dart';
 import '../widgets/ai_settings_card.dart';
 import '../widgets/glassmorphic_card.dart';
+import '../widgets/wordbook_selection_button.dart';
 import 'ai_quiz_player_screen.dart';
 
 class AiGrammarQuizSetupScreen extends StatefulWidget {
@@ -21,6 +26,9 @@ class AiGrammarQuizSetupScreen extends StatefulWidget {
 }
 
 class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
+  Wordbook? _selectedWordbook;
+  List<Word> _words = [];
+  bool _isLoadingWords = false;
   int? _selectedCategoryIndex;
   final Set<GrammarChapter> _selectedChapters = {};
   double _questionCount = 10.0;
@@ -29,6 +37,33 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   double _difficulty = 3.0;
   bool _includeExplanation = false;
   String _questionLanguage = 'English';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final activeWordbook = context.read<WordbookManager>().activeWordbook;
+      if (activeWordbook != null) _onWordbookSelected(activeWordbook);
+    });
+  }
+
+  Future<void> _onWordbookSelected(Wordbook wordbook) async {
+    setState(() {
+      _selectedWordbook = wordbook;
+      _words = [];
+      _isLoadingWords = true;
+    });
+    try {
+      final manager = context.read<WordbookManager>();
+      await manager.setActiveWordbook(wordbook);
+      final allWords = await manager.getAllWordsFrom(wordbook);
+      final plan = manager.planFor(wordbook);
+      final availableWords = manager.wordsAvailableForPlan(allWords, plan: plan);
+      if (mounted) setState(() => _words = availableWords);
+    } finally {
+      if (mounted) setState(() => _isLoadingWords = false);
+    }
+  }
 
   Map<String, List<GrammarChapter>> _getGroupedChapters() {
     if (_selectedCategoryIndex == null) return {};
@@ -41,6 +76,12 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   }
 
   Future<void> _generateQuiz() async {
+    if (_selectedWordbook == null || _words.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('학습 중인 단어장과 사용 가능한 단어가 필요합니다.')),
+      );
+      return;
+    }
     if (_selectedCategoryIndex == null || _selectedChapters.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -62,9 +103,8 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       final aiService = context.read<AiService>();
       final aiSettings = context.read<AiSettingsProvider>();
 
-      final difficultyLabels = ['기초', '기본', '중급', '중고급', '고급', '최상급', '전문가'];
       final difficultyIndex = (_difficulty.round() - 1).clamp(0, 6);
-      final difficultyText = difficultyLabels[difficultyIndex];
+      final difficultyText = AiDifficultyProfiles.labels[difficultyIndex];
 
       final fallbackResult = await aiService.generateGrammarQuizWithFallback(
         options: aiSettings.requestOptions(
@@ -76,6 +116,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
         difficulty: difficultyText,
         includeExplanation: _includeExplanation,
         questionLanguage: _questionLanguage,
+        selectedWords: _words,
       );
       aiSettings.recordUsedOption(fallbackResult.usedOption);
       final AiQuizResponse? quizResponse = fallbackResult.value;
@@ -194,6 +235,12 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
               _buildIntroCard(theme),
               const SizedBox(height: 12),
               _buildAiBetaNotice(theme),
+              const SizedBox(height: 12),
+              WordbookSelectionButton(
+                selectedWordbook: _selectedWordbook,
+                onWordbookSelected: _onWordbookSelected,
+                wordCount: _words.length,
+              ),
               const SizedBox(height: 16),
               _buildGrammarLevelSection(theme, selectedCategory),
               if (_selectedCategoryIndex != null) ...[
@@ -211,7 +258,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                             ? _AiSparkleIcon(color: theme.colorScheme.onPrimary, size: 24)
                             : const Icon(CupertinoIcons.sparkles),
                     label: Text(_isLoading ? '문제 생성 중...' : 'AI 문법 퀴즈 생성하기'),
-                    onPressed: _isLoading ? null : _generateQuiz,
+                    onPressed: _isLoading || _isLoadingWords ? null : _generateQuiz,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
@@ -657,6 +704,14 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
               onChanged: (value) => setState(() => _difficulty = value),
             ),
           ),
+          const SizedBox(height: 6),
+          Text(
+            AiDifficultyProfiles.forLevel(_difficulty.round()).uiSummary,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 10),
           _buildOptionControlCard(
             theme: theme,
@@ -692,7 +747,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
         border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.16)),
       ),
       child: Text(
-        '선택한 문법 범위와 문제 옵션이 외부 AI로 전송되며, 사용자의 API 사용량을 소모합니다. 안정적인 생성을 위해 한 번에 최대 20문제까지 생성합니다.',
+        '학습 중인 단어장 단어와 선택한 문법 범위·옵션이 외부 AI로 전송됩니다. 모든 문제는 해당 단어를 포함하도록 생성·검증하며, 한 번에 최대 20문제까지 생성합니다.',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
           height: 1.35,
@@ -796,8 +851,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   }
 
   String _difficultyLabel() {
-    final difficultyLabels = ['기초', '기본', '중급', '중고급', '고급', '최상급', '전문가'];
-    return difficultyLabels[(_difficulty.round() - 1).clamp(0, 6)];
+    return AiDifficultyProfiles.forLevel(_difficulty.round()).label;
   }
 
   Widget _buildSmallBadge({

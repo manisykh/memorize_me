@@ -7,7 +7,9 @@ import '../services/api_key_service.dart';
 import 'glassmorphic_card.dart';
 
 class AiSettingsCard extends StatefulWidget {
-  const AiSettingsCard({super.key});
+  final bool embedded;
+
+  const AiSettingsCard({super.key, this.embedded = false});
 
   @override
   State<AiSettingsCard> createState() => _AiSettingsCardState();
@@ -197,19 +199,25 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
     final theme = Theme.of(context);
     final aiSettings = context.watch<AiSettingsProvider>();
 
-    return GlassmorphicCard(
-      child: Column(
+    final content = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('AI 설정', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Text(
-            '사용할 AI와 대체 후보를 관리합니다.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          if (!widget.embedded) ...[
+            Text(
+              'AI 설정',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            Text(
+              '사용할 AI와 대체 후보를 관리합니다.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           _buildAiDataNotice(theme, aiSettings),
           const SizedBox(height: 14),
           _buildProviderDropdown(aiSettings),
@@ -300,7 +308,17 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
             _buildFallbackCandidateGrid(aiSettings),
           ],
         ],
-      ),
+      );
+
+    if (widget.embedded) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+        child: content,
+      );
+    }
+
+    return GlassmorphicCard(
+      child: content,
     );
   }
 
@@ -338,7 +356,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
 
   Widget _buildProviderDropdown(AiSettingsProvider aiSettings) {
     return DropdownButtonFormField<AiProvider>(
-      value: aiSettings.selectedProvider,
+      initialValue: aiSettings.selectedProvider,
       isExpanded: true,
       decoration: const InputDecoration(labelText: 'AI 회사'),
       items:
@@ -366,7 +384,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DropdownButtonFormField<String>(
-          value: selectedModel,
+          initialValue: selectedModel,
           isExpanded: true,
           decoration: const InputDecoration(labelText: '사용 모델'),
           items:

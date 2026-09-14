@@ -11,6 +11,7 @@ import '../models/study_plan_model.dart';
 import '../providers/ai_settings_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/ai_service.dart';
+import '../services/ai_difficulty_profile.dart';
 import '../services/analytics_service.dart';
 import '../services/api_key_service.dart';
 import '../services/mode_state_service.dart';
@@ -193,9 +194,8 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           _words.where((word) => _selectedWordIds.contains(word.id)).toList();
       selectedWords.shuffle();
 
-      final difficultyLabels = ['기초', '기본', '중급', '중고급', '고급', '최상급', '전문가'];
       final difficultyIndex = (_difficulty.round() - 1).clamp(0, 6);
-      final difficultyText = difficultyLabels[difficultyIndex];
+      final difficultyText = AiDifficultyProfiles.labels[difficultyIndex];
       final quizType = _selectedQuizType == '듣기' ? '종합' : _selectedQuizType;
 
       final fallbackResult = await aiService.generateQuizWithFallback(
@@ -337,8 +337,6 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   Widget _buildLearningScopeNotice(ThemeData theme) {
     final plan = _studyPlan;
     if (plan == null) return const SizedBox.shrink();
-    final totalDays = plan.estimatedTotalDays();
-    final currentDay = totalDays == 0 ? 0 : plan.currentChunk().clamp(1, totalDays).toInt();
     final taskLabel = widget.initialFocus == AiQuizSetupFocus.sentences ? '예문 생성' : 'AI 퀴즈';
 
     return GlassmorphicCard(
@@ -361,14 +359,14 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '현재 학습 기준 · 플랜 $currentDay/$totalDays일차',
+                  plan.scopeLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '$taskLabel는 열린 단어 ${_words.length}/$_totalWordCount개만 사용합니다. 잠긴 단어 $_lockedNewWordCount개는 아직 제외됩니다.',
+                  '$taskLabel는 현재 학습 범위 ${_words.length}/$_totalWordCount개를 사용합니다. 범위 밖 새 단어 $_lockedNewWordCount개는 제외됩니다.',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -933,8 +931,8 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
 
   Widget _buildDifficultyAndCountSection() {
     // ... (기존과 동일)
-    final difficultyLabels = ['기초', '기본', '중급', '중고급', '고급', '최상급', '전문가'];
     final difficultyIndex = (_difficulty.round() - 1).clamp(0, 6);
+    final difficultyProfile = AiDifficultyProfiles.forLevel(_difficulty.round());
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -946,7 +944,15 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           max: 7,
           divisions: 6,
           onChanged: (val) => setState(() => _difficulty = val),
-          valueLabel: difficultyLabels[difficultyIndex],
+          valueLabel: AiDifficultyProfiles.labels[difficultyIndex],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          difficultyProfile.uiSummary,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 10),
         _buildSlider(

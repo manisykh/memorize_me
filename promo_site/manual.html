@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#17483c" />
-    <meta name="description" content="Google 시트 가져오기부터 복습, 통계, AI 문제 생성과 PDF 내보내기까지 설명하는 Memorize Me 사용 가이드." />
+    <meta name="description" content="Google 시트·CSV·XLSX 가져오기부터 복습, 통계, AI 문제 생성과 PDF·HTML 내보내기까지 설명하는 Memorize Me 사용 가이드." />
     <title>Memorize Me 사용 가이드</title>
     <link rel="stylesheet" href="app/globals.css" />
     <link rel="stylesheet" href="app/manual.css" />
@@ -43,8 +43,8 @@
 
         <article class="manual-content">
           <section class="manual-chapter" id="quick-start">
-            <header class="manual-chapter-heading"><span>01</span><div><p>FIRST OPEN</p><h2>첫 실행은 기능을 훑고 끝냅니다</h2><p>온보딩은 네 장면으로 구성됩니다. 건너뛰어도 설정에서 언제든 다시 볼 수 있습니다.</p></div></header>
-            <div class="manual-onboarding-strip" aria-label="온보딩 화면 미리보기">
+            <header class="manual-chapter-heading"><span>01</span><div><p>FIRST OPEN</p><h2>첫 실행은 기능을 훑고 끝냅니다</h2><p>온보딩은 여섯 장면으로 구성됩니다. 건너뛰어도 설정의 가이드 항목에서 언제든 다시 볼 수 있습니다.</p></div></header>
+            <div class="manual-onboarding-strip" aria-label="여섯 온보딩 장면 중 주요 화면 미리보기">
               <figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/onboarding-start.jpg" alt="Google Sheet 가져오기 온보딩" loading="lazy" /></div><figcaption>Google Sheet에서 시작</figcaption></figure>
               <figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/onboarding-flashcard.jpg" alt="플래시카드 온보딩" loading="lazy" /></div><figcaption>카드로 먼저 익히기</figcaption></figure>
               <figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/onboarding-stats.jpg" alt="통계 온보딩" loading="lazy" /></div><figcaption>기억 상태 확인</figcaption></figure>
@@ -52,19 +52,19 @@
             </div>
             <ol class="manual-steps">
               <li class="manual-step"><span class="manual-step-number">1</span><div><h3>핵심 기능을 넘겨봅니다</h3><p>Google 시트, 플래시카드, 복습과 통계, AI 학습의 역할을 짧게 확인합니다.</p></div></li>
-              <li class="manual-step"><span class="manual-step-number">2</span><div><h3>시작하기를 누릅니다</h3><p>Google 로그인 후 단어장 관리 화면에서 첫 단어장을 만들 수 있습니다.</p></div></li>
-              <li class="manual-step"><span class="manual-step-number">3</span><div><h3>다시 보고 싶을 때</h3><p>설정의 ‘온보딩 다시 보기’를 누르면 처음부터 다시 열립니다.</p></div></li>
+              <li class="manual-step"><span class="manual-step-number">2</span><div><h3>시작하기를 누릅니다</h3><p>로그인 없이 기본 단어장을 추가하거나 CSV·XLSX 파일로 바로 시작할 수 있습니다. Google 시트를 고를 때만 Google 연결을 요청합니다.</p></div></li>
+              <li class="manual-step"><span class="manual-step-number">3</span><div><h3>다시 보고 싶을 때</h3><p>설정에서 ‘가이드’를 펼치고 ‘온보딩 다시 보기’를 누르면 처음부터 다시 열립니다.</p></div></li>
             </ol>
           </section>
 
           <section class="manual-chapter" id="import">
-            <header class="manual-chapter-heading"><span>02</span><div><p>BUILD YOUR WORD BOOK</p><h2>Google 시트를 단어장으로 가져오기</h2><p>앱은 사용자가 Picker에서 직접 고른 스프레드시트만 불러옵니다. CSV 파일도 같은 화면에서 가져올 수 있습니다.</p></div></header>
+            <header class="manual-chapter-heading"><span>02</span><div><p>BUILD YOUR WORD BOOK</p><h2>Google 시트·CSV·XLSX를 단어장으로 가져오기</h2><p>Google 시트는 Picker에서 직접 고른 파일만 불러옵니다. 로컬 파일은 CSV와 XLSX를 지원하며 PDF 가져오기는 지원하지 않습니다.</p></div></header>
             <div class="manual-spread manual-spread-wide">
               <div>
                 <ol class="manual-steps manual-steps-compact">
-                  <li class="manual-step"><span class="manual-step-number">1</span><div><h3>단어장 관리로 이동</h3><p>‘Google 시트에서 가져오기’를 누릅니다.</p></div></li>
-                  <li class="manual-step"><span class="manual-step-number">2</span><div><h3>Drive에서 파일 선택</h3><p>Google 파일 선택기에서 원하는 스프레드시트를 직접 고릅니다.</p></div></li>
-                  <li class="manual-step"><span class="manual-step-number">3</span><div><h3>학습할 시트 선택</h3><p>파일 안의 시트 목록에서 하나 이상을 체크하고 가져오기를 누릅니다.</p></div></li>
+                  <li class="manual-step"><span class="manual-step-number">1</span><div><h3>단어장 관리로 이동</h3><p>Google 시트 또는 로컬 파일 가져오기 중 원하는 방식을 선택합니다.</p></div></li>
+                  <li class="manual-step"><span class="manual-step-number">2</span><div><h3>파일 선택</h3><p>Google Picker에서 스프레드시트를 고르거나 기기에서 CSV·XLSX 파일을 선택합니다.</p></div></li>
+                  <li class="manual-step"><span class="manual-step-number">3</span><div><h3>시트와 열 확인</h3><p>워크시트를 고른 뒤 단어 열과 대표 뜻 열을 확인합니다. 추가 뜻 열은 선택 사항입니다.</p></div></li>
                   <li class="manual-step"><span class="manual-step-number">4</span><div><h3>활성 단어장 확인</h3><p>목록에 추가된 단어장에서 ‘이 단어장 사용’을 선택합니다.</p></div></li>
                 </ol>
                 <div class="manual-note"><strong>목록이 비어 있다면</strong><span>Drive 전체 파일이 자동으로 보이는 방식이 아닙니다. Picker에서 파일을 한 번 직접 선택해야 합니다.</span></div>
@@ -100,7 +100,7 @@
             <div class="manual-beta-notice"><div class="manual-beta-label">BETA</div><div><h3>생성된 문제와 해설은 반드시 확인하세요</h3><p>선택한 단어, 뜻, 예문, 문법 범위와 생성 옵션이 선택한 외부 AI 제공자에게 전송됩니다. AI는 틀린 정답이나 부자연스러운 문장을 만들 수 있습니다.</p></div></div>
             <div class="manual-ai-intro-grid"><figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/ai-home.jpg" alt="AI 학습 탭 메인 화면" loading="lazy" /></div><figcaption>AI 학습 탭 · 생성 기능 선택</figcaption></figure><div class="manual-copy-block"><h3>시작하기 전에 필요한 것</h3><ul class="manual-check-list"><li>지원되는 AI 제공자의 개인 API 키</li><li>사용 가능한 모델과 남은 무료·유료 할당량</li><li>AI에 보낼 단어장과 생성 범위</li></ul><p class="manual-caption-copy">API 키는 앱의 기기 보안 저장소에 보관됩니다. 키를 화면 공유, 캡처, 문의 글에 노출하지 마세요.</p></div></div>
 
-            <div class="manual-subchapter manual-ai-setup"><p class="eyebrow">SETUP · 1</p><h3>제공자와 모델을 선택합니다</h3><ol class="manual-steps manual-steps-compact"><li class="manual-step"><span class="manual-step-number">1</span><div><h3>설정에서 AI 모델과 API 열기</h3><p>접혀 있는 항목을 펼치면 제공자, 모델, API 키와 자동 대체 설정이 나타납니다.</p></div></li><li class="manual-step"><span class="manual-step-number">2</span><div><h3>AI 회사 선택</h3><p>Google Gemini, Groq 또는 Custom OpenAI Compatible 중 사용할 제공자를 선택합니다.</p></div></li><li class="manual-step"><span class="manual-step-number">3</span><div><h3>모델 선택</h3><p>현재 제공자가 실제로 지원하는 모델을 고릅니다. 무료 표시는 제공자의 정책에 따라 달라질 수 있습니다.</p></div></li></ol><div class="manual-gallery manual-gallery-two"><figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/ai-settings.jpg" alt="AI 설정 영역" loading="lazy" /></div><figcaption>AI 설정을 펼친 화면</figcaption></figure><figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/ai-provider.jpg" alt="AI 제공자 선택 드롭다운" loading="lazy" /></div><figcaption>AI 회사와 모델 선택</figcaption></figure></div></div>
+            <div class="manual-subchapter manual-ai-setup"><p class="eyebrow">SETUP · 1</p><h3>제공자와 모델을 선택합니다</h3><ol class="manual-steps manual-steps-compact"><li class="manual-step"><span class="manual-step-number">1</span><div><h3>설정에서 AI 모델과 API 열기</h3><p>접혀 있는 항목을 펼치면 제공자, 모델, API 키와 자동 대체 설정이 나타납니다.</p></div></li><li class="manual-step"><span class="manual-step-number">2</span><div><h3>AI 회사 선택</h3><p>Gemini, OpenAI, Claude, Groq, Z.AI 등 지원 목록에서 사용할 제공자를 선택합니다.</p></div></li><li class="manual-step"><span class="manual-step-number">3</span><div><h3>모델 선택</h3><p>현재 제공자가 실제로 지원하는 모델을 고릅니다. 무료 표시는 제공자의 정책에 따라 달라질 수 있습니다.</p></div></li></ol><div class="manual-gallery manual-gallery-two"><figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/ai-settings.jpg" alt="AI 설정 영역" loading="lazy" /></div><figcaption>AI 설정을 펼친 화면</figcaption></figure><figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/ai-provider.jpg" alt="AI 제공자 선택 드롭다운" loading="lazy" /></div><figcaption>AI 회사와 모델 선택</figcaption></figure></div></div>
 
             <div class="manual-subchapter manual-ai-setup"><p class="eyebrow">SETUP · 2</p><h3>API 키를 등록하고 연결을 확인합니다</h3><div class="manual-spread"><figure class="manual-figure manual-figure-large"><div class="manual-image-wrap"><img src="public/media/manual/ai-api-key.jpg" alt="Google Gemini API 키 등록 화면" loading="lazy" /></div><figcaption>API 키 입력 · 문자는 가려서 표시</figcaption></figure><div><ol class="manual-steps manual-steps-compact"><li class="manual-step"><span class="manual-step-number">1</span><div><h3>관리 버튼을 누릅니다</h3><p>선택한 제공자의 API 키 입력 창을 엽니다.</p></div></li><li class="manual-step"><span class="manual-step-number">2</span><div><h3>키를 붙여넣고 저장합니다</h3><p>앞뒤 공백이 들어가지 않도록 주의합니다.</p></div></li><li class="manual-step"><span class="manual-step-number">3</span><div><h3>현재 AI 설정 연결 테스트</h3><p>성공 메시지가 나타나는지 확인합니다.</p></div></li></ol><div class="manual-note manual-note-warning"><strong>실패하면 먼저 볼 것</strong><span>키의 유효성, 모델 이름, 제공자 선택, 사용량 제한을 확인하세요. 폐기된 모델은 올바른 키가 있어도 연결되지 않습니다.</span></div></div></div><div class="manual-gallery manual-gallery-two manual-gallery-short"><figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/ai-connect-success.jpg" alt="AI 연결 테스트 성공 화면" loading="lazy" /></div><figcaption>연결 성공</figcaption></figure><figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/ai-connect-failure.jpg" alt="AI 연결 테스트 실패 화면" loading="lazy" /></div><figcaption>연결 실패 · 오류 메시지 확인</figcaption></figure></div></div>
 
@@ -112,8 +112,8 @@
           </section>
 
           <section class="manual-chapter" id="settings">
-            <header class="manual-chapter-heading"><span>06</span><div><p>SETTINGS</p><h2>화면과 도움말은 설정에서 관리합니다</h2><p>기본 밝음, 어두운 테마, 시력 보호 모드 중 하나를 선택합니다. 시력 보호 모드에서는 배경 농도를 별도로 조절할 수 있습니다.</p></div></header>
-            <div class="manual-gallery manual-gallery-two"><figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/eye-comfort.jpg" alt="시력 보호 모드와 배경 농도 설정" loading="lazy" /></div><figcaption>디자인 · 시력 보호 농도</figcaption></figure><figure class="manual-figure"><div class="manual-image-wrap"><img src="public/media/manual/settings-guide.jpg" alt="설정의 사용 가이드와 온보딩 다시 보기" loading="lazy" /></div><figcaption>가이드 · 온보딩 다시 보기</figcaption></figure></div>
+            <header class="manual-chapter-heading"><span>06</span><div><p>SETTINGS</p><h2>설정은 필요한 항목만 펼쳐서 관리합니다</h2><p>계정, 디자인, 가이드, 소리와 음성, AI 모델과 API가 같은 방식으로 접혀 있습니다. 제목을 누르면 세부 설정이 바로 아래에 나타납니다.</p></div></header>
+            <div class="manual-two-column-copy"><div><strong>계정과 Google 시트</strong><p>Google 연결, 선택한 시트, 초기 사용자 혜택을 관리합니다. Drive 연결만 해제하면 로컬 단어장과 혜택은 유지됩니다.</p></div><div><strong>디자인</strong><p>밝음, 어두움, 시력 보호 테마를 선택합니다. 시력 보호 모드에서는 배경 농도를 조절할 수 있습니다.</p></div><div><strong>가이드</strong><p>전체 사용 가이드와 여섯 장면의 온보딩을 다시 볼 수 있습니다.</p></div><div><strong>소리와 음성</strong><p>정답·오답과 카드 스와이프 효과음을 켜거나 끄고, 단어 발음과 AI 대화의 두 화자를 선택합니다.</p></div><div><strong>AI 모델과 API</strong><p>제공자, 모델, API 키와 자동 대체 순서를 같은 화면에서 관리합니다.</p></div></div><div class="manual-note"><strong>초기 사용자 혜택</strong><span>혜택 등록 기간에는 앱을 시작하면 자동 등록됩니다. Google 연결은 필수가 아니지만, 연결해 두면 재설치하거나 다른 기기에서도 혜택을 복원할 수 있습니다. ‘계정 및 초기 사용자 혜택 삭제’는 현재 계정의 클라우드 기록을 삭제하고 로컬 학습 데이터는 유지합니다. 등록 기간에는 새 기기 계정에 재등록될 수 있지만, 등록 종료 후에는 복구하지 못할 수 있습니다.</span></div>
           </section>
 
           <section class="manual-chapter" id="troubleshooting">

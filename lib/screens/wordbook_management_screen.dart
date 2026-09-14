@@ -7,6 +7,9 @@ import 'package:provider/provider.dart';
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 import '../models/study_plan_model.dart';
+import '../widgets/study_plan_panel.dart';
+import '../services/study_schedule_service.dart';
+import '../services/study_history_service.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/srs_service.dart';
 import '../widgets/glassmorphic_card.dart';
@@ -468,41 +471,8 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
     );
   }
 
-  Future<void> _showStudyPlanBuilder(Wordbook wordbook) async {
-    final parentContext = context;
-    final manager = parentContext.read<WordbookManager>();
-    final messenger = ScaffoldMessenger.of(parentContext);
-    final words = await manager.getAllWordsFrom(wordbook);
-    if (!parentContext.mounted) return;
-
-    if (words.isEmpty) {
-      messenger.showSnackBar(const SnackBar(content: Text('플랜을 만들 단어가 없습니다.')));
-      return;
-    }
-
-    final existingPlan = manager.planFor(wordbook);
-    await showModalBottomSheet<void>(
-      context: parentContext,
-      isScrollControlled: true,
-      enableDrag: false,
-      backgroundColor: Colors.transparent,
-      builder:
-          (_) => _WordbookPlanBuilderSheet(
-            manager: manager,
-            messenger: messenger,
-            wordbook: wordbook,
-            words: words,
-            existingPlan: existingPlan,
-            initialDailyTarget: existingPlan?.dailyNewTarget ?? _defaultDailyTarget(words.length),
-          ),
-    );
-  }
-
-  int _defaultDailyTarget(int totalWords) {
-    if (totalWords >= 500) return 30;
-    if (totalWords >= 200) return 20;
-    return 15;
-  }
+  Future<void> _showStudyPlanBuilder(Wordbook wordbook) =>
+      showStudyPlanEditor(context, wordbook);
 
   Widget _buildImportPanel(ThemeData theme, WordbookManager manager) {
     return Column(
@@ -866,10 +836,12 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
     return _statsFutures.putIfAbsent(key, () async {
       final words = await manager.getAllWordsFrom(wordbook);
       final studyPlan = manager.planFor(wordbook);
-      final scopedWords = manager.wordsAvailableForPlan(words, plan: studyPlan);
+      final scopedWords = StudyScheduleService().availableWords(words, studyPlan,
+          introducedToday: StudyHistoryService.instance.introducedKeys(wordbook.dbFileName, DateTime.now()).length);
       final plan = _srsService.buildDailyPlan(scopedWords);
       return _WordbookStatsSnapshot(
         totalWords: words.length,
+        studiedCount: words.where((w) => !_srsService.isNewWord(w)).length,
         dueCount: plan.dueWords.length,
         newCount: plan.newWords.length,
         learningCount: plan.learningWords.length,
@@ -922,10 +894,9 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
     _WordbookStatsSnapshot? stats,
   ) {
     final theme = Theme.of(context);
-    final totalDays = plan.estimatedTotalDays();
-    final currentDay = totalDays == 0 ? 0 : plan.currentChunk().clamp(1, totalDays).toInt();
-    final openedWords = plan.unlockedNewLimit().clamp(0, plan.totalWords).toInt();
-    final progress = plan.totalWords == 0 ? 0.0 : openedWords / plan.totalWords;
+    final studied = stats?.studiedCount ?? 0;
+    final total = stats?.totalWords ?? plan.totalWords;
+    final progress = total == 0 ? 0.0 : studied / total;
 
     return Container(
       width: double.infinity,
@@ -950,7 +921,7 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  totalDays == 0 ? '플랜 진행 중' : '$currentDay/$totalDays일차 · 하루 ${plan.dailyNewTarget}개',
+                  plan.scopeLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelLarge?.copyWith(
@@ -980,7 +951,7 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '열린 단어 $openedWords/${plan.totalWords}개 · 복습 ${stats?.dueCount ?? 0}개 · 학습 중 ${stats?.learningCount ?? 0}개',
+            '1회 이상 학습 $studied/$total개 · 현재 범위 복습 ${stats?.dueCount ?? 0}개',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
@@ -1043,316 +1014,16 @@ class _WordbookManagementScreenState extends State<WordbookManagementScreen> {
   }
 }
 
-class _WordbookPlanBuilderSheet extends StatefulWidget {
-  final WordbookManager manager;
-  final ScaffoldMessengerState messenger;
-  final Wordbook wordbook;
-  final List<Word> words;
-  final StudyPlan? existingPlan;
-  final int initialDailyTarget;
-
-  const _WordbookPlanBuilderSheet({
-    required this.manager,
-    required this.messenger,
-    required this.wordbook,
-    required this.words,
-    required this.existingPlan,
-    required this.initialDailyTarget,
-  });
-
-  @override
-  State<_WordbookPlanBuilderSheet> createState() => _WordbookPlanBuilderSheetState();
-}
-
-class _WordbookPlanBuilderSheetState extends State<_WordbookPlanBuilderSheet> {
-  late final TextEditingController _dailyController;
-  late final TextEditingController _targetDaysController;
-  bool _isSaving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final initialDailyTarget = widget.initialDailyTarget.clamp(1, widget.words.length).toInt();
-    _dailyController = TextEditingController(text: '$initialDailyTarget');
-    _targetDaysController = TextEditingController(
-      text: '${(widget.words.length / initialDailyTarget).ceil()}',
-    );
-  }
-
-  @override
-  void dispose() {
-    _dailyController.dispose();
-    _targetDaysController.dispose();
-    super.dispose();
-  }
-
-  int _parseValue(TextEditingController controller, int fallback) {
-    final value = int.tryParse(controller.text.trim());
-    if (value == null || value <= 0) return fallback;
-    return value;
-  }
-
-  void _setControllerText(TextEditingController controller, String text) {
-    controller.value = TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-  }
-
-  int get _dailyTarget => _parseValue(_dailyController, 15).clamp(1, widget.words.length).toInt();
-
-  int get _estimatedDays => (widget.words.length / _dailyTarget).ceil();
-
-  DateTime get _targetDate => DateTime.now().add(Duration(days: _estimatedDays - 1));
-
-  void _applyTargetDays() {
-    final targetDays =
-        _parseValue(_targetDaysController, _estimatedDays).clamp(1, widget.words.length).toInt();
-    final dailyTarget = (widget.words.length / targetDays).ceil().clamp(1, widget.words.length);
-    _setControllerText(_dailyController, '$dailyTarget');
-    setState(() {});
-  }
-
-  void _applyDailyTarget() {
-    final dailyTarget = _dailyTarget;
-    _setControllerText(_targetDaysController, '${(widget.words.length / dailyTarget).ceil()}');
-    setState(() {});
-  }
-
-  Future<void> _deletePlan() async {
-    final existingPlan = widget.existingPlan;
-    if (_isSaving || existingPlan == null) return;
-    FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => _isSaving = true);
-    await widget.manager.deleteStudyPlan(existingPlan);
-    if (!mounted) return;
-    Navigator.of(context).pop();
-    widget.messenger.showSnackBar(
-      const SnackBar(content: Text('학습 플랜을 해제했습니다.')),
-    );
-  }
-
-  Future<void> _savePlan() async {
-    if (_isSaving) return;
-    FocusManager.instance.primaryFocus?.unfocus();
-    final dailyTarget = _dailyTarget;
-    final estimatedDays = _estimatedDays;
-    setState(() => _isSaving = true);
-    await widget.manager.createStudyPlanForWordbook(
-      widget.wordbook,
-      chunkSize: dailyTarget,
-      dailyNewTarget: dailyTarget,
-    );
-    if (!mounted) return;
-    Navigator.of(context).pop();
-    widget.messenger.showSnackBar(
-      SnackBar(content: Text('하루 $dailyTarget개, $estimatedDays일 플랜을 저장했습니다.')),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final viewInsets = MediaQuery.of(context).viewInsets;
-    final targetDate = _targetDate;
-
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      padding: EdgeInsets.only(bottom: viewInsets.bottom),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: SingleChildScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: GlassmorphicCard(
-              borderRadius: 30,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.existingPlan == null ? '학습 플랜 만들기' : '학습 플랜 수정',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: '닫기',
-                        onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
-                        icon: const Icon(CupertinoIcons.xmark),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${widget.wordbook.name}의 새 단어를 며칠 동안 나눠 열지 정합니다. 복습 단어는 숨기지 않고, 새 단어만 일정에 맞춰 열립니다.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      height: 1.45,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  TextField(
-                    controller: _targetDaysController,
-                    enabled: !_isSaving,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: '전체 단어를 며칠 동안 나눌까요?',
-                      prefixIcon: Icon(CupertinoIcons.flag),
-                      suffixText: '일',
-                    ),
-                    onChanged: (_) => _applyTargetDays(),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _dailyController,
-                    enabled: !_isSaving,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: '하루에 새로 시작할 단어',
-                      prefixIcon: Icon(CupertinoIcons.calendar_badge_plus),
-                      suffixText: '개',
-                    ),
-                    onChanged: (_) => _applyDailyTarget(),
-                  ),
-                  const SizedBox(height: 16),
-                  _PlanSummaryStrip(
-                    days: _estimatedDays,
-                    dailyTarget: _dailyTarget,
-                    totalWords: widget.words.length,
-                    targetDate: targetDate,
-                  ),
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      if (widget.existingPlan != null) ...[
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _isSaving ? null : _deletePlan,
-                            icon: const Icon(CupertinoIcons.trash, size: 17),
-                            label: const Text('해제'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                      ],
-                      Expanded(
-                        flex: 2,
-                        child: FilledButton.icon(
-                          onPressed: _isSaving ? null : _savePlan,
-                          icon:
-                              _isSaving
-                                  ? const SizedBox(
-                                    width: 17,
-                                    height: 17,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                  : const Icon(CupertinoIcons.check_mark, size: 17),
-                          label: Text(_isSaving ? '저장 중' : '저장'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PlanSummaryStrip extends StatelessWidget {
-  final int days;
-  final int dailyTarget;
-  final int totalWords;
-  final DateTime targetDate;
-
-  const _PlanSummaryStrip({
-    required this.days,
-    required this.dailyTarget,
-    required this.totalWords,
-    required this.targetDate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.52),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.42)),
-      ),
-      child: Wrap(
-        spacing: 14,
-        runSpacing: 10,
-        children: [
-          _PlanSummaryMetric(label: '총 단어', value: '$totalWords개'),
-          _PlanSummaryMetric(label: '예상 기간', value: '$days일'),
-          _PlanSummaryMetric(label: '하루 목표', value: '$dailyTarget개'),
-          _PlanSummaryMetric(label: '예상 완료', value: '${targetDate.month}/${targetDate.day}'),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlanSummaryMetric extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _PlanSummaryMetric({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      width: 118,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _WordbookStatsSnapshot {
   final int totalWords;
+  final int studiedCount;
   final int dueCount;
   final int newCount;
   final int learningCount;
 
   const _WordbookStatsSnapshot({
     required this.totalWords,
+    required this.studiedCount,
     required this.dueCount,
     required this.newCount,
     required this.learningCount,
