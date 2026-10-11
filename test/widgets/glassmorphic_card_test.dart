@@ -42,18 +42,15 @@ void main() {
       expect(tester.takeException(), isNull);
 
       final ink = tester.widget<Ink>(
-        find.descendant(
-          of: find.byType(GlassmorphicCard),
-          matching: find.byType(Ink),
-        ).first,
+        find
+            .descendant(
+              of: find.byType(GlassmorphicCard),
+              matching: find.byType(Ink),
+            )
+            .first,
       );
       final decoration = ink.decoration! as BoxDecoration;
-      expect(
-        decoration.color,
-        entry.key == 'light'
-            ? const Color(0xFFFFFCF7)
-            : entry.value.colorScheme.surface,
-      );
+      expect(decoration.color, entry.value.colorScheme.surface);
     });
   }
 
@@ -82,20 +79,23 @@ void main() {
         ),
       );
 
-      final borderWidth = active ? 1.4 : 1.0;
+      final borderWidth = active ? 1.5 : 1.0;
       final cardRect = tester.getRect(find.byType(GlassmorphicCard));
       final contentRect = tester.getRect(find.byKey(contentKey));
-      expect(contentRect.left - cardRect.left, closeTo(16 + borderWidth, 0.001));
+      expect(
+        contentRect.left - cardRect.left,
+        closeTo(16 + borderWidth, 0.001),
+      );
       expect(contentRect.top - cardRect.top, closeTo(16 + borderWidth, 0.001));
       expect(cardRect.height, closeTo(40 + 2 * (16 + borderWidth), 0.001));
 
       final decoration =
           tester.widget<Ink>(find.byType(Ink)).decoration! as BoxDecoration;
-      expect(decoration.borderRadius, BorderRadius.circular(18));
+      expect(decoration.borderRadius, BorderRadius.circular(14));
       expect(
         decoration.border,
         Border.all(
-          color: active ? AppTheme.accentCoral : const Color(0xFFE5D8C8),
+          color: active ? const Color(0xFF1E73F7) : const Color(0xFFD9E2F0),
           width: borderWidth,
         ),
       );

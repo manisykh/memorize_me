@@ -5,6 +5,23 @@ import '../models/study_plan_model.dart';
 import '../models/word_model.dart';
 import 'srs_service.dart';
 
+class ReviewScheduleSummary {
+  final DateTime startDate;
+  final List<int> dailyCounts;
+
+  const ReviewScheduleSummary({
+    required this.startDate,
+    required this.dailyCounts,
+  });
+
+  int countAt(int dayOffset) =>
+      dayOffset >= 0 && dayOffset < dailyCounts.length
+          ? dailyCounts[dayOffset]
+          : 0;
+
+  int get total => dailyCounts.fold(0, (sum, count) => sum + count);
+}
+
 class StudyScheduleService {
   final SrsService srs = SrsService();
 
@@ -89,4 +106,33 @@ class StudyScheduleService {
     final due = srs.reviewDateFor(word);
     return due != null && due.isBefore(studyDay(today));
   }).toList();
+
+  DateTime? effectiveReviewDate(Word word, DateTime today) {
+    final due = srs.reviewDateFor(word);
+    if (due == null) return null;
+    final normalizedToday = studyDay(today);
+    return due.isBefore(normalizedToday) ? normalizedToday : due;
+  }
+
+  ReviewScheduleSummary reviewSchedule(
+    List<Word> words, {
+    DateTime? startDate,
+    int days = 7,
+  }) {
+    final start = studyDay(startDate ?? DateTime.now());
+    final counts = List<int>.filled(max(0, days), 0);
+
+    for (final word in words) {
+      final effectiveDate = effectiveReviewDate(word, start);
+      if (effectiveDate == null) continue;
+      final offset = DateTime.utc(
+        effectiveDate.year,
+        effectiveDate.month,
+        effectiveDate.day,
+      ).difference(DateTime.utc(start.year, start.month, start.day)).inDays;
+      if (offset >= 0 && offset < counts.length) counts[offset]++;
+    }
+
+    return ReviewScheduleSummary(startDate: start, dailyCounts: counts);
+  }
 }

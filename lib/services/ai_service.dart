@@ -30,6 +30,22 @@ class AiFallbackResult<T> {
   });
 }
 
+class AiWordReviewSuggestion {
+  const AiWordReviewSuggestion({
+    required this.index,
+    required this.word,
+    required this.meaning,
+    required this.sentence,
+    required this.translation,
+  });
+
+  final int index;
+  final String word;
+  final String meaning;
+  final String sentence;
+  final String translation;
+}
+
 class AiService {
   static const Duration _requestTimeout = Duration(seconds: 45);
 
@@ -151,6 +167,108 @@ class AiService {
     );
   }
 
+  Future<AiFallbackResult<List<AiWordReviewSuggestion>>>
+  reviewWordMeaningsWithFallback(
+    List<Word> words,
+    List<AiRequestOption> options,
+  ) {
+    if (words.isEmpty || words.length > 20) {
+      throw ArgumentError('뜻 검토는 한 번에 1~20개 단어를 선택해주세요.');
+    }
+    return _runWithFallback<List<AiWordReviewSuggestion>>(
+      options: options,
+      run: (option) => _reviewWordMeanings(words, option),
+    );
+  }
+
+  Future<List<AiWordReviewSuggestion>> _reviewWordMeanings(
+    List<Word> words,
+    AiRequestOption option,
+  ) async {
+    final apiKey = await _apiKeyService.getApiKey(option.provider);
+    if (apiKey == null || apiKey.isEmpty) {
+      throw CustomApiException('api_key_missing', 'API 키가 등록되지 않았습니다.');
+    }
+    final input = [
+      for (var index = 0; index < words.length; index++)
+        {
+          'index': index,
+          'word': words[index].word,
+          'meaning': words[index].meaning,
+          'sentence': words[index].exampleSentence ?? '',
+          'translation': words[index].exampleSentenceTranslation ?? '',
+        },
+    ];
+    final prompt = '''
+Review this English vocabulary data for a Korean learner. For each input item:
+- Correct only clear spelling or wording mistakes in word, meaning, English sentence, or Korean translation. Keep the original when uncertain.
+- The meaning may be Korean or English; preserve its language. If it is a placeholder or clearly incorrect, provide a concise accurate meaning.
+- If an English sentence exists and its Korean translation is blank, supply a natural Korean translation faithful to the sentence.
+- If the English sentence is blank, leave sentence and translation blank. Do not invent examples.
+- Preserve the intended sense of the word in the meaning and sentence.
+- Return exactly one item per input index, with no explanations or markdown.
+Return a JSON object: {"items":[{"index":0,"word":"...","meaning":"...","sentence":"...","translation":"..."}]}.
+Input: ${jsonEncode(input)}
+''';
+    try {
+      final response = await _sendPrompt(
+        provider: option.provider,
+        modelName: option.modelName,
+        apiKey: apiKey,
+        prompt: prompt,
+        endpoint: option.endpoint,
+      );
+      return parseWordReviewSuggestions(response ?? '', words);
+    } on CustomApiException {
+      rethrow;
+    } catch (_) {
+      throw CustomApiException('model_response_invalid', 'AI 뜻 검토 응답을 읽지 못했습니다.');
+    }
+  }
+
+  List<AiWordReviewSuggestion> parseWordReviewSuggestions(
+    String response,
+    List<Word> words,
+  ) {
+    try {
+      final decoded = jsonDecode(_cleanModelText(response));
+      if (decoded is! Map<String, dynamic> || decoded['items'] is! List) {
+        throw CustomApiException('model_response_invalid', 'AI 뜻 검토 응답 형식이 올바르지 않습니다.');
+      }
+      final suggestions = <AiWordReviewSuggestion>[];
+      final seen = <int>{};
+      for (final item in decoded['items'] as List) {
+        if (item is! Map<String, dynamic>) continue;
+        final index = item['index'];
+        if (index is! int || index < 0 || index >= words.length || seen.contains(index)) continue;
+        final word = item['word']?.toString().trim() ?? '';
+        final meaning = item['meaning']?.toString().trim() ?? '';
+        final sentence = item['sentence']?.toString().trim() ?? '';
+        final translation = item['translation']?.toString().trim() ?? '';
+        if (word.isEmpty || meaning.isEmpty) continue;
+        final hadSentence = words[index].exampleSentence?.trim().isNotEmpty ?? false;
+        if (hadSentence != sentence.isNotEmpty) continue;
+        if (sentence.isNotEmpty && translation.isEmpty) continue;
+        seen.add(index);
+        suggestions.add(AiWordReviewSuggestion(
+          index: index,
+          word: word,
+          meaning: meaning,
+          sentence: sentence,
+          translation: translation,
+        ));
+      }
+      if (suggestions.isEmpty) {
+        throw CustomApiException('model_response_invalid', '검토할 수 있는 AI 응답이 없습니다.');
+      }
+      return suggestions;
+    } on CustomApiException {
+      rethrow;
+    } catch (_) {
+      throw CustomApiException('model_response_invalid', 'AI 뜻 검토 응답을 읽지 못했습니다.');
+    }
+  }
+
   Future<void> testConnection({
     required AiProvider provider,
     required String modelName,
@@ -192,6 +310,14 @@ class AiService {
     required List<Word> selectedWords,
     String? endpoint,
   }) async {
+    final profile = AiDifficultyProfiles.fromLabel(difficulty);
+    if (profile.level < category.minDifficulty ||
+        profile.level > category.maxDifficulty) {
+      throw CustomApiException(
+        'invalid_grammar_difficulty',
+        '선택한 문법 레벨에 맞는 난이도를 선택해주세요.',
+      );
+    }
     final apiKey = await _apiKeyService.getApiKey(provider);
     if (apiKey == null || apiKey.isEmpty) {
       throw CustomApiException(
@@ -222,6 +348,9 @@ class AiService {
           responseText,
           expectedAnswerableCount: questionCount,
           allowedTargetWords: selectedWords.map((word) => word.word),
+          allowedGrammarChapterIds: {
+            for (var index = 0; index < chapters.length; index++) 'ch${index + 1}',
+          },
           expectedTypes: const {'grammar'},
           difficultyProfile: AiDifficultyProfiles.fromLabel(difficulty),
           requireFormatDiversity: true,
@@ -627,6 +756,7 @@ class AiService {
     String responseText, {
     int? expectedAnswerableCount,
     Iterable<String>? allowedTargetWords,
+    Set<String>? allowedGrammarChapterIds,
     Set<String>? expectedTypes,
     AiDifficultyProfile? difficultyProfile,
     bool requireFormatDiversity = false,
@@ -638,6 +768,7 @@ class AiService {
         response,
         expectedAnswerableCount: expectedAnswerableCount,
         allowedTargetWords: allowedTargetWords,
+        allowedGrammarChapterIds: allowedGrammarChapterIds,
         expectedTypes: expectedTypes,
         difficultyProfile: difficultyProfile,
         requireFormatDiversity: requireFormatDiversity,
@@ -657,6 +788,7 @@ class AiService {
     AiQuizResponse response, {
     int? expectedAnswerableCount,
     Iterable<String>? allowedTargetWords,
+    Set<String>? allowedGrammarChapterIds,
     Set<String>? expectedTypes,
     AiDifficultyProfile? difficultyProfile,
     bool requireFormatDiversity = false,
@@ -666,6 +798,7 @@ class AiService {
       response,
       expectedAnswerableCount: expectedAnswerableCount,
       allowedTargetWords: allowedTargetWords,
+      allowedGrammarChapterIds: allowedGrammarChapterIds,
       expectedTypes: expectedTypes,
       difficultyProfile: difficultyProfile,
       requireFormatDiversity: requireFormatDiversity,
@@ -760,12 +893,13 @@ class AiService {
           .toList(),
     );
     final chaptersJson = jsonEncode(
-      chapters
+      chapters.asMap().entries
           .map(
-            (c) => {
-              'group': c.description,
-              'chapter': c.title,
-              if (c.details.isNotEmpty) 'details': c.details,
+            (entry) => {
+              'id': 'ch${entry.key + 1}',
+              'group': entry.value.description,
+              'chapter': entry.value.title,
+              if (entry.value.details.isNotEmpty) 'details': entry.value.details,
             },
           )
           .toList(),
@@ -782,12 +916,13 @@ class AiService {
     Your job is to create accurate, answerable English grammar questions for Korean learners.
 
     # Mission
-    Create exactly `$count` answerable multiple-choice grammar questions based only on the selected chapters.
+    Create exactly `$count` answerable multiple-choice grammar questions. The selected chapters are the allowed topic pool, not a checklist that every question must cover.
 
     # Core Rules
-    1. Scope: Every question MUST test one of the selected chapters. Do not introduce unrelated grammar points.
+    1. Scope: Each question MUST directly test one chapter from Selected Chapters JSON. Return that chapter's exact `id` as `chapterId`. Do not label an unrelated question with a selected chapter ID.
+       When there are more chapters than questions, choose a suitable subset. Never force a question for every chapter.
     2. Wordbook anchor: Every question MUST use at least one exact English `word` from Vocabulary Candidates in its stem or options and declare it in `targetWord`.
-       The `targetWord` MUST exactly match a candidate `word`; never invent or inflect this field. Its use must agree with the supplied Korean meaning.
+       Choose a candidate that fits the sentence naturally. The `targetWord` MUST exactly match a candidate `word`; never invent or inflect this field. Its use must agree with the supplied Korean meaning.
     3. Difficulty: Sentence length, vocabulary, reasoning, and distractor subtlety MUST match every part of the level guide below.
        Each question MUST contain a complete contextual English sentence of ${difficultyProfile.contextMinWords}–${difficultyProfile.contextMaxWords} words.
     4. Count: The response MUST contain exactly `$count` answerable questions.
@@ -798,17 +933,19 @@ class AiService {
     9. Language:
 $languageGuide
 
-    # 7-Level Difficulty Standard
-    ${difficultyProfile.toPromptGuide()}
-    Lexile is a composition target, not a claimed official score. Apply it together with the audience, syntax, length, reasoning, and format requirements. Do not make a hard question merely by inserting rare words.
+    # Grammar Difficulty
+    - Learner benchmark: ${difficultyProfile.audience}
+    - Context sentence length: ${difficultyProfile.sentenceLength}
+    - Syntax and vocabulary: ${difficultyProfile.languageGuide}
+    - Reasoning and distractors: ${difficultyProfile.reasoningGuide}
+    - The selected grammar chapter controls the tested rule; difficulty controls context and distractor subtlety. Do not add an unselected advanced grammar rule merely to make a question harder.
 
     # Quality Rules
     - Do NOT repeat the same question stem, sentence, answer, or option set.
     - Set `questionFormat` to exactly one allowed format name below.
     - For 4–7 questions use at least 2 different questionFormat values; for 8 or more use at least 3.
     - Do not use the same questionFormat more than twice consecutively.
-    - If multiple chapters are selected, distribute questions across chapters as evenly as possible.
-    - Do NOT create more than 2 consecutive questions from the same chapter group unless only one group is selected.
+    - When several suitable chapter groups are available, vary them across questions. Answerability and scope accuracy take priority over even distribution.
     - Each distractor MUST be plausible and test the same grammar point as the correct answer.
     - Distractors should be common learner mistakes: tense mismatch, agreement error, wrong preposition, wrong word order, wrong infinitive/gerund, or incorrect clause connector.
     - Do NOT use silly distractors, obviously unrelated choices, "all of the above", "none of the above", or true/false style choices.
@@ -838,6 +975,7 @@ $languageGuide
         {
           "type": "grammar",
           "questionFormat": "fill_blank",
+          "chapterId": "ch1",
           "targetWord": "an exact candidate word",
           "question": "...",
           "options": ["...", "...", "...", "..."],

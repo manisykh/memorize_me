@@ -181,6 +181,21 @@ class StudyHistoryService extends ChangeNotifier {
     return history;
   }
 
+  Future<List<StudySessionRecord>> completedQuizSessions(
+    String dbFileName, {
+    StudyHistoryMode? mode,
+    int limit = 10,
+  }) async {
+    await ensureLoaded();
+    final matching = completedSessions.where((session) {
+      if (session.dbFileName != dbFileName) return false;
+      if (session.mode == StudyHistoryMode.flashcard) return false;
+      return mode == null || session.mode == mode;
+    }).toList()
+      ..sort((a, b) => b.completedAt!.compareTo(a.completedAt!));
+    return matching.take(limit).toList(growable: false);
+  }
+
   Set<String> introducedKeys(String dbFileName, DateTime date) => {
     for (final session in sessions.where((s) => s.dbFileName == dbFileName))
       for (final answer in session.answersOn(date))
@@ -257,7 +272,7 @@ class StudySessionRecorder {
       : _service = service, startedAt = service._now();
 
   void answer(Word word, {required bool success, String? nextReviewDate, bool retry = false,
-      bool skipped = false}) {
+      bool skipped = false, String? userAnswer}) {
     if (_completedAt != null) return;
     final key = StudyScheduleService.wordKey(word);
     final previous = _answers[key];
@@ -267,6 +282,9 @@ class StudySessionRecorder {
     ];
     _answers[key] = StudyAnswerRecord(
       wordKey: key, word: word.word, success: success,
+      meaning: word.meaning,
+      additionalMeanings: word.additionalMeanings,
+      userAnswer: userAnswer ?? previous?.userAnswer,
       wasNew: previous?.wasNew ?? (SrsService().isNewWord(word) &&
           !_service.wasPreviouslyStudied(wordbook.dbFileName, key, id)),
       attempts: previous == null ? 1 : previous.attempts + (retry ? 1 : 0),

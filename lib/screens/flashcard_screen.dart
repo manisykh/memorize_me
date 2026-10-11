@@ -19,31 +19,23 @@ import '../services/tts_service.dart';
 import '../services/study_sound_service.dart';
 import '../services/study_history_service.dart';
 import '../themes/app_theme.dart';
-import '../widgets/glassmorphic_card.dart';
-import '../widgets/wordbook_selection_button.dart';
-import '../widgets/study_plan_panel.dart';
+import '../themes/memorize_identity.dart';
+import '../widgets/wordbook_selection_dialog.dart';
 import 'quiz_screen.dart';
 
 enum FlashcardLaunchMode { setup, review, newWords, allWords }
 
 enum FlashcardSessionType { allWords, review, newWords }
 
+enum _FlashcardSetupScope { review, newWords, current }
+
+enum _SessionEndAction { restart, unknownOnly, quiz, finish }
+
 class _SessionEndContent {
   final String title;
   final String message;
-  final String primaryLabel;
-  final String secondaryLabel;
-  final VoidCallback onPrimary;
-  final VoidCallback onSecondary;
 
-  const _SessionEndContent({
-    required this.title,
-    required this.message,
-    required this.primaryLabel,
-    required this.secondaryLabel,
-    required this.onPrimary,
-    required this.onSecondary,
-  });
+  const _SessionEndContent({required this.title, required this.message});
 }
 
 class FlashcardScreen extends StatefulWidget {
@@ -85,6 +77,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   StudySessionRecorder? _historyRecorder;
   bool _showEmptyDeckCompletion = false;
   String? _revealedAdditionalMeaningKey;
+  _FlashcardSetupScope? _selectedSetupScope;
 
   int get _recommendedNewWordSessionCount =>
       _wordbookManager.recommendedNewWordSessionCount(
@@ -92,16 +85,11 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         plan: _wordbookManager.planFor(_selectedWordbook),
       );
 
-  int get _plannedNewWordSessionCount =>
-      _wordbookManager.plannedNewWordSessionCount(
+  List<Word> get _availableWordsForCurrentPlan =>
+      _wordbookManager.wordsAvailableForPlan(
         _allWords,
         plan: _wordbookManager.planFor(_selectedWordbook),
       );
-
-  List<Word> get _availableWordsForCurrentPlan => _wordbookManager.wordsAvailableForPlan(
-    _allWords,
-    plan: _wordbookManager.planFor(_selectedWordbook),
-  );
 
   @override
   void initState() {
@@ -132,6 +120,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         _selectedWordbook = wordbook;
         _allWords = words;
         _sessionWords = _availableWordsForCurrentPlan;
+        _selectedSetupScope = null;
       });
       _runInitialLaunchIfNeeded();
     }
@@ -142,11 +131,15 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     final snapshot = List<Word>.from(_updatedWordsInSession);
     await _wordbookManager.pendingSrsWrites;
     for (final updatedWord in snapshot) {
-      final allIndex = _allWords.indexWhere((word) => word.id == updatedWord.id);
+      final allIndex = _allWords.indexWhere(
+        (word) => word.id == updatedWord.id,
+      );
       if (allIndex != -1) {
         _allWords[allIndex] = updatedWord;
       }
-      final sessionIndex = _sessionWords.indexWhere((word) => word.id == updatedWord.id);
+      final sessionIndex = _sessionWords.indexWhere(
+        (word) => word.id == updatedWord.id,
+      );
       if (sessionIndex != -1) {
         _sessionWords[sessionIndex] = updatedWord;
       }
@@ -154,12 +147,18 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     _updatedWordsInSession.removeWhere(snapshot.contains);
   }
 
-  bool _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) {
+  bool _onSwipe(
+    int previousIndex,
+    int? currentIndex,
+    CardSwiperDirection direction,
+  ) {
     if (previousIndex >= _sessionWords.length) return false;
 
     final word = _sessionWords[previousIndex];
     final difficulty =
-        direction == CardSwiperDirection.right ? SrsDifficulty.good : SrsDifficulty.again;
+        direction == CardSwiperDirection.right
+            ? SrsDifficulty.good
+            : SrsDifficulty.again;
     unawaited(
       context.read<StudySoundService>().play(
         difficulty == SrsDifficulty.good
@@ -173,12 +172,19 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
       source: SrsUpdateSource.flashcard,
       difficulty: difficulty,
     );
-    _historyRecorder?.answer(word, success: difficulty == SrsDifficulty.good,
-      nextReviewDate: updatedWord.nextReviewDate);
+    _historyRecorder?.answer(
+      word,
+      success: difficulty == SrsDifficulty.good,
+      nextReviewDate: updatedWord.nextReviewDate,
+    );
 
     _updatedWordsInSession.removeWhere((w) => w.id == updatedWord.id);
     _updatedWordsInSession.add(updatedWord);
-    unawaited(_wordbookManager.queueWordsSrsData(_selectedWordbook!.dbFileName, [updatedWord]));
+    unawaited(
+      _wordbookManager.queueWordsSrsData(_selectedWordbook!.dbFileName, [
+        updatedWord,
+      ]),
+    );
     _sessionDecisions[previousIndex] = difficulty;
 
     setState(() {
@@ -193,14 +199,22 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     return true;
   }
 
-  bool _onUndo(int? previousIndex, int currentIndex, CardSwiperDirection direction) {
+  bool _onUndo(
+    int? previousIndex,
+    int currentIndex,
+    CardSwiperDirection direction,
+  ) {
     if (currentIndex < 0 || currentIndex >= _sessionWords.length) return true;
     final difficulty = _sessionDecisions.remove(currentIndex);
     final word = _sessionWords[currentIndex];
     _historyRecorder?.undo(word);
-    unawaited(_wordbookManager.queueWordsSrsData(_selectedWordbook!.dbFileName, [word]));
+    unawaited(
+      _wordbookManager.queueWordsSrsData(_selectedWordbook!.dbFileName, [word]),
+    );
 
-    _updatedWordsInSession.removeWhere((updatedWord) => updatedWord.id == word.id);
+    _updatedWordsInSession.removeWhere(
+      (updatedWord) => updatedWord.id == word.id,
+    );
     setState(() {
       if (difficulty == SrsDifficulty.good) {
         _knownCount = max(0, _knownCount - 1);
@@ -214,8 +228,10 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   }
 
   void _runInitialLaunchIfNeeded() {
-    if (!_pendingInitialLaunch || _selectedWordbook == null ||
-        (_sessionWords.isEmpty && (widget.reviewWordsOverride?.isEmpty ?? true))) {
+    if (!_pendingInitialLaunch ||
+        _selectedWordbook == null ||
+        (_sessionWords.isEmpty &&
+            (widget.reviewWordsOverride?.isEmpty ?? true))) {
       return;
     }
     _pendingInitialLaunch = false;
@@ -235,9 +251,13 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   void _resetSessionProgress() {
     final book = _selectedWordbook;
     if (book != null) {
-      _sessionWords = _wordbookManager.latestStudyWords(book.dbFileName, _sessionWords);
+      _sessionWords = _wordbookManager.latestStudyWords(
+        book.dbFileName,
+        _sessionWords,
+      );
       _historyRecorder = StudyHistoryService.instance.start(
-        wordbook: book, mode: StudyHistoryMode.flashcard,
+        wordbook: book,
+        mode: StudyHistoryMode.flashcard,
         expectedCount: _sessionWords.length,
         plan: _wordbookManager.planForSession(book, _sessionWords),
       );
@@ -259,13 +279,15 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
     List<Word> wordsForSession;
     if (srsOnly) {
-      wordsForSession = widget.reviewWordsOverride ?? _wordbookManager.getWordsForReview();
+      wordsForSession =
+          widget.reviewWordsOverride ?? _wordbookManager.getWordsForReview();
       if (wordsForSession.isEmpty) {
         _showSnackbar('오늘 복습할 단어가 없습니다!');
         return;
       }
     } else {
-      wordsForSession = widget.reviewWordsOverride ?? _availableWordsForCurrentPlan;
+      wordsForSession =
+          widget.reviewWordsOverride ?? _availableWordsForCurrentPlan;
       if (wordsForSession.isEmpty) {
         _showSnackbar('단어장에 학습할 단어가 없습니다.');
         return;
@@ -274,7 +296,8 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
     setState(() {
       _sessionWords = List.from(wordsForSession)..shuffle();
-      _sessionType = srsOnly ? FlashcardSessionType.review : FlashcardSessionType.allWords;
+      _sessionType =
+          srsOnly ? FlashcardSessionType.review : FlashcardSessionType.allWords;
       _currentCardIndex = 0;
       _sessionActive = true;
       _resetSessionProgress();
@@ -319,6 +342,40 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     );
   }
 
+  _FlashcardSetupScope _effectiveSetupScope({
+    required int reviewCount,
+    required int newWordCount,
+    required int currentCount,
+  }) {
+    final selected = _selectedSetupScope;
+    if (selected == _FlashcardSetupScope.review && reviewCount > 0) {
+      return selected!;
+    }
+    if (selected == _FlashcardSetupScope.newWords && newWordCount > 0) {
+      return selected!;
+    }
+    if (selected == _FlashcardSetupScope.current && currentCount > 0) {
+      return selected!;
+    }
+    if (reviewCount > 0) return _FlashcardSetupScope.review;
+    if (newWordCount > 0) return _FlashcardSetupScope.newWords;
+    return _FlashcardSetupScope.current;
+  }
+
+  void _startSetupScope(_FlashcardSetupScope scope) {
+    switch (scope) {
+      case _FlashcardSetupScope.review:
+        _startSession(srsOnly: true);
+        break;
+      case _FlashcardSetupScope.newWords:
+        _startNewWordSession();
+        break;
+      case _FlashcardSetupScope.current:
+        _startSession(srsOnly: false);
+        break;
+    }
+  }
+
   void _onSessionEnd() {
     if (_isEndingSession) return;
     _isEndingSession = true;
@@ -333,78 +390,73 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
       _showEmptyDeckCompletion = true;
     });
 
-    _saveUpdatedSrsData().then((_) async {
-      await Future<void>.delayed(const Duration(milliseconds: 450));
-      if (!mounted || !_sessionActive) return;
-      final content = _sessionEndContent();
-      showDialog<void>(
-        context: context,
-        builder:
-            (dialogContext) => Dialog(
-              backgroundColor: Colors.transparent,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-              child: _buildSessionEndDialog(dialogContext, content),
-            ),
-      );
-    });
+    // Card writes are already queued per swipe. Showing the completion dialog
+    // must not wait for a long database queue, especially on large decks.
+    unawaited(_saveUpdatedSrsData());
+    unawaited(_showSessionEndDialog());
+  }
+
+  Future<void> _showSessionEndDialog() async {
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted || !_sessionActive) return;
+
+    final action = await showDialog<_SessionEndAction>(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (dialogContext) => Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 22),
+            child: _buildSessionEndDialog(dialogContext, _sessionEndContent()),
+          ),
+    );
+    if (!mounted) return;
+
+    switch (action ?? _SessionEndAction.finish) {
+      case _SessionEndAction.restart:
+        _restartCurrentSession();
+        break;
+      case _SessionEndAction.unknownOnly:
+        _restartUnknownSession();
+        break;
+      case _SessionEndAction.quiz:
+        _goToQuiz();
+        break;
+      case _SessionEndAction.finish:
+        _finishSession();
+        break;
+    }
   }
 
   _SessionEndContent _sessionEndContent() {
     final plan = _wordbookManager.planFor(_selectedWordbook);
-    if (plan?.mode == StudyPlanMode.free && _sessionType != FlashcardSessionType.review) {
-      final hasNext = plan!.currentChunk() < plan.chunkCount;
+    if (plan != null &&
+        plan.mode == StudyPlanMode.free &&
+        _sessionType != FlashcardSessionType.review) {
       return _SessionEndContent(
         title: '${plan.currentChunk()}번 묶음 학습 완료',
-        message: '알아요 $_knownCount개 · 몰라요 $_unknownCount개. 다시 학습하거나 원하는 시점에 다음 묶음으로 이동하세요.',
-        primaryLabel: hasNext ? '다음 묶음' : '완료',
-        secondaryLabel: '이 묶음 다시 학습',
-        onPrimary: hasNext ? () => _nextPlanBundle(plan) : _finishSession,
-        onSecondary: _restartCurrentSession,
+        message:
+            '알아요 $_knownCount개 · 몰라요 $_unknownCount개로 묶음 학습을 마쳤어요. 지금 기억을 한 번 더 확인해 보세요.',
       );
     }
     switch (_sessionType) {
       case FlashcardSessionType.review:
-        if (_unknownCount > 0) {
-          return _SessionEndContent(
-            title: '다시 볼 단어가 남았습니다',
-            message:
-                '몰라요 $_unknownCount개가 남아 있어 새 단어는 아직 열지 않습니다. 다시 복습을 누르면 방금 몰라요로 표시한 단어만 다시 봅니다.',
-            primaryLabel: '몰라요만 다시 보기',
-            secondaryLabel: '여기서 마치기',
-            onPrimary: _restartUnknownSession,
-            onSecondary: _finishSession,
-          );
-        }
-        final batchSize = _recommendedNewWordSessionCount;
-        final hasNewWords = batchSize > 0;
         return _SessionEndContent(
-          title: hasNewWords ? '복습 완료 · 새 단어 가능' : '오늘 복습 완료',
+          title: '오늘 복습 완료',
           message:
-              hasNewWords
-                  ? '여기서 마치기는 오늘 복습만 저장하고 끝냅니다. 새 단어 카드 학습은 새 단어 $batchSize개를 처음 학습해 SRS 일정에 새로 넣습니다.'
-                  : '오늘 복습을 마쳤습니다. 다시 복습하면 같은 묶음을 한 번 더 봅니다.',
-          primaryLabel: hasNewWords ? '새 단어 $batchSize개 시작' : '다시 복습',
-          secondaryLabel: '복습만 저장하고 종료',
-          onPrimary: hasNewWords ? _startNewWordSession : _restartCurrentSession,
-          onSecondary: _finishSession,
+              '알아요 $_knownCount개 · 몰라요 $_unknownCount개로 복습을 마쳤어요. 학습 결과는 다음 복습 일정에 반영됩니다.',
         );
       case FlashcardSessionType.newWords:
         return _SessionEndContent(
           title: '새 단어 학습 완료',
-          message: '새 단어가 SRS 일정에 들어갔어요. 짧은 테스트로 떠올릴 수 있는지 확인해볼까요?',
-          primaryLabel: '퀴즈 시작',
-          secondaryLabel: '완료',
-          onPrimary: _goToQuiz,
-          onSecondary: _finishSession,
+          message:
+              '알아요 $_knownCount개 · 몰라요 $_unknownCount개가 SRS 일정에 반영됐어요. 객관식 퀴즈로 바로 확인할 수 있어요.',
         );
       case FlashcardSessionType.allWords:
         return _SessionEndContent(
           title: '카드 학습 완료',
-          message: '전체 카드 학습을 마쳤어요. 기억이 흔들리는 단어는 테스트로 한 번 더 확인해보세요.',
-          primaryLabel: '퀴즈 시작',
-          secondaryLabel: '다시 학습',
-          onPrimary: _goToQuiz,
-          onSecondary: _restartCurrentSession,
+          message:
+              '알아요 $_knownCount개 · 몰라요 $_unknownCount개로 카드 학습을 마쳤어요. 원하는 방식으로 기억을 더 단단하게 만들어 보세요.',
         );
     }
   }
@@ -416,19 +468,9 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
       _showEmptyDeckCompletion = false;
       _isEndingSession = false;
     });
-    if (widget.origin != LearningRouteOrigin.standalone && Navigator.of(context).canPop()) {
+    if (widget.origin != LearningRouteOrigin.standalone &&
+        Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
-    }
-  }
-
-  Future<void> _nextPlanBundle(StudyPlan plan) async {
-    try {
-      await _wordbookManager.selectPlanBundle(plan, plan.currentChunk() + 1);
-      if (!mounted) return;
-      _startSession(srsOnly: false);
-      _swiperController.moveTo(0);
-    } catch (_) {
-      _showSnackbar('다음 묶음을 열지 못했습니다. 다시 시도해주세요.');
     }
   }
 
@@ -466,12 +508,20 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
   void _goToQuiz() {
     if (!mounted) return;
+    final quizWords =
+        _selectedWordbook == null
+            ? List<Word>.from(_sessionWords)
+            : _wordbookManager.latestStudyWords(
+              _selectedWordbook!.dbFileName,
+              _sessionWords,
+            );
     setState(() => _sessionActive = false);
     final route = MaterialPageRoute(
       builder:
           (_) => QuizScreen(
             initialMode: QuizMode.multipleChoice,
             origin: widget.origin,
+            wordsOverride: quizWords,
           ),
     );
     if (widget.origin == LearningRouteOrigin.standalone) {
@@ -483,7 +533,9 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
   void _showSnackbar(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -512,165 +564,359 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
   Widget _buildSetupScreen() {
     final theme = Theme.of(context);
+    final identity = MemorizeIdentity.of(theme);
     final settings = context.watch<FlashcardSettingsProvider>();
     final studyPlan = _wordbookManager.planFor(_selectedWordbook);
     final availableWords = _availableWordsForCurrentPlan;
     final newWordsInScope = availableWords.where(_srsService.isNewWord).length;
     final reviewCount = _wordbookManager.getWordsForReview().length;
+    final recommendedNewCount = _recommendedNewWordSessionCount;
+    final selectedScope = _effectiveSetupScope(
+      reviewCount: reviewCount,
+      newWordCount: recommendedNewCount,
+      currentCount: availableWords.length,
+    );
+    final canStart = switch (selectedScope) {
+      _FlashcardSetupScope.review => reviewCount > 0,
+      _FlashcardSetupScope.newWords => recommendedNewCount > 0,
+      _FlashcardSetupScope.current => availableWords.isNotEmpty,
+    };
+    final startLabel = switch (selectedScope) {
+      _FlashcardSetupScope.review => '오늘 복습 $reviewCount개 시작',
+      _FlashcardSetupScope.newWords => '새 단어 $recommendedNewCount개 학습',
+      _FlashcardSetupScope.current =>
+        '${studyPlan == null ? '전체 단어' : '현재 범위'} ${availableWords.length}개 학습',
+    };
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: identity.canvas,
       appBar: AppBar(title: const Text('플래시카드 학습 준비')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            WordbookSelectionButton(
-              selectedWordbook: _selectedWordbook,
-              onWordbookSelected: _onWordbookSelected,
-              wordCount: _selectedWordbook != null ? availableWords.length : 0,
+            Text(
+              '카드 순서와 학습 범위를 선택하세요.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: identity.mutedInk,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            if (studyPlan != null) ...[
-              const SizedBox(height: 12),
-              _buildLearningScopeNotice(studyPlan),
-            ],
-            const SizedBox(height: 18),
-            GlassmorphicCard(
+            const SizedBox(height: 24),
+            _buildSetupSectionTitle(theme, identity, '현재 단어장'),
+            const SizedBox(height: 10),
+            _buildSetupWordbookRow(
+              theme: theme,
+              identity: identity,
+              plan: studyPlan,
+              availableCount: availableWords.length,
+            ),
+            const SizedBox(height: 24),
+            _buildSetupSectionTitle(theme, identity, '카드 표시 순서'),
+            const SizedBox(height: 10),
+            _buildFrontTypeSelector(
+              theme: theme,
+              identity: identity,
+              selected: settings.frontType,
+              onChanged: settings.setFrontType,
+            ),
+            const SizedBox(height: 24),
+            _buildSetupSectionTitle(theme, identity, '학습 범위'),
+            const SizedBox(height: 10),
+            Container(
+              decoration: BoxDecoration(
+                color: identity.surface,
+                borderRadius: BorderRadius.circular(
+                  MemorizeIdentity.cardRadius,
+                ),
+                border: Border.all(color: identity.border),
+              ),
+              clipBehavior: Clip.antiAlias,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          CupertinoIcons.sparkles,
-                          color: theme.colorScheme.primary,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '오늘의 카드 루틴',
-                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '단어를 빠르게 넘기며 기억 강도를 조정하고, 바로 다음 퀴즈 흐름으로 이어집니다.',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  _buildSetupScopeRow(
+                    theme: theme,
+                    identity: identity,
+                    scope: _FlashcardSetupScope.review,
+                    selectedScope: selectedScope,
+                    enabled: reviewCount > 0,
+                    title: '오늘 복습 $reviewCount개',
+                    description: '복습일이 되었거나 지난 단어',
                   ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildHeaderMetric(
-                          theme,
-                          '현재 기준',
-                          '${availableWords.length}개',
-                          theme.colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildHeaderMetric(
-                          theme,
-                          '새 단어',
-                          '$newWordsInScope개',
-                          AppTheme.primaryGreen,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildHeaderMetric(
-                          theme,
-                          '오늘 복습',
-                          '$reviewCount개',
-                          AppTheme.accentCoral,
-                        ),
-                      ),
-                    ],
+                  Divider(height: 1, color: identity.border),
+                  _buildSetupScopeRow(
+                    theme: theme,
+                    identity: identity,
+                    scope: _FlashcardSetupScope.newWords,
+                    selectedScope: selectedScope,
+                    enabled: recommendedNewCount > 0,
+                    title: '새 단어 $recommendedNewCount개',
+                    description:
+                        newWordsInScope > recommendedNewCount
+                            ? '열린 새 단어 $newWordsInScope개 중 오늘 학습할 분량'
+                            : '오늘 처음 학습할 수 있는 단어',
+                  ),
+                  Divider(height: 1, color: identity.border),
+                  _buildSetupScopeRow(
+                    theme: theme,
+                    identity: identity,
+                    scope: _FlashcardSetupScope.current,
+                    selectedScope: selectedScope,
+                    enabled: availableWords.isNotEmpty,
+                    title:
+                        '${studyPlan == null ? '전체 단어' : '현재 플랜 범위'} ${availableWords.length}개',
+                    description:
+                        studyPlan?.mode == StudyPlanMode.free
+                            ? '현재 묶음에서 학습 가능한 모든 단어'
+                            : studyPlan == null
+                            ? '선택한 단어장의 모든 단어'
+                            : '현재 플랜에서 학습 가능한 모든 단어',
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 18),
-            Text('학습 설정', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 10),
-            GlassmorphicCard(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: RadioGroup<FlashcardFrontType>(
-                groupValue: settings.frontType,
-                onChanged: (value) {
-                  if (value != null) settings.setFrontType(value);
-                },
-                child: const Column(
-                  children: [
-                    RadioListTile<FlashcardFrontType>(
-                      title: Text('단어 먼저 보기'),
-                      subtitle: Text('소리와 철자를 먼저 확인합니다.'),
-                      value: FlashcardFrontType.word,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  CupertinoIcons.info_circle,
+                  size: 18,
+                  color: identity.mutedInk,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '학습 결과는 SRS와 다음 복습 일정에 반영됩니다.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: identity.mutedInk,
+                      fontWeight: FontWeight.w600,
                     ),
-                    RadioListTile<FlashcardFrontType>(
-                      title: Text('뜻 먼저 보기'),
-                      subtitle: Text('뜻에서 단어를 떠올립니다.'),
-                      value: FlashcardFrontType.meaning,
-                    ),
-                  ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+          child: SizedBox(
+            height: 54,
+            child: FilledButton(
+              onPressed:
+                  canStart ? () => _startSetupScope(selectedScope) : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: identity.primaryAction,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: identity.border,
+                shape: const StadiumBorder(),
+              ),
+              child: Text(
+                startLabel,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),
-            const SizedBox(height: 18),
-            _buildLaunchCard(
-              theme: theme,
-              accentColor: theme.colorScheme.primary,
-              title: '현재 기준 카드 루틴',
-              description:
-                  studyPlan == null
-                      ? '전체 단어를 카드로 훑어봅니다.'
-                      : '오늘 열린 플랜 단어만 확인합니다.',
-              cta: '카드 학습',
-              onTap: () => _startSession(srsOnly: false),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSetupSectionTitle(
+    ThemeData theme,
+    MemorizeIdentity identity,
+    String title,
+  ) {
+    return Text(
+      title,
+      style: theme.textTheme.titleLarge?.copyWith(
+        color: identity.ink,
+        fontWeight: FontWeight.w900,
+      ),
+    );
+  }
+
+  Widget _buildSetupWordbookRow({
+    required ThemeData theme,
+    required MemorizeIdentity identity,
+    required StudyPlan? plan,
+    required int availableCount,
+  }) {
+    final String subtitle;
+    if (plan == null) {
+      subtitle = '전체 ${_allWords.length}개';
+    } else if (plan.mode == StudyPlanMode.free) {
+      subtitle =
+          '전체 ${_allWords.length}개 · 현재 묶음 ${plan.currentChunk()}/${plan.chunkCount}';
+    } else {
+      subtitle = '전체 ${_allWords.length}개 · 현재 플랜 범위 $availableCount개';
+    }
+    return Material(
+      color: identity.softContext,
+      borderRadius: BorderRadius.circular(MemorizeIdentity.contextRadius),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(MemorizeIdentity.contextRadius),
+        onTap: () async {
+          final selected = await showWordbookSelectionDialog(context);
+          if (selected != null) await _onWordbookSelected(selected);
+        },
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 76),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(MemorizeIdentity.contextRadius),
+            border: Border.all(
+              color: identity.primaryAction.withValues(alpha: 0.16),
             ),
-            const SizedBox(height: 12),
-            _buildLaunchCard(
-              theme: theme,
-              accentColor: AppTheme.primaryGreen,
-              title: '새 단어 $_recommendedNewWordSessionCount개',
-              description:
-                  _plannedNewWordSessionCount > _recommendedNewWordSessionCount
-                      ? '복습 부담을 고려해 오늘 새 단어 수를 자동으로 줄였습니다.'
-                      : '아직 SRS 일정에 들어가지 않은 단어를 첫 학습 카드로 올립니다. 완료 후 다음 복습 일정이 생깁니다.',
-              cta:
-                  _recommendedNewWordSessionCount == 0
-                      ? '오늘은 복습 먼저'
-                      : '새 단어 $_recommendedNewWordSessionCount개 학습',
-              onTap: _startNewWordSession,
+          ),
+          child: Row(
+            children: [
+              Icon(CupertinoIcons.book, color: identity.success, size: 30),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _selectedWordbook?.name ?? '단어장을 선택해주세요',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: identity.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (_selectedWordbook != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: identity.mutedInk,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                CupertinoIcons.chevron_forward,
+                color: identity.mutedInk,
+                size: 18,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFrontTypeSelector({
+    required ThemeData theme,
+    required MemorizeIdentity identity,
+    required FlashcardFrontType selected,
+    required ValueChanged<FlashcardFrontType> onChanged,
+  }) {
+    return Container(
+      height: 52,
+      decoration: BoxDecoration(
+        color: identity.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: identity.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        children:
+            FlashcardFrontType.values.map((value) {
+              final isSelected = selected == value;
+              return Expanded(
+                child: Material(
+                  color:
+                      isSelected ? identity.primaryAction : Colors.transparent,
+                  child: InkWell(
+                    onTap: () => onChanged(value),
+                    child: Center(
+                      child: Text(
+                        value == FlashcardFrontType.word ? '단어 먼저' : '뜻 먼저',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: isSelected ? Colors.white : identity.ink,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildSetupScopeRow({
+    required ThemeData theme,
+    required MemorizeIdentity identity,
+    required _FlashcardSetupScope scope,
+    required _FlashcardSetupScope selectedScope,
+    required bool enabled,
+    required String title,
+    required String description,
+  }) {
+    final selected = scope == selectedScope;
+    return Material(
+      color: selected ? identity.softContext : identity.surface,
+      child: InkWell(
+        onTap:
+            enabled ? () => setState(() => _selectedSetupScope = scope) : null,
+        child: Opacity(
+          opacity: enabled ? 1 : 0.46,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+            child: Row(
+              children: [
+                Icon(
+                  selected
+                      ? CupertinoIcons.largecircle_fill_circle
+                      : CupertinoIcons.circle,
+                  color: selected ? identity.primaryAction : identity.mutedInk,
+                  size: 24,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: identity.ink,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        description,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: identity.mutedInk,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            _buildLaunchCard(
-              theme: theme,
-              accentColor: AppTheme.accentCoral,
-              title: '오늘 복습 카드',
-              description: '복습 날짜가 온 단어를 먼저 정리해 오늘 루틴의 중심을 잡습니다.',
-              cta: 'SRS 학습 시작',
-              onTap: () => _startSession(srsOnly: true),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -678,11 +924,14 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
 
   Widget _buildFlashcardSession() {
     final theme = Theme.of(context);
+    final sessionTitle =
+        _sessionType == FlashcardSessionType.review ? '플래시카드 복습' : '플래시카드 학습';
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_selectedWordbook?.name ?? '플래시카드'),
+        centerTitle: true,
+        title: Text(sessionTitle),
         leading: IconButton(
           icon: const Icon(Icons.close),
           tooltip: '학습 나가기',
@@ -690,214 +939,257 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         ),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-              child: _buildSessionHeader(theme),
-            ),
-            Expanded(
-              child:
-                  _sessionWords.isEmpty
-                      ? const Center(child: Text("학습할 단어가 없습니다."))
-                      : Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 260),
-                                child:
-                                    _showEmptyDeckCompletion
-                                        ? _buildEmptyDeckCompletion(theme)
-                                        : Stack(
-                                          key: const ValueKey('flashcard_deck'),
-                                          children: [
-                                            Positioned.fill(child: _buildDeckPreview(theme)),
-                                            CardSwiper(
-                                              controller: _swiperController,
-                                              cardsCount: _sessionWords.length,
-                                              onSwipe: _onSwipe,
-                                              onUndo: _onUndo,
-                                              onEnd: _onSessionEnd,
-                                              padding: const EdgeInsets.all(8.0),
-                                              backCardOffset: const Offset(0, 16),
-                                              numberOfCardsDisplayed: min(3, _sessionWords.length),
-                                              allowedSwipeDirection:
-                                                  AllowedSwipeDirection.symmetric(horizontal: true),
-                                              cardBuilder: (context, index, percentThresholdX, percentThresholdY) {
-                                                final word = _sessionWords[index];
-                                                final settings = context.read<FlashcardSettingsProvider>();
-                                                final bool showWordFirst =
-                                                    settings.frontType == FlashcardFrontType.word;
-
-                                                Color overlayColor = Colors.transparent;
-                                                if (percentThresholdX != 0) {
-                                                  final opacity = min(percentThresholdX.abs() / 100, 0.22);
-                                                  overlayColor =
-                                                      percentThresholdX > 0
-                                                          ? AppTheme.primaryGreen.withValues(alpha: opacity)
-                                                          : AppTheme.accentCoral.withValues(alpha: opacity);
-                                                }
-
-                                                final frontWidget = _buildCardSurface(
-                                                  context: context,
-                                                  word: word,
-                                                  isWordSide: showWordFirst,
-                                                  overlayColor: overlayColor,
-                                                  showAdditionalMeanings:
-                                                      _revealedAdditionalMeaningKey ==
-                                                      _additionalMeaningKey(word),
-                                                );
-
-                                                final backWidget = _buildCardSurface(
-                                                  context: context,
-                                                  word: word,
-                                                  isWordSide: !showWordFirst,
-                                                  overlayColor: overlayColor,
-                                                  showAdditionalMeanings:
-                                                      _revealedAdditionalMeaningKey ==
-                                                      _additionalMeaningKey(word),
-                                                );
-
-                                                return _ResponsiveFlipCard(
-                                                  key: ValueKey(
-                                                    '${word.id ?? word.word}-$showWordFirst',
-                                                  ),
-                                                  front: frontWidget,
-                                                  back: backWidget,
-                                                );
-                                              },
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: _buildSessionHeader(theme),
+              ),
+              if (_sessionWords.isNotEmpty && !_showEmptyDeckCompletion)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                  child: _buildWordStagePanel(
+                    theme,
+                    MemorizeIdentity.of(theme),
+                    _sessionWords[_currentCardIndex.clamp(
+                      0,
+                      _sessionWords.length - 1,
+                    )],
+                  ),
+                ),
+              Expanded(
+                child:
+                    _sessionWords.isEmpty
+                        ? const Center(child: Text("학습할 단어가 없습니다."))
+                        : Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 260),
+                                  child:
+                                      _showEmptyDeckCompletion
+                                          ? _buildEmptyDeckCompletion(theme)
+                                          : Stack(
+                                            key: const ValueKey(
+                                              'flashcard_deck',
                                             ),
-                                          ],
-                                        ),
+                                            children: [
+                                              Positioned.fill(
+                                                child: _buildDeckPreview(theme),
+                                              ),
+                                              CardSwiper(
+                                                controller: _swiperController,
+                                                cardsCount:
+                                                    _sessionWords.length,
+                                                onSwipe: _onSwipe,
+                                                onUndo: _onUndo,
+                                                onEnd: _onSessionEnd,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      vertical: 4,
+                                                    ),
+                                                maxAngle: 0,
+                                                backCardOffset: const Offset(
+                                                  0,
+                                                  16,
+                                                ),
+                                                numberOfCardsDisplayed: min(
+                                                  3,
+                                                  _sessionWords.length,
+                                                ),
+                                                allowedSwipeDirection:
+                                                    AllowedSwipeDirection.symmetric(
+                                                      horizontal: true,
+                                                    ),
+                                                cardBuilder: (
+                                                  context,
+                                                  index,
+                                                  percentThresholdX,
+                                                  percentThresholdY,
+                                                ) {
+                                                  final word =
+                                                      _sessionWords[index];
+                                                  final settings =
+                                                      context
+                                                          .read<
+                                                            FlashcardSettingsProvider
+                                                          >();
+                                                  final bool showWordFirst =
+                                                      settings.frontType ==
+                                                      FlashcardFrontType.word;
+                                                  final identity =
+                                                      MemorizeIdentity.of(
+                                                        Theme.of(context),
+                                                      );
+
+                                                  Color overlayColor =
+                                                      Colors.transparent;
+                                                  if (percentThresholdX != 0) {
+                                                    final opacity = min(
+                                                      percentThresholdX.abs() /
+                                                          100,
+                                                      0.22,
+                                                    );
+                                                    overlayColor =
+                                                        percentThresholdX > 0
+                                                            ? identity.success
+                                                                .withValues(
+                                                                  alpha:
+                                                                      opacity,
+                                                                )
+                                                            : identity.review
+                                                                .withValues(
+                                                                  alpha:
+                                                                      opacity,
+                                                                );
+                                                  }
+
+                                                  final frontWidget =
+                                                      _buildCardSurface(
+                                                        context: context,
+                                                        word: word,
+                                                        isWordSide:
+                                                            showWordFirst,
+                                                        overlayColor:
+                                                            overlayColor,
+                                                        showAdditionalMeanings:
+                                                            _revealedAdditionalMeaningKey ==
+                                                            _additionalMeaningKey(
+                                                              word,
+                                                            ),
+                                                      );
+
+                                                  final backWidget =
+                                                      _buildCardSurface(
+                                                        context: context,
+                                                        word: word,
+                                                        isWordSide:
+                                                            !showWordFirst,
+                                                        overlayColor:
+                                                            overlayColor,
+                                                        showAdditionalMeanings:
+                                                            _revealedAdditionalMeaningKey ==
+                                                            _additionalMeaningKey(
+                                                              word,
+                                                            ),
+                                                      );
+
+                                                  final dragRatio =
+                                                      (percentThresholdX / 100)
+                                                          .clamp(-1.0, 1.0)
+                                                          .toDouble();
+                                                  return Transform.rotate(
+                                                    alignment:
+                                                        Alignment.bottomCenter,
+                                                    angle:
+                                                        dragRatio * (pi / 18),
+                                                    child: _ResponsiveFlipCard(
+                                                      key: ValueKey(
+                                                        '${word.id ?? word.word}-$showWordFirst',
+                                                      ),
+                                                      front: frontWidget,
+                                                      back: backWidget,
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            ],
+                                          ),
+                                ),
                               ),
-                            ),
-                            if (!_showEmptyDeckCompletion) ...[
-                              const SizedBox(height: 14),
-                              _buildSessionControls(theme),
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildSessionHeader(ThemeData theme) {
+    final identity = MemorizeIdentity.of(theme);
     final totalCount = _sessionWords.length;
-    final completedCount = totalCount == 0 ? 0 : _currentCardIndex.clamp(0, totalCount);
-    final remainingCount = max(totalCount - completedCount, 0);
-    final progress = totalCount == 0 ? 0.0 : completedCount / totalCount;
-    final accentColor = switch (_sessionType) {
-      FlashcardSessionType.review => AppTheme.accentCoral,
-      FlashcardSessionType.newWords => AppTheme.primaryGreen,
-      FlashcardSessionType.allWords => theme.colorScheme.primary,
-    };
-    final title = switch (_sessionType) {
-      FlashcardSessionType.review => '오늘 복습 카드',
-      FlashcardSessionType.newWords => '새 단어 ${_sessionWords.length}개',
-      FlashcardSessionType.allWords => '전체 카드 루틴',
-    };
-    final subtitle = switch (_sessionType) {
-      FlashcardSessionType.review => '오늘 다시 볼 단어를 굳힙니다.',
-      FlashcardSessionType.newWords => '새 단어를 SRS에 올립니다.',
-      FlashcardSessionType.allWords => '전체 단어를 가볍게 훑습니다.',
-    };
-
-    return GlassmorphicCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+    final displayIndex =
+        totalCount == 0 ? 0 : _currentCardIndex.clamp(0, totalCount - 1) + 1;
+    final progress = totalCount == 0 ? 0.0 : displayIndex / totalCount;
+    final title = _selectedWordbook?.name ?? '현재 단어장';
+    final decidedCount = _knownCount + _unknownCount;
+    final knownRatio =
+        decidedCount == 0 ? 0 : ((_knownCount / decidedCount) * 100).round();
+    final unknownRatio =
+        decidedCount == 0 ? 0 : ((_unknownCount / decidedCount) * 100).round();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
+      decoration: BoxDecoration(
+        color: identity.surface,
+        borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+        border: Border.all(color: identity.border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(CupertinoIcons.layers_alt_fill, color: accentColor, size: 20),
-              ),
-              const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(subtitle, style: theme.textTheme.bodySmall),
-                  ],
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: identity.mutedInk,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                '$displayIndex / $totalCount',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: identity.ink,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 8,
-              color: accentColor,
-              backgroundColor: accentColor.withValues(alpha: 0.12),
+              color: identity.primaryAction,
+              backgroundColor: identity.primaryAction.withValues(alpha: 0.12),
             ),
           ),
+          const SizedBox(height: 13),
+          Divider(height: 1, color: identity.border),
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _buildHeaderMetric(theme, '진행', '$completedCount / $totalCount', accentColor)),
-              const SizedBox(width: 8),
-              Expanded(child: _buildHeaderMetric(theme, '남음', '$remainingCount개', accentColor)),
-              const SizedBox(width: 8),
               Expanded(
-                child: _buildHeaderMetric(
-                  theme,
-                  '단계',
-                  _sessionType == FlashcardSessionType.newWords ? '진입' : '복습',
-                  accentColor,
+                child: _buildInlineDecisionSummary(
+                  theme: theme,
+                  icon: CupertinoIcons.xmark_circle_fill,
+                  label: '몰라요',
+                  value: '$_unknownCount개 · $unknownRatio%',
+                  color: identity.review,
+                ),
+              ),
+              Container(width: 1, height: 30, color: identity.border),
+              Expanded(
+                child: _buildInlineDecisionSummary(
+                  theme: theme,
+                  icon: CupertinoIcons.check_mark_circled_solid,
+                  label: '알아요',
+                  value: '$_knownCount개 · $knownRatio%',
+                  color: identity.success,
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLearningScopeNotice(StudyPlan plan) {
-    return StudyPlanPanel(plan: plan, onChanged: () async {
-      if (_selectedWordbook != null) await _onWordbookSelected(_selectedWordbook!);
-    });
-  }
-
-  Widget _buildHeaderMetric(ThemeData theme, String label, String value, Color accentColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: accentColor.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: theme.textTheme.labelSmall),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: accentColor,
-              fontWeight: FontWeight.w800,
-            ),
           ),
         ],
       ),
@@ -939,13 +1231,19 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                 color: accentColor.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: Icon(CupertinoIcons.check_mark_circled_solid, color: accentColor, size: 36),
+              child: Icon(
+                CupertinoIcons.check_mark_circled_solid,
+                color: accentColor,
+                size: 36,
+              ),
             ),
             const SizedBox(height: 18),
             Text(
               '카드를 모두 확인했습니다',
               textAlign: TextAlign.center,
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -966,14 +1264,13 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
       return const SizedBox.shrink();
     }
 
+    final identity = MemorizeIdentity.of(theme);
     final previews = <Widget>[];
     for (var depth = 2; depth >= 1; depth--) {
       final previewIndex = _currentCardIndex + depth;
       if (previewIndex >= _sessionWords.length) {
         continue;
       }
-      final previewWord = _sessionWords[previewIndex];
-      final accentColor = depth == 1 ? AppTheme.primaryGreen : theme.colorScheme.primary;
       previews.add(
         Positioned(
           left: 18.0 + (depth * 10),
@@ -985,59 +1282,10 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
               opacity: depth == 1 ? 0.78 : 0.52,
               child: Container(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors:
-                        theme.brightness == Brightness.dark
-                            ? [
-                              theme.colorScheme.surface.withValues(alpha: 0.94),
-                              theme.colorScheme.surface.withValues(alpha: 0.88),
-                            ]
-                            : [
-                              Colors.white.withValues(alpha: 0.95),
-                              const Color(0xFFFAF6F1).withValues(alpha: 0.92),
-                            ],
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: accentColor.withValues(alpha: 0.14)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: accentColor.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          '${previewIndex + 1} / ${_sessionWords.length}',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: accentColor,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        previewWord.word,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        previewWord.meaning,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.74),
-                        ),
-                      ),
-                    ],
+                  color: identity.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: identity.primaryAction.withValues(alpha: 0.12),
                   ),
                 ),
               ),
@@ -1050,200 +1298,140 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     return Stack(children: previews);
   }
 
-  Widget _buildSessionControls(ThemeData theme) {
-    final decidedCount = _knownCount + _unknownCount;
-    final knownRatio = decidedCount == 0 ? 0 : ((_knownCount / decidedCount) * 100).round();
-    final unknownRatio = decidedCount == 0 ? 0 : ((_unknownCount / decidedCount) * 100).round();
-
-    return GlassmorphicCard(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      borderRadius: 24,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Text(
-                '이번 학습 기록',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const Spacer(),
-              Tooltip(
-                message: '방금 카드 되돌리기',
-                child: IconButton(
-                  visualDensity: VisualDensity.compact,
-                  onPressed: decidedCount == 0 ? null : () => _swiperController.undo(),
-                  icon: const Icon(CupertinoIcons.arrow_counterclockwise, size: 20),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _buildDecisionStatButton(
-                  theme: theme,
-                  icon: CupertinoIcons.xmark,
-                  label: '몰라요',
-                  value: '$_unknownCount',
-                  ratio: '$unknownRatio%',
-                  accentColor: AppTheme.accentCoral,
-                  onTap: () => _swiperController.swipe(CardSwiperDirection.left),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildDecisionStatButton(
-                  theme: theme,
-                  icon: CupertinoIcons.check_mark,
-                  label: '알아요',
-                  value: '$_knownCount',
-                  ratio: '$knownRatio%',
-                  accentColor: AppTheme.primaryGreen,
-                  onTap: () => _swiperController.swipe(CardSwiperDirection.right),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+  Widget _buildCardDecisionRow(ThemeData theme) {
+    final identity = MemorizeIdentity.of(theme);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildRoundCardAction(
+          theme: theme,
+          icon: CupertinoIcons.xmark,
+          label: '몰라요',
+          accentColor: identity.review,
+          onTap: () => _swiperController.swipe(CardSwiperDirection.left),
+        ),
+        _buildRoundCardAction(
+          theme: theme,
+          icon: CupertinoIcons.arrow_counterclockwise,
+          semanticLabel: '방금 카드 되돌리기',
+          accentColor: identity.mutedInk,
+          size: 50,
+          onTap:
+              _knownCount + _unknownCount == 0
+                  ? null
+                  : () => _swiperController.undo(),
+        ),
+        _buildRoundCardAction(
+          theme: theme,
+          icon: CupertinoIcons.check_mark,
+          label: '알아요',
+          accentColor: identity.success,
+          onTap: () => _swiperController.swipe(CardSwiperDirection.right),
+        ),
+      ],
     );
   }
 
-  Widget _buildDecisionStatButton({
+  Widget _buildInlineDecisionSummary({
     required ThemeData theme,
     required IconData icon,
     required String label,
     required String value,
-    required String ratio,
-    required Color accentColor,
-    required VoidCallback onTap,
+    required Color color,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: accentColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: accentColor.withValues(alpha: 0.22)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: accentColor, size: 18),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: accentColor,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$value개 · $ratio',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: theme.colorScheme.onSurface,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, color: color, size: 19),
+        const SizedBox(width: 7),
+        Flexible(
+          child: Text(
+            '$label $value',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
-  Widget _buildLaunchCard({
+
+  Widget _buildRoundCardAction({
     required ThemeData theme,
+    required IconData icon,
+    String? label,
+    String? semanticLabel,
     required Color accentColor,
-    required String title,
-    required String description,
-    required String cta,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
+    double size = 58,
   }) {
-    return GlassmorphicCard(
-      onTap: onTap,
-      child: Row(
+    final enabledColor =
+        onTap == null ? accentColor.withValues(alpha: 0.35) : accentColor;
+    return SizedBox(
+      width: 88,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(CupertinoIcons.play_fill, color: accentColor, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 4),
-                Text(description, style: theme.textTheme.bodySmall),
-              ],
+          Tooltip(
+            message: semanticLabel ?? label ?? '',
+            child: Material(
+              color: enabledColor.withValues(alpha: 0.11),
+              shape: CircleBorder(
+                side: BorderSide(color: enabledColor.withValues(alpha: 0.34)),
+              ),
+              child: InkWell(
+                onTap: onTap,
+                customBorder: const CircleBorder(),
+                child: SizedBox(
+                  width: size,
+                  height: size,
+                  child: Icon(icon, color: enabledColor, size: size * 0.42),
+                ),
+              ),
             ),
           ),
-          const SizedBox(width: 10),
-          Text(
-            cta,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: accentColor,
-              fontWeight: FontWeight.w800,
-            ),
+          const SizedBox(height: 5),
+          SizedBox(
+            height: 18,
+            child:
+                label == null
+                    ? null
+                    : Text(
+                      label,
+                      maxLines: 1,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: enabledColor,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSessionEndDialog(BuildContext dialogContext, _SessionEndContent content) {
+  Widget _buildSessionEndDialog(
+    BuildContext dialogContext,
+    _SessionEndContent content,
+  ) {
     final theme = Theme.of(dialogContext);
-    final accentColor = switch (_sessionType) {
-      FlashcardSessionType.review => AppTheme.accentCoral,
-      FlashcardSessionType.newWords => AppTheme.primaryGreen,
-      FlashcardSessionType.allWords => theme.colorScheme.primary,
-    };
+    final identity = MemorizeIdentity.of(theme);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(22),
+        color: identity.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: identity.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 28,
-            spreadRadius: -12,
-            offset: const Offset(0, 18),
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 30,
+            spreadRadius: -10,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -1252,63 +1440,212 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  color: identity.softSuccess,
+                  borderRadius: BorderRadius.circular(13),
                 ),
-                child: Icon(CupertinoIcons.sparkles, color: accentColor, size: 22),
+                child: Icon(
+                  CupertinoIcons.check_mark_circled,
+                  color: identity.success,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  content.title,
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      content.title,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: identity.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${_sessionWords.length}개 카드 학습 완료',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: identity.mutedInk,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: '학습 마치기',
+                visualDensity: VisualDensity.compact,
+                onPressed:
+                    () =>
+                        Navigator.pop(dialogContext, _SessionEndAction.finish),
+                icon: Icon(
+                  CupertinoIcons.xmark,
+                  color: identity.mutedInk,
+                  size: 19,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(content.message, style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: identity.canvas,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: identity.border),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildCompletionMetric(
+                    theme: theme,
+                    label: '알아요',
+                    value: _knownCount,
+                    color: identity.primaryAction,
+                  ),
+                ),
+                Container(width: 1, height: 38, color: identity.border),
+                Expanded(
+                  child: _buildCompletionMetric(
+                    theme: theme,
+                    label: '몰라요',
+                    value: _unknownCount,
+                    color: identity.review,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            content.message,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: identity.mutedInk,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) content.onSecondary();
-                    });
-                  },
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(content.secondaryLabel),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) content.onPrimary();
-                    });
-                  },
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(content.primaryLabel),
-                  ),
-                ),
-              ),
-            ],
+          _buildCompletionAction(
+            dialogContext: dialogContext,
+            icon: CupertinoIcons.arrow_counterclockwise,
+            label: '다시 학습',
+            action: _SessionEndAction.restart,
+            color: identity.primaryAction,
+            filled: false,
+          ),
+          const SizedBox(height: 9),
+          _buildCompletionAction(
+            dialogContext: dialogContext,
+            icon: CupertinoIcons.xmark_circle,
+            label: _unknownCount > 0 ? '몰라요만 학습 ($_unknownCount개)' : '몰라요만 학습',
+            action: _SessionEndAction.unknownOnly,
+            color: identity.review,
+            filled: false,
+            enabled: _unknownCount > 0,
+          ),
+          const SizedBox(height: 9),
+          _buildCompletionAction(
+            dialogContext: dialogContext,
+            icon: CupertinoIcons.play_fill,
+            label: '퀴즈 시작',
+            action: _SessionEndAction.quiz,
+            color: identity.primaryAction,
+            filled: true,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCompletionMetric({
+    required ThemeData theme,
+    required String label,
+    required int value,
+    required Color color,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '$value개',
+          style: theme.textTheme.titleLarge?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompletionAction({
+    required BuildContext dialogContext,
+    required IconData icon,
+    required String label,
+    required _SessionEndAction action,
+    required Color color,
+    required bool filled,
+    bool enabled = true,
+  }) {
+    final onPressed =
+        enabled ? () => Navigator.pop(dialogContext, action) : null;
+    final child = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+        ),
+      ],
+    );
+
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child:
+          filled
+              ? FilledButton(
+                onPressed: onPressed,
+                style: FilledButton.styleFrom(
+                  backgroundColor: color,
+                  shape: const StadiumBorder(),
+                ),
+                child: child,
+              )
+              : OutlinedButton(
+                onPressed: onPressed,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: color,
+                  side: BorderSide(
+                    color:
+                        enabled
+                            ? color.withValues(alpha: 0.45)
+                            : color.withValues(alpha: 0.14),
+                  ),
+                  shape: const StadiumBorder(),
+                ),
+                child: child,
+              ),
     );
   }
 
@@ -1320,41 +1657,31 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     required bool showAdditionalMeanings,
   }) {
     final theme = Theme.of(context);
-    final accentColor = isWordSide ? theme.colorScheme.tertiary : AppTheme.primaryGreen;
+    final identity = MemorizeIdentity.of(theme);
+    final accentColor = identity.primaryAction;
 
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.22 : 0.08),
-            blurRadius: 26,
-            offset: const Offset(0, 16),
+            color: Colors.black.withValues(
+              alpha: theme.brightness == Brightness.dark ? 0.18 : 0.045,
+            ),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Stack(
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(20),
             child: Container(
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors:
-                      theme.brightness == Brightness.dark
-                          ? [
-                            theme.colorScheme.surface,
-                            theme.colorScheme.surface.withValues(alpha: 0.92),
-                          ]
-                          : [
-                            Colors.white,
-                            const Color(0xFFFAF6F1),
-                          ],
-                ),
-                border: Border.all(color: accentColor.withValues(alpha: 0.14)),
-                borderRadius: BorderRadius.circular(28),
+                color: identity.surface,
+                border: Border.all(color: accentColor.withValues(alpha: 0.24)),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: _buildCardSide(
                 word: word,
@@ -1370,48 +1697,13 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
               ),
             ),
           ),
-          Positioned(
-            top: 16,
-            left: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: accentColor.withValues(alpha: 0.16)),
-              ),
-              child: Text(
-                isWordSide ? '단어' : '뜻',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: accentColor,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 16,
-            right: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface.withValues(alpha: 0.72),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.35)),
-              ),
-              child: Text(
-                '탭해서 뒤집기',
-                style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ),
           if (overlayColor != Colors.transparent)
             Positioned.fill(
               child: IgnorePointer(
                 child: Container(
                   decoration: BoxDecoration(
                     color: overlayColor,
-                    borderRadius: BorderRadius.circular(28),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                 ),
               ),
@@ -1430,23 +1722,70 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   }) {
     final additionalMeaningText = word.additionalMeanings.join(' · ');
     final mainText =
-        !isWordSide && showAdditionalMeanings && additionalMeaningText.isNotEmpty
+        !isWordSide &&
+                showAdditionalMeanings &&
+                additionalMeaningText.isNotEmpty
             ? additionalMeaningText
             : isWordSide
             ? word.word
             : word.meaning;
-    String? exampleText = isWordSide ? word.exampleSentence : null;
-    String? translationText = !isWordSide ? word.exampleSentenceTranslation : null;
+    final exampleText = isWordSide ? word.exampleSentence : null;
+    final translationText = isWordSide ? null : word.exampleSentenceTranslation;
     final theme = Theme.of(context);
-
-    const footerHeight = 50.0;
+    final identity = MemorizeIdentity.of(theme);
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: identity.softInfo,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: identity.primaryAction.withValues(alpha: 0.16),
+                  ),
+                ),
+                child: Text(
+                  isWordSide ? '단어' : '뜻',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: identity.primaryAction,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: identity.surface,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: identity.border),
+                ),
+                child: Text(
+                  '탭해서 뒤집기',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: identity.mutedInk,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 72, 24, 24),
+              padding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -1456,61 +1795,51 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                     switchOutCurve: Curves.easeIn,
                     child: Text(
                       mainText,
-                      key: ValueKey('$isWordSide-$showAdditionalMeanings-$mainText'),
+                      key: ValueKey(
+                        '$isWordSide-$showAdditionalMeanings-$mainText',
+                      ),
                       style: theme.textTheme.headlineMedium?.copyWith(
+                        color: identity.ink,
                         fontWeight: FontWeight.w800,
                         height: 1.22,
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    isWordSide ? '소리와 철자를 먼저 익혀보세요.' : '뜻에서 단어를 떠올려보세요.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.72),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
                   if (exampleText != null && exampleText.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 22.0),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Text(
-                          '"$exampleText"',
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            fontStyle: FontStyle.italic,
-                            height: 1.45,
+                      padding: const EdgeInsets.only(top: 24.0),
+                      child: Column(
+                        children: [
+                          Divider(color: identity.border),
+                          const SizedBox(height: 14),
+                          Text(
+                            exampleText,
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: identity.ink,
+                              height: 1.45,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
-                        ),
+                        ],
                       ),
                     ),
                   if (translationText != null && translationText.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 14.0),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.secondary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Text(
-                          '"$translationText"',
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            fontStyle: FontStyle.italic,
-                            color: theme.colorScheme.secondary,
-                            height: 1.45,
+                      padding: const EdgeInsets.only(top: 24.0),
+                      child: Column(
+                        children: [
+                          Divider(color: identity.border),
+                          const SizedBox(height: 14),
+                          Text(
+                            translationText,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: identity.mutedInk,
+                              height: 1.45,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
-                        ),
+                        ],
                       ),
                     ),
                 ],
@@ -1519,19 +1848,16 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
           child: SizedBox(
             width: double.infinity,
-            height: footerHeight,
+            height: 44,
             child:
                 isWordSide
                     ? OutlinedButton.icon(
                       onPressed: () => _ttsService.speak(word.word),
                       icon: const Icon(CupertinoIcons.speaker_2_fill, size: 18),
                       label: const Text('발음 듣기'),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                      ),
                     )
                     : word.additionalMeanings.isEmpty
                     ? const SizedBox.shrink()
@@ -1548,17 +1874,154 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                             ? '대표 뜻 보기'
                             : '${_additionalMeaningButtonLabel(word)} 보기',
                       ),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                      ),
                     ),
           ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: _buildCardDecisionRow(theme),
         ),
       ],
     );
   }
 
-  String _additionalMeaningKey(Word word) => '${word.id ?? word.word}|${word.meaning}';
+  Widget _buildWordStagePanel(
+    ThemeData theme,
+    MemorizeIdentity identity,
+    Word word,
+  ) {
+    const stages = <SrsStage>[
+      SrsStage.newWord,
+      SrsStage.learning,
+      SrsStage.scheduled,
+      SrsStage.due,
+      SrsStage.mature,
+    ];
+    final currentStage = _srsService.stageFor(word);
+    final activeIndex = stages.indexOf(currentStage);
+    final stageColor = _colorForSrsStage(identity, currentStage);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 9),
+      decoration: BoxDecoration(
+        color: stageColor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+        border: Border.all(color: stageColor.withValues(alpha: 0.20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '이 단어의 기억 단계',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: identity.ink,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: stageColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _srsService.labelForStage(currentStage),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: stageColor,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: List.generate(stages.length, (index) {
+              final active = index <= activeIndex;
+              return Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 23,
+                            height: 23,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color:
+                                  active
+                                      ? stageColor
+                                      : identity.border.withValues(alpha: 0.64),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '${index + 1}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color:
+                                    active ? Colors.white : identity.mutedInk,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _srsService.labelForStage(stages[index]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: active ? stageColor : identity.mutedInk,
+                              fontSize: 10,
+                              fontWeight:
+                                  active ? FontWeight.w900 : FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (index < stages.length - 1)
+                      Container(
+                        width: 8,
+                        height: 1.5,
+                        margin: const EdgeInsets.only(top: 11),
+                        color:
+                            index < activeIndex
+                                ? stageColor.withValues(alpha: 0.72)
+                                : identity.border,
+                      ),
+                  ],
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _colorForSrsStage(MemorizeIdentity identity, SrsStage stage) {
+    return switch (stage) {
+      SrsStage.newWord => identity.primaryAction,
+      SrsStage.learning => const Color(0xFFE17A00),
+      SrsStage.scheduled => identity.scheduled,
+      SrsStage.due => identity.review,
+      SrsStage.mature => identity.success,
+    };
+  }
+
+  String _additionalMeaningKey(Word word) =>
+      '${word.id ?? word.word}|${word.meaning}';
 
   String _additionalMeaningButtonLabel(Word word) {
     final joined = word.additionalMeanings.join(' ');
@@ -1568,7 +2031,6 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     if (hasEnglish && !hasKorean) return '영어 뜻';
     return '추가 뜻';
   }
-
 }
 
 class _ResponsiveFlipCard extends StatefulWidget {
@@ -1621,9 +2083,10 @@ class _ResponsiveFlipCardState extends State<_ResponsiveFlipCard>
           final value = _controller.value;
           final showFront = value < 0.5;
           final angle = showFront ? value * pi : (value - 1) * pi;
-          final transform = Matrix4.identity()
-            ..setEntry(3, 2, 0.001)
-            ..rotateY(angle);
+          final transform =
+              Matrix4.identity()
+                ..setEntry(3, 2, 0.001)
+                ..rotateY(angle);
 
           return Transform(
             transform: transform,

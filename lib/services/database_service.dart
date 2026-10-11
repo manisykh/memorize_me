@@ -297,15 +297,36 @@ class DatabaseService {
     return await openDatabase(
       path,
       singleInstance: false,
-      version: 8,
+      version: 9,
       onCreate: (db, version) async {
-        await db.execute('''CREATE TABLE words(
+        await _createWordsTable(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        for (var v = oldVersion + 1; v <= newVersion; v++) {
+          await _upgradeWordDB(db, v);
+        }
+      },
+    );
+  }
+
+  Future<void> ensureWordbookDatabase(String dbFileName) async {
+    final db = await _openWordDB(dbFileName);
+    try {
+      await _createWordsTable(db);
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<void> _createWordsTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS words(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             word TEXT NOT NULL,
             meaning TEXT NOT NULL,
             additionalMeanings TEXT NOT NULL DEFAULT '[]',
             exampleSentence TEXT,
-            exampleSentenceTranslation TEXT, -- ▼▼▼ [추가]
+            exampleSentenceTranslation TEXT,
+            sentenceBlankAnswer TEXT,
             srsLevel INTEGER NOT NULL DEFAULT 0,
             nextReviewDate TEXT,
             lastReviewedAt TEXT,
@@ -314,13 +335,6 @@ class DatabaseService {
             pendingMcqReview INTEGER NOT NULL DEFAULT 0,
             pendingSpellingReview INTEGER NOT NULL DEFAULT 0
           )''');
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        for (var v = oldVersion + 1; v <= newVersion; v++) {
-          await _upgradeWordDB(db, v);
-        }
-      },
-    );
   }
 
   Future<void> _upgradeWordDB(Database db, int version) async {
@@ -352,6 +366,9 @@ class DatabaseService {
         await db.execute(
           "ALTER TABLE words ADD COLUMN additionalMeanings TEXT NOT NULL DEFAULT '[]'",
         );
+      }
+      if (version == 9) {
+        await db.execute('ALTER TABLE words ADD COLUMN sentenceBlankAnswer TEXT');
       }
     } catch (e) {
       debugPrint("Error upgrading WordDB to v$version: $e. It might already exist.");

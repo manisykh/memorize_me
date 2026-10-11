@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,25 +11,37 @@ import '../providers/wordbook_manager.dart';
 import '../providers/word_list_provider.dart';
 import '../services/study_schedule_service.dart';
 import '../services/srs_service.dart';
+import '../themes/memorize_identity.dart';
 import 'glassmorphic_card.dart';
 import 'study_guide.dart';
 
-Future<void> showStudyPlanEditor(BuildContext context, Wordbook wordbook) async {
+Future<void> showStudyPlanEditor(
+  BuildContext context,
+  Wordbook wordbook,
+) async {
   final manager = context.read<WordbookManager>();
   try {
     final words = await manager.getAllWordsFrom(wordbook);
     if (!context.mounted) return;
     if (words.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('플랜을 만들 단어가 없습니다.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('플랜을 만들 단어가 없습니다.')));
       return;
     }
     await showModalBottomSheet<void>(
-      context: context, isScrollControlled: true, useSafeArea: true,
-      builder: (_) => _PlanEditor(wordbook: wordbook, words: words, manager: manager),
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder:
+          (_) =>
+              _PlanEditor(wordbook: wordbook, words: words, manager: manager),
     );
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('플랜을 불러오지 못했습니다. 다시 시도해주세요.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('플랜을 불러오지 못했습니다. 다시 시도해주세요.')),
+      );
     }
   }
 }
@@ -36,7 +49,13 @@ Future<void> showStudyPlanEditor(BuildContext context, Wordbook wordbook) async 
 class StudyPlanPanel extends StatelessWidget {
   final StudyPlan plan;
   final Future<void> Function()? onChanged;
-  const StudyPlanPanel({super.key, required this.plan, this.onChanged});
+  final bool homeIdentity;
+  const StudyPlanPanel({
+    super.key,
+    required this.plan,
+    this.onChanged,
+    this.homeIdentity = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -50,9 +69,18 @@ class StudyPlanPanel extends StatelessWidget {
     final available = manager.wordsAvailableForPlan(words, plan: current);
     final learned = words.where((w) => !srs.isNewWord(w)).length;
     final target = manager.recommendedNewWordSessionCount(words, plan: current);
-    final unlockedKeys = (current.scheduleWordKeys ?? schedule.orderedKeys(words, current))
-        .take(current.unlockedNewLimit()).toSet();
-    final missing = words.where((w) => srs.isNewWord(w) && unlockedKeys.contains(StudyScheduleService.wordKey(w))).length;
+    final unlockedKeys =
+        (current.scheduleWordKeys ?? schedule.orderedKeys(words, current))
+            .take(current.unlockedNewLimit())
+            .toSet();
+    final missing =
+        words
+            .where(
+              (w) =>
+                  srs.isNewWord(w) &&
+                  unlockedKeys.contains(StudyScheduleService.wordKey(w)),
+            )
+            .length;
     final actualKeys = words.map(StudyScheduleService.wordKey).toSet();
     Future<void> select(int bundle) async {
       try {
@@ -61,63 +89,483 @@ class StudyPlanPanel extends StatelessWidget {
       } catch (_) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('묶음을 변경하지 못했습니다. 다시 시도해주세요.')));
+            const SnackBar(content: Text('묶음을 변경하지 못했습니다. 다시 시도해주세요.')),
+          );
         }
       }
     }
+
+    if (homeIdentity) {
+      return _HomeIdentityStudyPlanPanel(
+        current: current,
+        words: words,
+        availableCount: available.length,
+        learnedCount: learned,
+        targetCount: target,
+        missingCount: missing,
+        actualKeys: actualKeys,
+        schedule: schedule,
+        srs: srs,
+        onSelectBundle: select,
+        onEdit:
+            book == null
+                ? null
+                : () async {
+                  await showStudyPlanEditor(context, book);
+                  await onChanged?.call();
+                },
+      );
+    }
     return GlassmorphicCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Icon(current.mode == StudyPlanMode.free ? Icons.view_module_outlined : Icons.event_outlined,
-              color: theme.colorScheme.primary),
-          const SizedBox(width: 10),
-          Expanded(child: Text(current.scopeLabel,
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800))),
-          IconButton(tooltip: '플랜 안내', icon: const Icon(Icons.help_outline),
-            onPressed: () => showStudyGuideSheet(context, StudyGuideCatalog.studyPlan)),
-          IconButton(tooltip: '플랜 수정', icon: const Icon(Icons.tune),
-            onPressed: book == null ? null : () async {
-              await showStudyPlanEditor(context, book);
-              await onChanged?.call();
-            }),
-        ]),
-        if (current.mode == StudyPlanMode.free) ...[
-          DropdownButtonFormField<int>(
-            key: ValueKey('${current.revision}-${current.selectedBundle}'),
-            initialValue: current.currentChunk(), isExpanded: true,
-            decoration: const InputDecoration(labelText: '학습 묶음'),
-            items: List.generate(current.chunkCount, (index) {
-              final keys = schedule.bundleKeys(words, current, bundle: index + 1);
-              final count = keys.where(actualKeys.contains).length;
-              return DropdownMenuItem(value: index + 1, child: Text('${index + 1}번 묶음 · $count개'));
-            }),
-            onChanged: (value) { if (value != null) select(value); },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                current.mode == StudyPlanMode.free
+                    ? Icons.view_module_outlined
+                    : Icons.event_outlined,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  current.scopeLabel,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: '플랜 안내',
+                icon: const Icon(Icons.help_outline),
+                onPressed:
+                    () => showStudyGuideSheet(
+                      context,
+                      StudyGuideCatalog.studyPlan,
+                    ),
+              ),
+              IconButton(
+                tooltip: '플랜 수정',
+                icon: const Icon(Icons.tune),
+                onPressed:
+                    book == null
+                        ? null
+                        : () async {
+                          await showStudyPlanEditor(context, book);
+                          await onChanged?.call();
+                        },
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
-          Text('선택한 묶음 ${available.length}개 · 다른 묶음으로 이동해도 SRS 기록은 유지됩니다.',
-            style: theme.textTheme.bodySmall),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: OutlinedButton.icon(
-              onPressed: current.currentChunk() <= 1 ? null : () => select(current.currentChunk() - 1),
-              icon: const Icon(Icons.chevron_left), label: const Text('이전 묶음'))),
-            const SizedBox(width: 8),
-            Expanded(child: FilledButton.icon(
-              onPressed: current.currentChunk() >= current.chunkCount ? null : () => select(current.currentChunk() + 1),
-              icon: const Icon(Icons.chevron_right), label: const Text('다음 묶음'))),
-          ]),
-        ] else ...[
-          Text('1회 이상 학습 $learned/${words.length}개 · 이번 새 단어 최대 $target개',
-            style: theme.textTheme.bodyMedium),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(value: words.isEmpty ? 0 : learned / words.length),
-          const SizedBox(height: 8),
-          Text(current.mode == StudyPlanMode.scheduled
-              ? '1회 학습 목표 ${studyDateKey(current.targetEndDate())} · 일정상 열린 새 단어 중 미학습 $missing개'
-              : '복습 대기 ${srs.dueWords(words).length}개를 기준으로 새 단어를 조절합니다. 미학습 일일 할당량은 이월하지 않습니다.',
-            style: theme.textTheme.bodySmall),
+          if (current.mode == StudyPlanMode.free) ...[
+            DropdownButtonFormField<int>(
+              key: ValueKey('${current.revision}-${current.selectedBundle}'),
+              initialValue: current.currentChunk(),
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: '학습 묶음'),
+              items: List.generate(current.chunkCount, (index) {
+                final keys = schedule.bundleKeys(
+                  words,
+                  current,
+                  bundle: index + 1,
+                );
+                final count = keys.where(actualKeys.contains).length;
+                return DropdownMenuItem(
+                  value: index + 1,
+                  child: Text('${index + 1}번 묶음 · $count개'),
+                );
+              }),
+              onChanged: (value) {
+                if (value != null) select(value);
+              },
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '선택한 묶음 ${available.length}개 · 다른 묶음으로 이동해도 SRS 기록은 유지됩니다.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        current.currentChunk() <= 1
+                            ? null
+                            : () => select(current.currentChunk() - 1),
+                    icon: const Icon(Icons.chevron_left),
+                    label: const Text('이전 묶음'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed:
+                        current.currentChunk() >= current.chunkCount
+                            ? null
+                            : () => select(current.currentChunk() + 1),
+                    icon: const Icon(Icons.chevron_right),
+                    label: const Text('다음 묶음'),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            Text(
+              '1회 이상 학습 $learned/${words.length}개 · 이번 새 단어 최대 $target개',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: words.isEmpty ? 0 : learned / words.length,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              current.mode == StudyPlanMode.scheduled
+                  ? '1회 학습 목표 ${studyDateKey(current.targetEndDate())} · 일정상 열린 새 단어 중 미학습 $missing개'
+                  : '복습 필요 ${srs.dueWords(words).length}개를 기준으로 새 단어를 조절합니다. 미학습 일일 할당량은 이월하지 않습니다.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
         ],
-      ]),
+      ),
+    );
+  }
+}
+
+class _HomeIdentityStudyPlanPanel extends StatelessWidget {
+  final StudyPlan current;
+  final List<Word> words;
+  final int availableCount;
+  final int learnedCount;
+  final int targetCount;
+  final int missingCount;
+  final Set<String> actualKeys;
+  final StudyScheduleService schedule;
+  final SrsService srs;
+  final Future<void> Function(int bundle) onSelectBundle;
+  final Future<void> Function()? onEdit;
+
+  const _HomeIdentityStudyPlanPanel({
+    required this.current,
+    required this.words,
+    required this.availableCount,
+    required this.learnedCount,
+    required this.targetCount,
+    required this.missingCount,
+    required this.actualKeys,
+    required this.schedule,
+    required this.srs,
+    required this.onSelectBundle,
+    required this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final identity = MemorizeIdentity.of(theme);
+    final currentChunk = current.currentChunk();
+
+    return Material(
+      color: identity.surface,
+      borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 15, 16, 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+          border: Border.all(color: identity.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: identity.softInfo,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    current.mode == StudyPlanMode.free
+                        ? CupertinoIcons.square_grid_2x2
+                        : CupertinoIcons.calendar,
+                    size: 21,
+                    color: identity.primaryAction,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '학습 플랜',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: identity.ink,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        current.scopeLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: identity.mutedInk,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: '플랜 안내',
+                  onPressed:
+                      () => showStudyGuideSheet(
+                        context,
+                        StudyGuideCatalog.studyPlan,
+                      ),
+                  color: identity.mutedInk,
+                  icon: const Icon(CupertinoIcons.question_circle, size: 20),
+                ),
+                IconButton(
+                  tooltip: '플랜 수정',
+                  onPressed: onEdit,
+                  color: identity.primaryAction,
+                  icon: const Icon(
+                    CupertinoIcons.slider_horizontal_3,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Divider(color: identity.border, height: 1),
+            const SizedBox(height: 14),
+            if (current.mode == StudyPlanMode.free)
+              _buildFreePlan(context, identity, currentChunk)
+            else
+              _buildAutomaticPlan(context, identity),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFreePlan(
+    BuildContext context,
+    MemorizeIdentity identity,
+    int currentChunk,
+  ) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _PlanMetric(
+                label: '현재 묶음',
+                value: '$currentChunk / ${current.chunkCount}',
+                identity: identity,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _PlanMetric(
+                label: '학습 단어',
+                value: '$availableCount개',
+                identity: identity,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<int>(
+          key: ValueKey('${current.revision}-${current.selectedBundle}'),
+          initialValue: currentChunk,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: '학습 묶음',
+            filled: true,
+            fillColor: identity.softContext,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: identity.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: identity.primaryAction, width: 1.4),
+            ),
+          ),
+          items: List.generate(current.chunkCount, (index) {
+            final keys = schedule.bundleKeys(words, current, bundle: index + 1);
+            final count = keys.where(actualKeys.contains).length;
+            return DropdownMenuItem(
+              value: index + 1,
+              child: Text('${index + 1}번 묶음 · $count개'),
+            );
+          }),
+          onChanged: (value) {
+            if (value != null) onSelectBundle(value);
+          },
+        ),
+        const SizedBox(height: 9),
+        Text(
+          '묶음을 바꿔도 지금까지의 학습 기록은 그대로 유지돼요.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: identity.mutedInk,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed:
+                    currentChunk <= 1
+                        ? null
+                        : () => onSelectBundle(currentChunk - 1),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(46),
+                  foregroundColor: identity.primaryAction,
+                  side: BorderSide(color: identity.border),
+                  shape: const StadiumBorder(),
+                ),
+                icon: const Icon(CupertinoIcons.chevron_left, size: 16),
+                label: const Text('이전 묶음'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed:
+                    currentChunk >= current.chunkCount
+                        ? null
+                        : () => onSelectBundle(currentChunk + 1),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(46),
+                  backgroundColor: identity.primaryAction,
+                  foregroundColor: Colors.white,
+                  shape: const StadiumBorder(),
+                ),
+                icon: const Icon(CupertinoIcons.chevron_right, size: 16),
+                label: const Text('다음 묶음'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAutomaticPlan(BuildContext context, MemorizeIdentity identity) {
+    final theme = Theme.of(context);
+    final progress = words.isEmpty ? 0.0 : learnedCount / words.length;
+    final description =
+        current.mode == StudyPlanMode.scheduled
+            ? '1회 학습 목표 ${studyDateKey(current.targetEndDate())} · 아직 열려 있는 새 단어 $missingCount개'
+            : '복습 필요 ${srs.dueWords(words).length}개를 기준으로 오늘 새 단어를 최대 $targetCount개까지 조절해요.';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '1회 이상 학습',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: identity.ink,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Text(
+              '$learnedCount / ${words.length}개',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: identity.primaryAction,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: progress.clamp(0.0, 1.0),
+            minHeight: 7,
+            backgroundColor: identity.border.withValues(alpha: 0.62),
+            valueColor: AlwaysStoppedAnimation<Color>(identity.primaryAction),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          description,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: identity.mutedInk,
+            fontWeight: FontWeight.w600,
+            height: 1.45,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlanMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final MemorizeIdentity identity;
+
+  const _PlanMetric({
+    required this.label,
+    required this.value,
+    required this.identity,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: identity.softInfo,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: identity.mutedInk,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: identity.ink,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -126,7 +574,11 @@ class _PlanEditor extends StatefulWidget {
   final Wordbook wordbook;
   final List<Word> words;
   final WordbookManager manager;
-  const _PlanEditor({required this.wordbook, required this.words, required this.manager});
+  const _PlanEditor({
+    required this.wordbook,
+    required this.words,
+    required this.manager,
+  });
   @override
   State<_PlanEditor> createState() => _PlanEditorState();
 }
@@ -134,38 +586,66 @@ class _PlanEditor extends StatefulWidget {
 class _PlanEditorState extends State<_PlanEditor> {
   late final StudyPlan? _existing = widget.manager.planFor(widget.wordbook);
   late StudyPlanMode _mode = _existing?.mode ?? StudyPlanMode.free;
-  late final _bundle = TextEditingController(text: '${_existing?.chunkCount ?? min(10, widget.words.length)}');
-  late final _daily = TextEditingController(text: '${_existing?.dailyNewTarget ?? min(20, widget.words.length)}');
+  late final _bundle = TextEditingController(
+    text: '${_existing?.chunkCount ?? min(10, widget.words.length)}',
+  );
+  late final _daily = TextEditingController(
+    text: '${_existing?.dailyNewTarget ?? min(20, widget.words.length)}',
+  );
   bool _resetSchedule = false;
   bool _saving = false;
   String? _error;
 
   int get _newCount => widget.words.where(SrsService().isNewWord).length;
-  bool get _keepSchedule => _existing?.mode == StudyPlanMode.scheduled &&
-      _mode == StudyPlanMode.scheduled && !_resetSchedule;
+  bool get _keepSchedule =>
+      _existing?.mode == StudyPlanMode.scheduled &&
+      _mode == StudyPlanMode.scheduled &&
+      !_resetSchedule;
 
   @override
-  void dispose() { _bundle.dispose(); _daily.dispose(); super.dispose(); }
+  void dispose() {
+    _bundle.dispose();
+    _daily.dispose();
+    super.dispose();
+  }
 
   Future<void> _save() async {
     final bundles = int.tryParse(_bundle.text);
     final daily = int.tryParse(_daily.text);
-    if ((_mode == StudyPlanMode.free && (bundles == null || bundles < 1 || bundles > widget.words.length)) ||
-        (_mode != StudyPlanMode.free && !_keepSchedule && (daily == null || daily < 1 || daily > widget.words.length))) {
+    if ((_mode == StudyPlanMode.free &&
+            (bundles == null ||
+                bundles < 1 ||
+                bundles > widget.words.length)) ||
+        (_mode != StudyPlanMode.free &&
+            !_keepSchedule &&
+            (daily == null || daily < 1 || daily > widget.words.length))) {
       setState(() => _error = '1부터 ${widget.words.length} 사이의 숫자를 입력해주세요.');
       return;
     }
-    setState(() { _saving = true; _error = null; });
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     try {
-      await widget.manager.createStudyPlanForWordbook(widget.wordbook,
-        chunkSize: _mode == StudyPlanMode.free ? (widget.words.length / bundles!).ceil() : daily!,
-        dailyNewTarget: _keepSchedule ? _existing!.dailyNewTarget : (daily ?? 20),
-        mode: _mode, bundleCount: (bundles ?? 10).clamp(1, widget.words.length).toInt(),
+      await widget.manager.createStudyPlanForWordbook(
+        widget.wordbook,
+        chunkSize:
+            _mode == StudyPlanMode.free
+                ? (widget.words.length / bundles!).ceil()
+                : daily!,
+        dailyNewTarget:
+            _keepSchedule ? _existing!.dailyNewTarget : (daily ?? 20),
+        mode: _mode,
+        bundleCount: (bundles ?? 10).clamp(1, widget.words.length).toInt(),
         resetSchedule: _resetSchedule,
       );
       if (mounted) Navigator.pop(context);
     } catch (_) {
-      if (mounted) setState(() { _saving = false; _error = '플랜을 저장하지 못했습니다. 다시 시도해주세요.'; });
+      if (mounted)
+        setState(() {
+          _saving = false;
+          _error = '플랜을 저장하지 못했습니다. 다시 시도해주세요.';
+        });
     }
   }
 
@@ -176,92 +656,215 @@ class _PlanEditorState extends State<_PlanEditor> {
     final days = (_newCount / daily).ceil();
     final today = DateTime.now();
     final end = DateTime(today.year, today.month, today.day + max(0, days - 1));
-    return PopScope(canPop: !_saving, child: Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: SingleChildScrollView(padding: const EdgeInsets.all(20), child: Column(
-        mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('학습 플랜', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4), Text('${widget.wordbook.name} · ${widget.words.length}개'),
-          const SizedBox(height: 12),
-          RadioGroup<StudyPlanMode>(
-            groupValue: _mode,
-            onChanged: (value) {
-              if (!_saving && value != null) {
-                setState(() { _mode = value; _error = null; });
-              }
-            },
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final mode in StudyPlanMode.values)
-                  RadioListTile<StudyPlanMode>(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(mode.label), subtitle: Text(mode.description),
-                    value: mode, enabled: !_saving,
+    return PopScope(
+      canPop: !_saving,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '학습 플랜',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text('${widget.wordbook.name} · ${widget.words.length}개'),
+              const SizedBox(height: 12),
+              RadioGroup<StudyPlanMode>(
+                groupValue: _mode,
+                onChanged: (value) {
+                  if (!_saving && value != null) {
+                    setState(() {
+                      _mode = value;
+                      _error = null;
+                    });
+                  }
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final mode in StudyPlanMode.values)
+                      RadioListTile<StudyPlanMode>(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(mode.label),
+                        subtitle: Text(mode.description),
+                        value: mode,
+                        enabled: !_saving,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (_mode == StudyPlanMode.free) ...[
+                TextField(
+                  controller: _bundle,
+                  enabled: !_saving,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '나눌 학습 묶음 수',
+                    suffixText: '묶음',
                   ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '묶음당 약 ${(widget.words.length / max(1, int.tryParse(_bundle.text) ?? 10)).ceil()}개 · 다음 묶음은 직접 선택합니다.',
+                ),
+                if (_existing != null)
+                  const Text('묶음 수를 바꾸면 구성이 다시 나뉩니다. 기존 학습 결과와 SRS는 유지됩니다.'),
+              ] else ...[
+                if (_existing?.mode == StudyPlanMode.scheduled &&
+                    _mode == StudyPlanMode.scheduled)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('일정 다시 조정'),
+                    subtitle: const Text(
+                      '켜면 남은 새 단어를 오늘부터 다시 배정합니다. 끄면 기존 일정과 목표를 유지합니다.',
+                    ),
+                    value: _resetSchedule,
+                    onChanged:
+                        _saving
+                            ? null
+                            : (v) => setState(() => _resetSchedule = v),
+                  ),
+                TextField(
+                  controller: _daily,
+                  enabled: !_saving && !_keepSchedule,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '하루 새 단어 목표',
+                    suffixText: '개',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                if (_mode == StudyPlanMode.scheduled) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _keepSchedule
+                        ? '기존 1회 학습 목표일 ${studyDateKey(_existing!.targetEndDate())}'
+                        : '남은 새 단어 $_newCount개 · $days일 · 1회 학습 목표 ${studyDateKey(end)}',
+                  ),
+                  TextButton.icon(
+                    onPressed:
+                        _saving || _keepSchedule || _newCount == 0
+                            ? null
+                            : () async {
+                              final lastDate = DateTime(
+                                today.year + 10,
+                                today.month,
+                                today.day,
+                              );
+                              final selected = await showDatePicker(
+                                context: context,
+                                initialDate:
+                                    end.isAfter(lastDate) ? lastDate : end,
+                                firstDate: studyDay(today),
+                                lastDate: lastDate,
+                              );
+                              if (selected == null || !mounted) return;
+                              final count =
+                                  DateTime.utc(
+                                        selected.year,
+                                        selected.month,
+                                        selected.day,
+                                      )
+                                      .difference(
+                                        DateTime.utc(
+                                          today.year,
+                                          today.month,
+                                          today.day,
+                                        ),
+                                      )
+                                      .inDays +
+                                  1;
+                              setState(
+                                () =>
+                                    _daily.text =
+                                        '${(_newCount / count).ceil()}',
+                              );
+                            },
+                    icon: const Icon(Icons.event),
+                    label: const Text('목표 날짜로 분량 계산'),
+                  ),
+                  const Text(
+                    '목표일은 새 단어의 1회 학습 기준입니다. 암기 상태와 SRS 복습은 별도로 관리합니다.',
+                  ),
+                  if (_existing?.mode == StudyPlanMode.scheduled)
+                    const Text('새로 추가한 단어도 일정에 넣으려면 일정 다시 조정을 켜주세요.'),
+                ] else ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    '먼 미래의 새 단어 수와 완료일은 확정하지 않습니다. 오늘의 복습량을 반영해 조절합니다.',
+                  ),
+                ],
               ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (_mode == StudyPlanMode.free) ...[
-            TextField(controller: _bundle, enabled: !_saving, keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: '나눌 학습 묶음 수', suffixText: '묶음'),
-              onChanged: (_) => setState(() {})),
-            const SizedBox(height: 8),
-            Text('묶음당 약 ${(widget.words.length / max(1, int.tryParse(_bundle.text) ?? 10)).ceil()}개 · 다음 묶음은 직접 선택합니다.'),
-            if (_existing != null) const Text('묶음 수를 바꾸면 구성이 다시 나뉩니다. 기존 학습 결과와 SRS는 유지됩니다.'),
-          ] else ...[
-            if (_existing?.mode == StudyPlanMode.scheduled && _mode == StudyPlanMode.scheduled)
-              SwitchListTile(contentPadding: EdgeInsets.zero,
-                title: const Text('일정 다시 조정'),
-                subtitle: const Text('켜면 남은 새 단어를 오늘부터 다시 배정합니다. 끄면 기존 일정과 목표를 유지합니다.'),
-                value: _resetSchedule, onChanged: _saving ? null : (v) => setState(() => _resetSchedule = v)),
-            TextField(controller: _daily, enabled: !_saving && !_keepSchedule,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: '하루 새 단어 목표', suffixText: '개'),
-              onChanged: (_) => setState(() {})),
-            if (_mode == StudyPlanMode.scheduled) ...[
-              const SizedBox(height: 8),
-              Text(_keepSchedule ? '기존 1회 학습 목표일 ${studyDateKey(_existing!.targetEndDate())}'
-                  : '남은 새 단어 $_newCount개 · $days일 · 1회 학습 목표 ${studyDateKey(end)}'),
-              TextButton.icon(onPressed: _saving || _keepSchedule || _newCount == 0 ? null : () async {
-                final lastDate = DateTime(today.year + 10, today.month, today.day);
-                final selected = await showDatePicker(context: context,
-                  initialDate: end.isAfter(lastDate) ? lastDate : end,
-                  firstDate: studyDay(today), lastDate: lastDate);
-                if (selected == null || !mounted) return;
-                final count = DateTime.utc(selected.year, selected.month, selected.day)
-                    .difference(DateTime.utc(today.year, today.month, today.day)).inDays + 1;
-                setState(() => _daily.text = '${(_newCount / count).ceil()}');
-              }, icon: const Icon(Icons.event), label: const Text('목표 날짜로 분량 계산')),
-              const Text('목표일은 새 단어의 1회 학습 기준입니다. 암기 상태와 SRS 복습은 별도로 관리합니다.'),
-              if (_existing?.mode == StudyPlanMode.scheduled) const Text('새로 추가한 단어도 일정에 넣으려면 일정 다시 조정을 켜주세요.'),
-            ] else ...[
-              const SizedBox(height: 8),
-              const Text('먼 미래의 새 단어 수와 완료일은 확정하지 않습니다. 오늘의 복습량을 반영해 조절합니다.'),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+                ),
+              const SizedBox(height: 18),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? '저장 중' : '플랜 적용'),
+              ),
+              if (_existing != null)
+                TextButton(
+                  onPressed:
+                      _saving
+                          ? null
+                          : () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder:
+                                  (ctx) => AlertDialog(
+                                    title: const Text('플랜을 해제할까요?'),
+                                    content: const Text(
+                                      '학습 이력과 SRS는 유지되고 단어장 전체를 학습할 수 있습니다.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed:
+                                            () => Navigator.pop(ctx, false),
+                                        child: const Text('취소'),
+                                      ),
+                                      FilledButton(
+                                        onPressed:
+                                            () => Navigator.pop(ctx, true),
+                                        child: const Text('해제'),
+                                      ),
+                                    ],
+                                  ),
+                            );
+                            if (confirmed != true || !mounted) return;
+                            setState(() => _saving = true);
+                            try {
+                              await widget.manager.deleteStudyPlan(_existing);
+                              if (context.mounted) Navigator.pop(context);
+                            } catch (_) {
+                              if (mounted)
+                                setState(() {
+                                  _saving = false;
+                                  _error = '해제하지 못했습니다. 다시 시도해주세요.';
+                                });
+                            }
+                          },
+                  child: const Text('플랜 해제'),
+                ),
             ],
-          ],
-          if (_error != null) Padding(padding: const EdgeInsets.only(top: 12),
-            child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
-          const SizedBox(height: 18),
-          FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? '저장 중' : '플랜 적용')),
-          if (_existing != null) TextButton(onPressed: _saving ? null : () async {
-            final confirmed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-              title: const Text('플랜을 해제할까요?'), content: const Text('학습 이력과 SRS는 유지되고 단어장 전체를 학습할 수 있습니다.'),
-              actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('해제'))]));
-            if (confirmed != true || !mounted) return;
-            setState(() => _saving = true);
-            try {
-              await widget.manager.deleteStudyPlan(_existing);
-              if (context.mounted) Navigator.pop(context);
-            } catch (_) {
-              if (mounted) setState(() { _saving = false; _error = '해제하지 못했습니다. 다시 시도해주세요.'; });
-            }
-          }, child: const Text('플랜 해제')),
-        ],
-      )),
-    ));
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -11,6 +11,7 @@ import '../models/study_plan_model.dart';
 import '../providers/ai_settings_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/ai_service.dart';
+import '../services/ai_word_review_progress_service.dart';
 import '../services/ai_difficulty_profile.dart';
 import '../services/analytics_service.dart';
 import '../services/api_key_service.dart';
@@ -37,6 +38,8 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   StudyPlan? _studyPlan;
   List<Word> _words = [];
   final Set<int> _selectedWordIds = {};
+  Set<int> _reviewedWordIds = {};
+  final _reviewProgress = const AiWordReviewProgressService();
   int _totalWordCount = 0;
   int _lockedNewWordCount = 0;
 
@@ -47,6 +50,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   String? _errorMessage;
   bool _includeExplanation = false;
   bool _isGeneratingSentences = false;
+  bool _isReviewingMeanings = false;
   String _questionLanguage = 'English';
 
   @override
@@ -69,6 +73,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       _lockedNewWordCount = 0;
       _words.clear();
       _selectedWordIds.clear();
+      _reviewedWordIds = {};
     });
 
     final wordbookManager = context.read<WordbookManager>();
@@ -78,6 +83,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     final allWords = await wordbookManager.getAllWordsFrom(wordbook);
     final studyPlan = wordbookManager.planFor(wordbook);
     final words = wordbookManager.wordsAvailableForPlan(allWords, plan: studyPlan);
+    final reviewedIds = await _reviewProgress.reviewedWordIds(wordbook.dbFileName, words);
     final lockedNewWordCount = wordbookManager.lockedNewWordCount(allWords, plan: studyPlan);
     if (mounted) {
       setState(() {
@@ -85,7 +91,11 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         _totalWordCount = allWords.length;
         _lockedNewWordCount = lockedNewWordCount;
         _words = words;
-        _selectedWordIds.addAll(words.where((word) => word.id != null).map((word) => word.id!));
+        _reviewedWordIds = reviewedIds;
+        final selected = widget.initialFocus == AiQuizSetupFocus.sentences
+            ? _reviewPriorityWords(words).take(20)
+            : words.where((word) => word.id != null);
+        _selectedWordIds.addAll(selected.map((word) => word.id!));
         _isLoading = false;
       });
     }
@@ -93,9 +103,27 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     await modeStateService.setLastUsedWordbookId(LearningMode.aiQuiz, wordbook.id!);
   }
 
-  void _onSelectAll() => setState(
-        () => _selectedWordIds.addAll(_words.where((w) => w.id != null).map((w) => w.id!)),
-      );
+  Iterable<Word> _reviewPriorityWords(List<Word> words) sync* {
+    final available = words.where((word) =>
+        word.id != null && !_reviewedWordIds.contains(word.id));
+    yield* available.where((word) =>
+        (word.exampleSentence?.trim().isNotEmpty ?? false) &&
+        (word.exampleSentenceTranslation?.trim().isEmpty ?? true));
+    yield* available.where((word) =>
+        !(word.exampleSentence?.trim().isNotEmpty ?? false) ||
+        !(word.exampleSentenceTranslation?.trim().isEmpty ?? true));
+  }
+
+  void _onSelectAll() => setState(() {
+    final available = _words.where((word) => word.id != null);
+    if (widget.initialFocus == AiQuizSetupFocus.sentences) {
+      _selectedWordIds
+        ..clear()
+        ..addAll(_reviewPriorityWords(_words).take(20).map((word) => word.id!));
+    } else {
+      _selectedWordIds.addAll(available.map((word) => word.id!));
+    }
+  });
   void _onDeselectAll() => setState(() => _selectedWordIds.clear());
 
   void _showAiSettingsSheet() {
@@ -305,13 +333,18 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       }
       final allWords = await wordbookManager.getAllWordsFrom(_selectedWordbook!);
       final newWords = wordbookManager.wordsAvailableForPlan(allWords, plan: _studyPlan);
+      final reviewedIds = await _reviewProgress.reviewedWordIds(
+        _selectedWordbook!.dbFileName, newWords,
+      );
 
       if (mounted) {
         setState(() {
           _words = newWords;
+          _reviewedWordIds = reviewedIds;
           _selectedWordIds
             ..clear()
-            ..addAll(newWords.where((word) => word.id != null).map((word) => word.id!));
+            ..addAll(_reviewPriorityWords(newWords).take(20)
+                .map((word) => word.id!));
         });
         ScaffoldMessenger.of(
           context,
@@ -332,6 +365,217 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         setState(() => _isGeneratingSentences = false);
       }
     }
+  }
+
+  Future<void> _reviewMeanings() async {
+    final book = _selectedWordbook;
+    if (book == null) return;
+    final selectedWords = _words
+        .where((word) => _selectedWordIds.contains(word.id))
+        .toList();
+    if (selectedWords.isEmpty || selectedWords.length > 20) {
+      setState(() => _errorMessage = '뜻 검토할 단어를 1~20개 선택해주세요.');
+      return;
+    }
+
+    setState(() {
+      _isReviewingMeanings = true;
+      _errorMessage = null;
+    });
+    try {
+      final aiSettings = context.read<AiSettingsProvider>();
+      final result = await context.read<AiService>().reviewWordMeaningsWithFallback(
+        selectedWords,
+        aiSettings.requestOptions(fallbackEnabled: aiSettings.autoFallbackEnabled),
+      );
+      aiSettings.recordUsedOption(result.usedOption);
+      if (!mounted) return;
+      if (result.value.isEmpty) {
+        setState(() => _errorMessage = '검토 결과를 받지 못했습니다. 다시 시도해주세요.');
+        return;
+      }
+
+      final changed = result.value.where((suggestion) {
+        final original = selectedWords[suggestion.index];
+        return suggestion.word != original.word ||
+            suggestion.meaning != original.meaning ||
+            suggestion.sentence != (original.exampleSentence ?? '') ||
+            suggestion.translation != (original.exampleSentenceTranslation ?? '');
+      }).toList();
+      if (changed.isEmpty) {
+        await _reviewProgress.markReviewed(
+          book.dbFileName,
+          result.value.map((item) => selectedWords[item.index]).toList(),
+        );
+        if (!mounted) return;
+        await _onWordbookSelected(book);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('수정할 내용이 없어 검토 완료로 표시했습니다.')),
+        );
+        return;
+      }
+
+      final approved = await _showMeaningReview(changed, selectedWords);
+      if (!mounted || approved == null) return;
+      final updates = [
+        for (final suggestion in changed)
+          if (approved.contains(suggestion.index))
+            selectedWords[suggestion.index].copyWith(
+              word: suggestion.word,
+              meaning: suggestion.meaning,
+              exampleSentence: suggestion.sentence,
+              exampleSentenceTranslation: suggestion.translation,
+            ),
+      ];
+      if (updates.isNotEmpty) {
+        await context.read<WordbookManager>().updateWordsInWordbook(book, updates);
+      }
+      final currentWords = await context.read<WordbookManager>().getAllWordsFrom(book);
+      final reviewedIds = result.value
+          .map((item) => selectedWords[item.index].id)
+          .whereType<int>()
+          .toSet();
+      await _reviewProgress.markReviewed(
+        book.dbFileName,
+        currentWords.where((word) => reviewedIds.contains(word.id)).toList(),
+      );
+      if (!mounted) return;
+      await _onWordbookSelected(book);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${reviewedIds.length}개 검토 완료 · ${updates.length}개 수정 반영')),
+        );
+      }
+    } catch (error) {
+      await _handleApiError(error);
+    } finally {
+      if (mounted) setState(() => _isReviewingMeanings = false);
+    }
+  }
+
+  Future<Set<int>?> _showMeaningReview(
+    List<AiWordReviewSuggestion> suggestions,
+    List<Word> originals,
+  ) {
+    final selected = suggestions.map((item) => item.index).toSet();
+    return showDialog<Set<int>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('AI 제안 확인'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: MediaQuery.sizeOf(context).height * 0.55,
+            child: ListView.builder(
+              itemCount: suggestions.length,
+              itemBuilder: (context, index) {
+                final suggestion = suggestions[index];
+                final original = originals[suggestion.index];
+                final changes = <Widget>[
+                  if (suggestion.word != original.word)
+                    _buildReviewChange(context, '단어', original.word, suggestion.word),
+                  if (suggestion.meaning != original.meaning)
+                    _buildReviewChange(context, '뜻', original.meaning, suggestion.meaning),
+                  if (suggestion.sentence != (original.exampleSentence ?? ''))
+                    _buildReviewChange(context, '예문', original.exampleSentence ?? '',
+                        suggestion.sentence),
+                  if (suggestion.translation != (original.exampleSentenceTranslation ?? ''))
+                    _buildReviewChange(context, '예문 해석',
+                        original.exampleSentenceTranslation ?? '', suggestion.translation),
+                ];
+                return CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(original.word),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final change in changes) ...[
+                          change,
+                          const SizedBox(height: 6),
+                        ],
+                      ],
+                    ),
+                  ),
+                  value: selected.contains(suggestion.index),
+                  onChanged: (value) => refresh(() {
+                    if (value == true) {
+                      selected.add(suggestion.index);
+                    } else {
+                      selected.remove(suggestion.index);
+                    }
+                  }),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('취소')),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, Set<int>.from(selected)),
+              child: Text(selected.isEmpty ? '변경 없이 완료' : '${selected.length}개 반영'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReviewChange(
+    BuildContext context, String label, String before, String after,
+  ) {
+    final theme = Theme.of(context);
+    final beforeRunes = before.runes.toList();
+    final afterRunes = after.runes.toList();
+    var prefix = 0;
+    while (prefix < beforeRunes.length && prefix < afterRunes.length &&
+        beforeRunes[prefix] == afterRunes[prefix]) {
+      prefix++;
+    }
+    var suffix = 0;
+    while (suffix < beforeRunes.length - prefix &&
+        suffix < afterRunes.length - prefix &&
+        beforeRunes[beforeRunes.length - 1 - suffix] ==
+            afterRunes[afterRunes.length - 1 - suffix]) {
+      suffix++;
+    }
+    String segment(List<int> runes, int start, int end) =>
+        String.fromCharCodes(runes.sublist(start, end));
+    final oldPart = segment(beforeRunes, prefix, beforeRunes.length - suffix);
+    final newPart = segment(afterRunes, prefix, afterRunes.length - suffix);
+    final leading = segment(beforeRunes, 0, prefix);
+    final trailing = segment(beforeRunes, beforeRunes.length - suffix, beforeRunes.length);
+    final errorColor = theme.colorScheme.error;
+    final correctedColor = theme.colorScheme.primary;
+    final style = theme.textTheme.bodySmall;
+
+    return Text.rich(TextSpan(
+      style: style,
+      children: [
+        TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+        if (before.isEmpty)
+          const TextSpan(text: '미입력')
+        else ...[
+          TextSpan(text: leading),
+          TextSpan(text: oldPart, style: TextStyle(
+            color: errorColor,
+            fontWeight: FontWeight.w800,
+            decoration: TextDecoration.lineThrough,
+            decorationColor: errorColor,
+          )),
+          TextSpan(text: trailing),
+        ],
+        const TextSpan(text: '  →  '),
+        TextSpan(text: leading),
+        TextSpan(text: newPart,
+            style: TextStyle(color: correctedColor, fontWeight: FontWeight.w800)),
+        TextSpan(text: trailing),
+        if (after.isEmpty) const TextSpan(text: '없음'),
+      ],
+    ));
   }
 
   Widget _buildLearningScopeNotice(ThemeData theme) {
@@ -390,7 +634,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(isSentenceMode ? 'AI 예문 생성' : 'AI 퀴즈 생성'),
+        title: Text(isSentenceMode ? 'AI 예문·뜻 보강' : 'AI 퀴즈 생성'),
         automaticallyImplyLeading: true,
       ),
       body: SafeArea(
@@ -415,6 +659,22 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
               if (isSentenceMode) ...[
                 const SizedBox(height: 18),
                 _buildSentenceGenerationCard(theme),
+                const SizedBox(height: 18),
+                _buildWordSelectionSection(theme),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _isReviewingMeanings || _selectedWordbook == null ||
+                            _selectedWordIds.isEmpty
+                        ? null : _reviewMeanings,
+                    icon: _isReviewingMeanings
+                        ? _AiSparkleIcon(color: theme.colorScheme.onPrimary, size: 20)
+                        : const Icon(CupertinoIcons.sparkles),
+                    label: Text(_isReviewingMeanings
+                        ? '뜻·오타 검토 중...' : '선택한 단어 뜻·오타 검토'),
+                  ),
+                ),
               ] else ...[
                 const SizedBox(height: 18),
                 _buildWordSelectionSection(theme),
@@ -466,10 +726,10 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
 
   Widget _buildSetupIntroCard(ThemeData theme) {
     final isSentenceMode = widget.initialFocus == AiQuizSetupFocus.sentences;
-    final title = isSentenceMode ? '예문과 번역 채우기' : '단어장 맞춤 퀴즈 만들기';
+    final title = isSentenceMode ? '예문과 뜻 보강하기' : '단어장 맞춤 퀴즈 만들기';
     final subtitle =
         isSentenceMode
-            ? '빈 예문과 번역을 채웁니다.'
+            ? '예문을 만들고 뜻·해석·오타를 검토합니다.'
             : '어휘, 문법, 독해 문제를 만듭니다.';
     final activeName = _selectedWordbook?.name ?? '단어장 선택 필요';
 
@@ -600,14 +860,23 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   }
 
   Widget _buildWordSelectionSection(ThemeData theme) {
+    final isReview = widget.initialFocus == AiQuizSetupFocus.sentences;
+    final visibleWords = isReview
+        ? [
+            ..._words.where((word) => !_reviewedWordIds.contains(word.id)),
+            ..._words.where((word) => _reviewedWordIds.contains(word.id)),
+          ]
+        : _words;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSectionTitle(
           theme: theme,
           icon: CupertinoIcons.checkmark_square,
-          title: '출제 단어 선택',
-          subtitle: '${_selectedWordIds.length}/${_words.length}개 선택됨',
+          title: isReview ? '뜻·예문 검토할 단어' : '출제 단어 선택',
+          subtitle: isReview
+              ? '${_selectedWordIds.length}개 선택 · 검토 완료 ${_reviewedWordIds.length}/${_words.length}개 · 최대 20개'
+              : '${_selectedWordIds.length}/${_words.length}개 선택됨',
         ),
         const SizedBox(height: 10),
         GlassmorphicCard(
@@ -628,7 +897,8 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                       label: '사용 가능 ${_words.length}개',
                       color: theme.colorScheme.primary,
                     ),
-                    TextButton(onPressed: _onSelectAll, child: const Text('전체 선택')),
+                    TextButton(onPressed: _onSelectAll,
+                      child: Text(isReview ? '다음 미검토 20개' : '전체 선택')),
                     TextButton(onPressed: _onDeselectAll, child: const Text('해제')),
                   ],
                 ),
@@ -645,17 +915,26 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                         : _words.isEmpty
                         ? Center(child: Text("단어장에 단어가 없습니다.", style: theme.textTheme.bodyMedium))
                         : ListView.builder(
-                          itemCount: _words.length,
+                          itemCount: visibleWords.length,
                           itemBuilder: (context, index) {
-                            final word = _words[index];
+                            final word = visibleWords[index];
                             return CheckboxListTile(
-                              title: Text(
-                                word.word,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
+                              title: Row(
+                                children: [
+                                  Expanded(child: Text(
+                                    word.word,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  )),
+                                  if (isReview && _reviewedWordIds.contains(word.id))
+                                    Text('검토 완료', style: theme.textTheme.labelSmall?.copyWith(
+                                      color: theme.colorScheme.primary,
+                                      fontWeight: FontWeight.w700,
+                                    )),
+                                ],
                               ),
                               subtitle: Text(
                                 word.meaning,
@@ -665,6 +944,13 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                               value: _selectedWordIds.contains(word.id),
                               onChanged: (bool? value) {
                                 if (word.id == null) return;
+                                if (isReview && value == true &&
+                                    _selectedWordIds.length >= 20) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('한 번에 최대 20개까지 검토할 수 있습니다.')),
+                                  );
+                                  return;
+                                }
                                 setState(() {
                                   if (value == true) {
                                     _selectedWordIds.add(word.id!);

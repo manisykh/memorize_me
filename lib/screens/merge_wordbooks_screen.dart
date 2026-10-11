@@ -1,8 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/wordbook_model.dart';
 import '../providers/wordbook_manager.dart';
+import '../themes/memorize_identity.dart';
 
 class MergeWordbooksScreen extends StatefulWidget {
   const MergeWordbooksScreen({super.key});
@@ -42,7 +44,8 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
             textInputAction: TextInputAction.done,
             onChanged: (value) => draftName = value,
             onSubmitted:
-                (value) => _popDialogAfterUnfocus<String>(dialogContext, value.trim()),
+                (value) =>
+                    _popDialogAfterUnfocus<String>(dialogContext, value.trim()),
           ),
           actions: [
             TextButton(
@@ -72,7 +75,9 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _isMerging = false);
-      messenger.showSnackBar(SnackBar(content: Text('단어장 병합 중 오류가 발생했습니다: $error')));
+      messenger.showSnackBar(
+        SnackBar(content: Text('단어장 병합 중 오류가 발생했습니다: $error')),
+      );
       return;
     }
 
@@ -100,7 +105,9 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
         setState(() => _selectedWordbookIds.clear());
       } catch (error) {
         if (!mounted) return;
-        messenger.showSnackBar(SnackBar(content: Text('기존 단어장 삭제 중 오류가 발생했습니다: $error')));
+        messenger.showSnackBar(
+          SnackBar(content: Text('기존 단어장 삭제 중 오류가 발생했습니다: $error')),
+        );
       } finally {
         if (mounted) setState(() => _isMerging = false);
       }
@@ -136,7 +143,8 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
           actions: [
             TextButton(
               child: const Text('유지'),
-              onPressed: () => _popDialogAfterUnfocus<bool>(dialogContext, false),
+              onPressed:
+                  () => _popDialogAfterUnfocus<bool>(dialogContext, false),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
@@ -144,7 +152,8 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
                 foregroundColor: theme.colorScheme.onError,
               ),
               child: const Text('삭제'),
-              onPressed: () => _popDialogAfterUnfocus<bool>(dialogContext, true),
+              onPressed:
+                  () => _popDialogAfterUnfocus<bool>(dialogContext, true),
             ),
           ],
         );
@@ -162,52 +171,233 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Wordbook> wordbooks = context.watch<WordbookManager>().wordbooks;
+    final manager = context.watch<WordbookManager>();
+    final List<Wordbook> wordbooks = manager.wordbooks;
+    final theme = Theme.of(context);
+    final identity = MemorizeIdentity.of(theme);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: identity.canvas,
       appBar: AppBar(title: const Text('단어장 병합')),
-      body:
-          wordbooks.isEmpty
-              ? const Center(child: Text('병합할 단어장이 없습니다.'))
-              : ListView.builder(
-                itemCount: wordbooks.length,
-                itemBuilder: (context, index) {
-                  final wordbook = wordbooks[index];
-                  final id = wordbook.id;
-                  return CheckboxListTile(
-                    title: Text(wordbook.name),
-                    subtitle: Text(_sourceLabel(wordbook.source)),
-                    value: id != null && _selectedWordbookIds.contains(id),
-                    onChanged:
-                        id == null || _isMerging
-                            ? null
-                            : (isSelected) {
-                              setState(() {
-                                if (isSelected == true) {
-                                  _selectedWordbookIds.add(id);
-                                } else {
-                                  _selectedWordbookIds.remove(id);
-                                }
-                              });
-                            },
-                  );
-                },
-              ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _isMerging ? null : _onMerge,
-        label:
-            _isMerging
-                ? const Text('병합 중...')
-                : Text('선택한 단어장 합치기 (${_selectedWordbookIds.length}개)'),
-        icon:
-            _isMerging
-                ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-                : const Icon(Icons.merge_type),
+      body: SafeArea(
+        top: false,
+        child:
+            wordbooks.isEmpty
+                ? const Center(child: Text('병합할 단어장이 없습니다.'))
+                : ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: identity.softContext,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.merge_type,
+                            color: identity.primaryAction,
+                            size: 34,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '합칠 단어장을 두 개 이상 선택하세요.',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: identity.ink,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '기존 단어장은 그대로 유지됩니다.',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: identity.mutedInk,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: identity.surface,
+                        borderRadius: BorderRadius.circular(
+                          MemorizeIdentity.cardRadius,
+                        ),
+                        border: Border.all(color: identity.border),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: '${_selectedWordbookIds.length}개',
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      color: identity.primaryAction,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: ' 선택됨',
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(
+                                          color: identity.ink,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          for (final indexed in wordbooks.indexed) ...[
+                            if (indexed.$1 > 0)
+                              Divider(height: 1, color: identity.border),
+                            Builder(
+                              builder: (context) {
+                                final wordbook = indexed.$2;
+                                final id = wordbook.id;
+                                final selected =
+                                    id != null &&
+                                    _selectedWordbookIds.contains(id);
+                                return FutureBuilder<int>(
+                                  future: manager
+                                      .getAllWordsFrom(wordbook)
+                                      .then((words) => words.length),
+                                  builder: (context, snapshot) {
+                                    final count = snapshot.data;
+                                    return Material(
+                                      color:
+                                          selected
+                                              ? identity.softContext
+                                              : identity.surface,
+                                      child: InkWell(
+                                        onTap:
+                                            id == null || _isMerging
+                                                ? null
+                                                : () => setState(() {
+                                                  if (selected) {
+                                                    _selectedWordbookIds.remove(
+                                                      id,
+                                                    );
+                                                  } else {
+                                                    _selectedWordbookIds.add(
+                                                      id,
+                                                    );
+                                                  }
+                                                }),
+                                        child: Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            14,
+                                            14,
+                                            12,
+                                            14,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                CupertinoIcons.book,
+                                                color:
+                                                    selected
+                                                        ? identity.success
+                                                        : identity.mutedInk,
+                                                size: 28,
+                                              ),
+                                              const SizedBox(width: 14),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      wordbook.name,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: theme
+                                                          .textTheme
+                                                          .titleMedium
+                                                          ?.copyWith(
+                                                            color: identity.ink,
+                                                            fontWeight:
+                                                                FontWeight.w900,
+                                                          ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      '${_sourceLabel(wordbook.source)}${count == null ? '' : ' · 전체 $count개'}',
+                                                      style: theme
+                                                          .textTheme
+                                                          .bodySmall
+                                                          ?.copyWith(
+                                                            color:
+                                                                identity
+                                                                    .mutedInk,
+                                                          ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              Icon(
+                                                selected
+                                                    ? CupertinoIcons
+                                                        .check_mark_circled_solid
+                                                    : CupertinoIcons.circle,
+                                                color:
+                                                    selected
+                                                        ? identity.primaryAction
+                                                        : identity.border,
+                                                size: 28,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          color: identity.surface,
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+          child: FilledButton.icon(
+            onPressed: _isMerging ? null : _onMerge,
+            icon:
+                _isMerging
+                    ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                    : const Icon(Icons.merge_type),
+            label: Text(
+              _isMerging
+                  ? '병합 중...'
+                  : '선택한 단어장 합치기 (${_selectedWordbookIds.length}개)',
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -218,6 +408,8 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
         return 'Google 시트';
       case WordbookSource.localCsv:
         return '로컬 파일';
+      case WordbookSource.manual:
+        return '직접 만든 단어장';
       case WordbookSource.builtin:
         return '기본 제공';
     }

@@ -118,6 +118,50 @@ void main() {
     );
   });
 
+  test('전용 문법 퀴즈는 선택한 챕터 ID만 허용한다', () {
+    AiQuestion grammarQuestion(String? chapterId) => AiQuestion(
+      type: 'grammar',
+      questionFormat: 'fill_blank',
+      grammarChapterId: chapterId,
+      targetWord: 'study',
+      question: 'Students study English every day. Choose the correct verb.',
+      options: const ['study', 'studies', 'studied', 'studying'],
+      answer: 'study',
+    );
+
+    expect(
+      AiQuizValidator.sanitize(
+        AiQuizResponse(questions: [grammarQuestion('ch1')]),
+        allowedGrammarChapterIds: const {'ch1'},
+      ).answerableQuestionCount,
+      1,
+    );
+    for (final invalidId in <String?>['ch2', null]) {
+      expect(
+        () => AiQuizValidator.sanitize(
+          AiQuizResponse(questions: [grammarQuestion(invalidId)]),
+          allowedGrammarChapterIds: const {'ch1'},
+        ),
+        throwsA(isA<CustomApiException>()),
+      );
+    }
+    expect(
+      AiQuizValidator.sanitize(
+        AiQuizResponse(questions: [grammarQuestion(null)]),
+      ).answerableQuestionCount,
+      1,
+    );
+  });
+
+  test('AI 응답의 문법 챕터 ID를 파싱한다', () {
+    final response = AiQuizResponse.parse(
+      '{"questions":[{"type":"grammar","chapterId":"ch3",'
+      '"question":"Choose one.","options":["A","B","C","D"],"answer":"A"}]}',
+    );
+
+    expect(response.questions.single.grammarChapterId, 'ch3');
+  });
+
   test('난이도별 문장 길이 차이는 기록하되 퀴즈 생성을 차단하지 않는다', () {
     final tooShort = AiQuestion(
       type: 'vocabulary',

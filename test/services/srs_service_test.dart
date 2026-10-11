@@ -17,6 +17,12 @@ void main() {
     final learning = Word(
       word: 'learning',
       meaning: '학습 중',
+      srsLevel: 1,
+      nextReviewDate: '2026-08-20',
+    );
+    final scheduled = Word(
+      word: 'scheduled',
+      meaning: '복습 예정',
       srsLevel: 3,
       nextReviewDate: '2026-08-20',
     );
@@ -30,7 +36,64 @@ void main() {
     expect(service.stageFor(fresh, baseDate: baseDate), SrsStage.newWord);
     expect(service.stageFor(due, baseDate: baseDate), SrsStage.due);
     expect(service.stageFor(learning, baseDate: baseDate), SrsStage.learning);
+    expect(service.stageFor(scheduled, baseDate: baseDate), SrsStage.scheduled);
     expect(service.stageFor(mature, baseDate: baseDate), SrsStage.mature);
+  });
+
+  test('복습 중은 저장 단계가 아니며 세션 UI에서만 파생한다', () {
+    expect(
+      SrsStage.values.map((stage) => stage.name),
+      isNot(contains('reviewing')),
+    );
+  });
+
+  test('일일 계획은 다섯 기억 단계를 빠짐없이 분류한다', () {
+    final words = <Word>[
+      Word(word: 'entry', meaning: '진입'),
+      Word(
+        word: 'learning',
+        meaning: '학습 중',
+        srsLevel: 1,
+        nextReviewDate: '2026-08-14',
+      ),
+      Word(
+        word: 'scheduled',
+        meaning: '복습 예정',
+        srsLevel: 3,
+        nextReviewDate: '2026-08-20',
+      ),
+      Word(
+        word: 'due',
+        meaning: '복습 필요',
+        srsLevel: 3,
+        nextReviewDate: '2026-08-13',
+      ),
+      Word(
+        word: 'mature',
+        meaning: '안정 기억',
+        srsLevel: 5,
+        nextReviewDate: '2026-09-01',
+      ),
+    ];
+
+    final plan = service.buildDailyPlan(words, baseDate: baseDate);
+
+    expect(plan.newWords.single.word, 'entry');
+    expect(plan.learningWords.single.word, 'learning');
+    expect(plan.scheduledWords.single.word, 'scheduled');
+    expect(plan.dueWords.single.word, 'due');
+    expect(plan.matureWords.single.word, 'mature');
+  });
+
+  test('안정 기억 단어도 복습일이 오면 복습 필요가 된다', () {
+    final matureDue = Word(
+      word: 'mature-due',
+      meaning: '복습일 도달',
+      srsLevel: 5,
+      nextReviewDate: '2026-08-13',
+    );
+
+    expect(service.stageFor(matureDue, baseDate: baseDate), SrsStage.due);
   });
 
   test('오래 밀리고 많이 틀린 단어가 복습 목록 앞에 온다', () {

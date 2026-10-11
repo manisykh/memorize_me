@@ -1,8 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import '../themes/app_theme.dart';
-import 'glassmorphic_card.dart';
+import '../themes/memorize_identity.dart';
 
 class GuideTopic {
   final String id;
@@ -30,7 +29,7 @@ class StudyGuideCatalog {
     summary: '이 앱은 단어장을 고르고, 오늘 학습을 처리하고, SRS가 다음 복습 시점을 잡는 구조입니다.',
     bullets: [
       '먼저 홈의 단어장 현황 또는 상단의 현재 학습 기준을 눌러 사용할 단어장을 선택합니다.',
-      '홈의 복습, 새 단어, 학습 중 숫자를 보고 오늘 처리할 학습을 파악합니다.',
+      '홈의 복습 필요, 새 단어, 학습 중 숫자를 보고 오늘 처리할 학습을 파악합니다.',
       '학습 플랜에서 자유모드, 일정 달성 모드, 복습 우선 모드 중 원하는 방식을 선택합니다.',
       '오늘 복습 시작 또는 새 단어 시작을 누르면 현재 상태에 맞는 플래시카드 학습으로 이동합니다.',
     ],
@@ -43,9 +42,11 @@ class StudyGuideCatalog {
     title: '오늘 학습 읽는 법',
     summary: '홈 대시보드는 현재 단어장 기준으로 오늘 무엇을 해야 하는지 보여줍니다.',
     bullets: [
-      '복습은 SRS 기준으로 오늘 다시 봐야 하는 단어입니다.',
+      '복습 필요는 SRS 기준으로 복습일이 오늘이거나 이미 지난 단어입니다.',
       '새 단어는 오늘 처음 학습하도록 열린 단어입니다. 플랜이 있으면 플랜 범위 안에서만 열립니다.',
-      '학습 중은 아직 안정 기억 단계가 아니며, 다음 복습일을 기다리거나 짧게 확인할 단어입니다.',
+      '학습 중은 첫 학습 뒤 짧은 간격으로 기억을 정착시키는 단계입니다.',
+      '복습 예정은 초기 학습을 마치고 다음 복습일을 기다리는 단계입니다.',
+      '복습 화면을 연 동안에는 복습 중으로 표시되며, 이는 저장되는 기억 단계가 아닙니다.',
       '오늘 처리 현황은 오늘 완료한 학습과 지금 남은 복습, 새 단어를 함께 보여줍니다.',
     ],
   );
@@ -169,20 +170,45 @@ Future<void> showStudyGuideSheet(BuildContext context, GuideTopic topic) {
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder:
-        (sheetContext) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: GlassmorphicCard(
-              borderRadius: 30,
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-              child: _GuideTopicContent(
-                topic: topic,
-                onClose: () => Navigator.of(sheetContext).pop(),
+    barrierColor: const Color(0x9909255A),
+    builder: (sheetContext) {
+      final identity = MemorizeIdentity.of(Theme.of(sheetContext));
+      return SafeArea(
+        top: false,
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.86,
+          ),
+          decoration: BoxDecoration(
+            color: identity.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 46,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: identity.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
-            ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+                  child: _GuideTopicContent(
+                    topic: topic,
+                    onClose: () => Navigator.of(sheetContext).pop(),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
+      );
+    },
   );
 }
 
@@ -192,59 +218,99 @@ class StudyGuideScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final identity = MemorizeIdentity.of(theme);
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: identity.canvas,
       appBar: AppBar(title: const Text('사용 가이드')),
       body: SafeArea(
-        child: ListView.separated(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
-          itemBuilder: (context, index) {
-            final topic = StudyGuideCatalog.all[index];
-            return GlassmorphicCard(
-              borderRadius: 28,
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-              onTap: () => showStudyGuideSheet(context, topic),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+          children: [
+            Text(
+              '필요한 기능을 빠르게 찾아보세요.',
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: identity.mutedInk,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              decoration: BoxDecoration(
+                color: identity.surface,
+                borderRadius: BorderRadius.circular(
+                  MemorizeIdentity.cardRadius,
+                ),
+                border: Border.all(color: identity.border),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
                 children: [
-                  _GuideIcon(icon: topic.icon),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          topic.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          topic.summary,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            height: 1.35,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    CupertinoIcons.chevron_right,
-                    size: 18,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  for (final indexed in StudyGuideCatalog.all.indexed) ...[
+                    _GuideTopicRow(topic: indexed.$2),
+                    if (indexed.$1 < StudyGuideCatalog.all.length - 1)
+                      Divider(height: 1, indent: 76, color: identity.border),
+                  ],
                 ],
               ),
-            );
-          },
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemCount: StudyGuideCatalog.all.length,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GuideTopicRow extends StatelessWidget {
+  final GuideTopic topic;
+
+  const _GuideTopicRow({required this.topic});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final identity = MemorizeIdentity.of(theme);
+    return Material(
+      color: identity.surface,
+      child: InkWell(
+        onTap: () => showStudyGuideSheet(context, topic),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+          child: Row(
+            children: [
+              _GuideIcon(icon: topic.icon),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      topic.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: identity.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      topic.summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: identity.mutedInk,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                CupertinoIcons.chevron_right,
+                color: identity.mutedInk,
+                size: 18,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -255,136 +321,160 @@ class _GuideTopicContent extends StatelessWidget {
   final GuideTopic topic;
   final VoidCallback onClose;
 
-  const _GuideTopicContent({
-    required this.topic,
-    required this.onClose,
-  });
+  const _GuideTopicContent({required this.topic, required this.onClose});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.82),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final identity = MemorizeIdentity.of(theme);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
+            _GuideIcon(icon: topic.icon, large: true),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                topic.title,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: identity.ink,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: '닫기',
+              onPressed: onClose,
+              icon: Icon(CupertinoIcons.xmark, color: identity.ink),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          topic.summary,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: identity.mutedInk,
+            height: 1.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 18),
+        Divider(height: 1, color: identity.border),
+        const SizedBox(height: 4),
+        for (final indexed in topic.bullets.indexed)
+          _GuideBullet(index: indexed.$1 + 1, text: indexed.$2),
+        if (topic.footer != null) ...[
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              color: identity.softContext,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _GuideIcon(icon: topic.icon),
-                const SizedBox(width: 12),
+                Icon(
+                  CupertinoIcons.info_circle,
+                  color: identity.primaryAction,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    topic.title,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
+                    topic.footer!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: identity.primaryAction,
+                      height: 1.4,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                IconButton(
-                  tooltip: '닫기',
-                  onPressed: onClose,
-                  icon: const Icon(CupertinoIcons.xmark),
-                ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              topic.summary,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.45,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 18),
-            for (final bullet in topic.bullets) ...[
-              _GuideBullet(text: bullet),
-              const SizedBox(height: 10),
-            ],
-            if (topic.footer != null) ...[
-              const SizedBox(height: 4),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                  ),
-                ),
-                child: Text(
-                  topic.footer!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.35,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+          ),
+        ],
+      ],
     );
   }
 }
 
 class _GuideIcon extends StatelessWidget {
   final IconData icon;
+  final bool large;
 
-  const _GuideIcon({required this.icon});
+  const _GuideIcon({required this.icon, this.large = false});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final color = isDark ? AppTheme.accentCoral : theme.colorScheme.primary;
+    final identity = MemorizeIdentity.of(theme);
+    final size = large ? 54.0 : 44.0;
     return Container(
-      width: 42,
-      height: 42,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: isDark ? 0.18 : 0.11),
-        borderRadius: BorderRadius.circular(16),
+        color: identity.softContext,
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Icon(icon, color: color, size: 21),
+      child: Icon(icon, color: identity.primaryAction, size: large ? 27 : 22),
     );
   }
 }
 
 class _GuideBullet extends StatelessWidget {
+  final int index;
   final String text;
 
-  const _GuideBullet({required this.text});
+  const _GuideBullet({required this.index, required this.text});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 7,
-          height: 7,
-          margin: const EdgeInsets.only(top: 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            text,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              height: 1.42,
-              fontWeight: FontWeight.w600,
+    final identity = MemorizeIdentity.of(theme);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: identity.border)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: identity.softContext,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              '$index',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: identity.primaryAction,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
-        ),
-      ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Text(
+                text,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: identity.ink,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

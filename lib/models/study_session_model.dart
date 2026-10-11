@@ -22,6 +22,9 @@ class StudyAttemptRecord {
 class StudyAnswerRecord {
   final String wordKey;
   final String word;
+  final String? meaning;
+  final List<String> additionalMeanings;
+  final String? userAnswer;
   final bool success;
   final bool wasNew;
   final int attempts;
@@ -32,6 +35,7 @@ class StudyAnswerRecord {
   final bool hadPriorQuizMistake;
 
   const StudyAnswerRecord({required this.wordKey, required this.word,
+    this.meaning, this.additionalMeanings = const [], this.userAnswer,
     required this.success, required this.wasNew, required this.at,
     this.attempts = 1, this.nextReviewDate, this.attemptLog = const [], this.skipped = false,
     this.hadPriorQuizMistake = false});
@@ -46,6 +50,7 @@ class StudyAnswerRecord {
     final matching = attemptLog.where((a) => studyDateKey(a.at) == studyDateKey(date)).toList();
     if (matching.isEmpty) return null;
     return StudyAnswerRecord(wordKey: wordKey, word: word,
+      meaning: meaning, additionalMeanings: additionalMeanings, userAnswer: userAnswer,
       success: matching.last.success, wasNew: wasNew && studyDateKey(firstStudiedAt) == studyDateKey(date),
       at: matching.last.at, attempts: matching.length, attemptLog: matching,
       nextReviewDate: nextReviewDate, skipped: skipped, hadPriorQuizMistake: hadPriorQuizMistake);
@@ -53,6 +58,7 @@ class StudyAnswerRecord {
 
   Map<String, dynamic> toMap() => {
     'wordKey': wordKey, 'word': word, 'success': success, 'wasNew': wasNew,
+    'meaning': meaning, 'additionalMeanings': additionalMeanings, 'userAnswer': userAnswer,
     'attempts': attempts, 'at': at.toIso8601String(), 'nextReviewDate': nextReviewDate,
     'attemptLog': attemptLog.map((a) => a.toMap()).toList(),
     'skipped': skipped,
@@ -61,6 +67,10 @@ class StudyAnswerRecord {
 
   factory StudyAnswerRecord.fromMap(Map<String, dynamic> map) => StudyAnswerRecord(
     wordKey: map['wordKey'] as String, word: map['word'] as String,
+    meaning: map['meaning'] as String?,
+    additionalMeanings: (map['additionalMeanings'] as List? ?? const [])
+        .map((value) => value.toString()).toList(),
+    userAnswer: map['userAnswer'] as String?,
     success: map['success'] == true, wasNew: map['wasNew'] == true,
     skipped: map['skipped'] == true,
     hadPriorQuizMistake: map['hadPriorQuizMistake'] == true,

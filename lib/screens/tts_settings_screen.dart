@@ -11,10 +11,15 @@ class TtsSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('발음 및 듣기 음성')),
-      body: const SafeArea(
+      body: SafeArea(
         child: SingleChildScrollView(
-          padding: EdgeInsets.all(16),
-          child: TtsVoiceSettingsPanel(),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: const TtsVoiceSettingsPanel(),
+            ),
+          ),
         ),
       ),
     );
@@ -68,7 +73,8 @@ class _TtsVoiceSettingsPanelState extends State<TtsVoiceSettingsPanel> {
         final voicesByKey = <String, Map<String, String>>{
           for (final voice in voices) _voiceKey(voice): voice,
         };
-        final femaleVoice = _selectedFemaleVoice ?? ttsService.selectedFemaleVoice;
+        final femaleVoice =
+            _selectedFemaleVoice ?? ttsService.selectedFemaleVoice;
         final maleVoice = _selectedMaleVoice ?? ttsService.selectedMaleVoice;
 
         return Column(
@@ -87,10 +93,11 @@ class _TtsVoiceSettingsPanelState extends State<TtsVoiceSettingsPanel> {
               label: '기본 발음 · 여성 화자',
               value: _availableKey(femaleVoice, voicesByKey),
               voicesByKey: voicesByKey,
-              onPreview: (voice) => ttsService.speakWithVoice(
-                voice,
-                'Hello, this is the default pronunciation voice.',
-              ),
+              onPreview:
+                  (voice) => ttsService.speakWithVoice(
+                    voice,
+                    'Hello, this is the default pronunciation voice.',
+                  ),
               onChanged: (voice) async {
                 await ttsService.setFemaleVoice(voice);
                 if (mounted) setState(() => _selectedFemaleVoice = voice);
@@ -101,10 +108,11 @@ class _TtsVoiceSettingsPanelState extends State<TtsVoiceSettingsPanel> {
               label: 'AI 대화 · 남성 화자',
               value: _availableKey(maleVoice, voicesByKey),
               voicesByKey: voicesByKey,
-              onPreview: (voice) => ttsService.speakWithVoice(
-                voice,
-                'Hello, this is the second dialogue voice.',
-              ),
+              onPreview:
+                  (voice) => ttsService.speakWithVoice(
+                    voice,
+                    'Hello, this is the second dialogue voice.',
+                  ),
               onChanged: (voice) async {
                 await ttsService.setMaleVoice(voice);
                 if (mounted) setState(() => _selectedMaleVoice = voice);
@@ -162,7 +170,10 @@ class _VoiceSelector extends StatelessWidget {
                 isExpanded: true,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                 ),
                 hint: const Text('음성 선택'),
                 items: [
@@ -185,7 +196,8 @@ class _VoiceSelector extends StatelessWidget {
             const SizedBox(width: 8),
             IconButton.filledTonal(
               tooltip: '미리 듣기',
-              onPressed: selectedVoice == null ? null : () => onPreview(selectedVoice),
+              onPressed:
+                  selectedVoice == null ? null : () => onPreview(selectedVoice),
               icon: const Icon(CupertinoIcons.play_fill),
             ),
           ],

@@ -37,7 +37,9 @@ import 'providers/flashcard_settings_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
+  await SystemChrome.setPreferredOrientations(const [
+    DeviceOrientation.portraitUp,
+  ]);
   await Firebase.initializeApp();
 
   FlutterError.onError = (details) {
@@ -65,7 +67,9 @@ Future<void> main() async {
         ChangeNotifierProvider<StudySoundService>(
           create: (_) => StudySoundService(),
         ),
-        Provider<ModeStateService>(create: (_) => ModeStateService()), // ▼▼▼ [추가]
+        Provider<ModeStateService>(
+          create: (_) => ModeStateService(),
+        ), // ▼▼▼ [추가]
         ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
         ChangeNotifierProvider<EntitlementProvider>(
           lazy: false,
@@ -76,7 +80,9 @@ Future<void> main() async {
               ),
         ),
         ChangeNotifierProvider<ThemeNotifier>(create: (_) => ThemeNotifier()),
-        ChangeNotifierProvider<AiSettingsProvider>(create: (_) => AiSettingsProvider()),
+        ChangeNotifierProvider<AiSettingsProvider>(
+          create: (_) => AiSettingsProvider(),
+        ),
         ChangeNotifierProvider<FlashcardSettingsProvider>(
           create: (_) => FlashcardSettingsProvider(),
         ),
@@ -90,7 +96,8 @@ Future<void> main() async {
           update: (_, authProvider, __) => SheetsService(authProvider),
         ),
         ChangeNotifierProvider<WordListNotifier>(
-          create: (context) => WordListNotifier(context.read<DatabaseService>()),
+          create:
+              (context) => WordListNotifier(context.read<DatabaseService>()),
         ),
         ChangeNotifierProxyProvider<WordListNotifier, SettingsNotifier>(
           create: (context) => SettingsNotifier(),
@@ -131,6 +138,7 @@ class MyApp extends StatelessWidget {
         final theme = AppTheme.appThemes[currentThemeType]!;
         return MaterialApp(
           title: 'Memorize Me',
+          restorationScopeId: 'memorize_me',
           theme: theme,
           debugShowCheckedModeBanner: false,
           navigatorObservers: [context.read<AnalyticsService>().observer],
@@ -189,7 +197,7 @@ class MyApp extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final statusBarColor = switch (themeType) {
       AppThemeType.lightGreen => Colors.white,
-      AppThemeType.dark => const Color(0xFF2D241C),
+      AppThemeType.dark => const Color(0xFF0E1729),
       AppThemeType.visionProtection => Color.alphaBlend(
         Colors.white.withValues(alpha: 0.50),
         fallbackSurfaceColor,
@@ -197,15 +205,15 @@ class MyApp extends StatelessWidget {
     };
     final navigationBarColor = switch (themeType) {
       AppThemeType.lightGreen => Colors.white,
-      AppThemeType.dark => const Color(0xFF3A2E24),
+      AppThemeType.dark => const Color(0xFF17233A),
       AppThemeType.visionProtection => Color.alphaBlend(
         Colors.white.withValues(alpha: 0.42),
         fallbackSurfaceColor,
       ),
     };
     final dividerColor = switch (themeType) {
-      AppThemeType.lightGreen => const Color(0xFFDCDCE0),
-      AppThemeType.dark => const Color(0xFF604A35),
+      AppThemeType.lightGreen => const Color(0xFFD9E2F0),
+      AppThemeType.dark => const Color(0xFF33445F),
       AppThemeType.visionProtection => Color.alphaBlend(
         const Color(0xFFE5D6BD).withValues(alpha: 0.72),
         fallbackSurfaceColor,
@@ -214,11 +222,14 @@ class MyApp extends StatelessWidget {
 
     return SystemUiOverlayStyle(
       statusBarColor:
-          statusBarColor == Colors.transparent ? fallbackSurfaceColor : statusBarColor,
+          statusBarColor == Colors.transparent
+              ? fallbackSurfaceColor
+              : statusBarColor,
       systemNavigationBarColor: navigationBarColor,
       systemNavigationBarDividerColor: dividerColor,
       statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-      systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      systemNavigationBarIconBrightness:
+          isDark ? Brightness.light : Brightness.dark,
       statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
       systemStatusBarContrastEnforced: true,
       systemNavigationBarContrastEnforced: true,
@@ -233,7 +244,8 @@ class AppInitializer extends StatefulWidget {
 }
 
 class _AppInitializerState extends State<AppInitializer> {
-  final OnboardingStateService _onboardingState = const OnboardingStateService();
+  final OnboardingStateService _onboardingState =
+      const OnboardingStateService();
   late Future<bool> _onboardingDecisionFuture;
   late Future<void> _metadataInitializationFuture;
   bool _activeWordbookLoadStarted = false;
@@ -251,9 +263,11 @@ class _AppInitializerState extends State<AppInitializer> {
     _metadataInitializationFuture = _loadWordbookMetadata();
     _activeWordbookLoadStarted = false;
     unawaited(
-      _metadataInitializationFuture.then((_) {
-        _startActiveWordbookLoad();
-      }).catchError((_) {}),
+      _metadataInitializationFuture
+          .then((_) {
+            _startActiveWordbookLoad();
+          })
+          .catchError((_) {}),
     );
   }
 
@@ -373,7 +387,9 @@ class _ReadyAppShell extends StatelessWidget {
                         TextButton(
                           onPressed: () {
                             unawaited(
-                              manager.retryActiveWordbookWords().catchError((_) {}),
+                              manager.retryActiveWordbookWords().catchError(
+                                (_) {},
+                              ),
                             );
                           },
                           child: const Text('다시 시도'),

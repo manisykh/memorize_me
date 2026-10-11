@@ -31,6 +31,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   bool _isLoadingWords = false;
   int? _selectedCategoryIndex;
   final Set<GrammarChapter> _selectedChapters = {};
+  bool _showDetailedChapters = false;
   double _questionCount = 10.0;
   bool _isLoading = false;
   String? _errorMessage;
@@ -73,6 +74,35 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       (groupedChapters[chapter.description] ??= []).add(chapter);
     }
     return groupedChapters;
+  }
+
+  Future<void> _selectAllChapters(List<GrammarChapter> chapters) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('전체 문법 범위 선택'),
+        content: Text(
+          '${chapters.length}개 챕터를 범위로 지정하면 ${_questionCount.round()}문제에는 '
+          '그중 일부 챕터만 출제됩니다. 계속할까요?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('전체 선택'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    setState(() {
+      _selectedChapters
+        ..clear()
+        ..addAll(chapters);
+    });
   }
 
   Future<void> _generateQuiz() async {
@@ -222,6 +252,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
     final groupKeys = groupedChapters.keys.toList();
     final selectedCategory =
         _selectedCategoryIndex == null ? null : grammarCurriculum[_selectedCategoryIndex!];
+    final groupedTopics = selectedCategory == null
+        ? <String, List<GrammarChapter>>{}
+        : groupGrammarTopics(selectedCategory);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -245,7 +278,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
               _buildGrammarLevelSection(theme, selectedCategory),
               if (_selectedCategoryIndex != null) ...[
                 const SizedBox(height: 18),
-                _buildChapterSection(theme, groupedChapters, groupKeys),
+                _buildChapterSection(theme, groupedTopics, groupedChapters, groupKeys),
                 const SizedBox(height: 18),
                 _buildQuizOptionsSection(theme),
                 const SizedBox(height: 24),
@@ -367,6 +400,11 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
         setState(() {
           _selectedCategoryIndex = index;
           _selectedChapters.clear();
+          _showDetailedChapters = false;
+          _difficulty = _difficulty.clamp(
+            category.minDifficulty.toDouble(),
+            category.maxDifficulty.toDouble(),
+          ).toDouble();
         });
       },
       child: AnimatedContainer(
@@ -459,6 +497,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
 
   Widget _buildChapterSection(
     ThemeData theme,
+    Map<String, List<GrammarChapter>> groupedTopics,
     Map<String, List<GrammarChapter>> groupedChapters,
     List<String> groupKeys,
   ) {
@@ -472,21 +511,17 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
           _buildSectionTitle(
             theme: theme,
             icon: CupertinoIcons.checkmark_square_fill,
-            title: '챕터 선택',
-            subtitle: '${_selectedChapters.length}개 선택 · 전체 $totalChapters개',
+            title: '문법 주제 선택',
+            subtitle: '${_selectedChapters.length}개 챕터 선택 · 전체 $totalChapters개',
           ),
           const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _selectedChapters
-                        ..clear()
-                        ..addAll(groupedChapters.values.expand((chapters) => chapters));
-                    });
-                  },
+                  onPressed: () => _selectAllChapters(
+                    groupedChapters.values.expand((chapters) => chapters).toList(),
+                  ),
                   icon: const Icon(CupertinoIcons.checkmark_alt_circle, size: 18),
                   label: const Text('전체 선택'),
                 ),
@@ -505,13 +540,53 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          ...groupKeys.map((groupTitle) {
-            final chapters = groupedChapters[groupTitle]!;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _buildChapterGroupCard(theme, groupTitle, chapters),
+          ...groupedTopics.entries.map((entry) {
+            final chapters = entry.value;
+            final selectedCount = chapters.where(_selectedChapters.contains).length;
+            final allSelected = selectedCount == chapters.length;
+            return Column(
+              children: [
+                CheckboxListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 2),
+                  title: Text(entry.key),
+                  subtitle: Text('$selectedCount / ${chapters.length}개 세부 챕터'),
+                  tristate: true,
+                  value: allSelected ? true : selectedCount == 0 ? false : null,
+                  onChanged: (_) => _toggleChapterGroup(
+                    chapters,
+                    selectAll: !allSelected,
+                  ),
+                ),
+                const Divider(height: 1),
+              ],
             );
           }),
+          if (_selectedChapters.length > _questionCount.round() * 2) ...[
+            const SizedBox(height: 10),
+            Text(
+              '선택 범위가 넓어 이번 퀴즈에는 일부 챕터만 출제됩니다.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () => setState(() => _showDetailedChapters = !_showDetailedChapters),
+            icon: Icon(_showDetailedChapters
+                ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down),
+            label: Text(_showDetailedChapters ? '세부 선택 접기' : '세부 챕터 선택'),
+          ),
+          if (_showDetailedChapters) ...[
+            const SizedBox(height: 8),
+            ...groupKeys.map((groupTitle) {
+              final chapters = groupedChapters[groupTitle]!;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _buildChapterGroupCard(theme, groupTitle, chapters),
+              );
+            }),
+          ],
         ],
       ),
     );
@@ -674,6 +749,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   }
 
   Widget _buildQuizOptionsSection(ThemeData theme) {
+    final category = grammarCurriculum[_selectedCategoryIndex!];
     return GlassmorphicCard(
       borderRadius: 28,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -697,9 +773,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
             child: _buildSlider(
               label: '난이도',
               value: _difficulty,
-              min: 1,
-              max: 7,
-              divisions: 6,
+              min: category.minDifficulty.toDouble(),
+              max: category.maxDifficulty.toDouble(),
+              divisions: category.maxDifficulty - category.minDifficulty,
               valueLabel: _difficultyLabel(),
               onChanged: (value) => setState(() => _difficulty = value),
             ),

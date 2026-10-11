@@ -23,14 +23,46 @@ class GrammarCategory {
   final String title;
   final String description;
   final List<GrammarChapter> chapters;
+  final int minDifficulty;
+  final int maxDifficulty;
 
-  const GrammarCategory({required this.title, required this.description, required this.chapters});
+  const GrammarCategory({
+    required this.title,
+    required this.description,
+    required this.chapters,
+    required this.minDifficulty,
+    required this.maxDifficulty,
+  });
+}
+
+String grammarTopicFor(GrammarChapter chapter) => switch (chapter.description) {
+  'be동사' || '일반동사' || '동사의 종류' || '여러 가지 동사' ||
+  '문장의 이해' || '문장의 구조' || '동사' => '문장 구조·동사',
+  '진행형과 미래시제' || '시제' => '시제',
+  '명사와 관사' || '대명사' || '명사·관사·대명사' => '명사·관사·대명사',
+  '형용사와 부사' || '형용사·부사' || '비교' => '형용사·부사·비교',
+  'to부정사와 동명사' || 'to부정사' || '부정사' ||
+  '동명사' => 'to부정사·동명사',
+  '일치와 화법' || '일치·화법' => '일치·화법',
+  '기타 구문' || '특수 구문' => '특수 구문',
+  '의문문, 명령문, 감탄문' => '문장의 종류',
+  _ => chapter.description,
+};
+
+Map<String, List<GrammarChapter>> groupGrammarTopics(GrammarCategory category) {
+  final grouped = <String, List<GrammarChapter>>{};
+  for (final chapter in category.chapters) {
+    (grouped[grammarTopicFor(chapter)] ??= []).add(chapter);
+  }
+  return grouped;
 }
 
 const List<GrammarCategory> grammarCurriculum = [
   GrammarCategory(
     title: '중학교 영문법',
     description: '기초 다지기: 영어 문장의 기본 구조를 이해하고, 기초적인 시제와 품사의 활용법을 익힙니다.',
+    minDifficulty: 1,
+    maxDifficulty: 4,
     chapters: [
       GrammarChapter(title: 'be동사의 현재형과 과거형', description: 'be동사'),
       GrammarChapter(title: 'be동사의 부정문과 의문문', description: 'be동사'),
@@ -73,8 +105,6 @@ const List<GrammarCategory> grammarCurriculum = [
       GrammarChapter(title: '완료시제', description: '시제'),
       GrammarChapter(title: 'can, may, will', description: '조동사'),
       GrammarChapter(title: 'would like to, had better, used to', description: '조동사'),
-      GrammarChapter(title: '명사적 용법의 to부정사', description: 'to부정사'),
-      GrammarChapter(title: '형용사적 용법, 부사적 용법의 to부정사', description: 'to부정사'),
       GrammarChapter(title: 'to부정사의 의미상의 주어, 시제, 태', description: 'to부정사'),
       GrammarChapter(title: '목적격 보어로 쓰이는 to부정사', description: 'to부정사'),
       GrammarChapter(title: 'to부정사 구문, 독립부정사', description: 'to부정사'),
@@ -104,7 +134,6 @@ const List<GrammarCategory> grammarCurriculum = [
       GrammarChapter(title: '명사적 용법의 to부정사', description: '부정사'),
       GrammarChapter(title: '형용사적 용법, 부사적 용법의 to부정사', description: '부정사'),
       GrammarChapter(title: '목적격 보어로 쓰이는 부정사', description: '부정사'),
-      GrammarChapter(title: '동명사의 역할', description: '동명사'),
       GrammarChapter(title: '동명사 vs. to부정사', description: '동명사'),
       GrammarChapter(title: '여러 가지 분사구문', description: '분사'),
       GrammarChapter(title: '여러 가지 비교구문', description: '비교'),
@@ -123,6 +152,8 @@ const List<GrammarCategory> grammarCurriculum = [
   GrammarCategory(
     title: '고등학교 영문법',
     description: '심화 및 확장: 복잡한 문장 구조를 이해하고, 준동사의 심화 용법 및 특수 구문을 학습합니다.',
+    minDifficulty: 3,
+    maxDifficulty: 6,
     chapters: [
       GrammarChapter(title: '구의 정리', description: '문장의 이해'),
       GrammarChapter(title: '문장의 종류', description: '문장의 이해'),
@@ -246,6 +277,8 @@ const List<GrammarCategory> grammarCurriculum = [
   GrammarCategory(
     title: '토익(TOEIC) 영문법',
     description: '실용 및 문제 풀이 중심: 비즈니스 및 일상생활에서의 실용성에 초점을 맞추며, 정답을 빠르게 찾는 능력이 중요합니다.',
+    minDifficulty: 3,
+    maxDifficulty: 6,
     chapters: [
       GrammarChapter(title: '주어와 동사 찾기 (수일치)', description: '문장의 구조'),
       GrammarChapter(title: '5형식 동사와 목적격 보어', description: '문장의 구조'),

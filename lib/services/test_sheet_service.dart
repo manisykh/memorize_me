@@ -16,19 +16,62 @@ import 'package:share_plus/share_plus.dart';
 import '../models/ai_quiz_model.dart';
 import '../models/word_model.dart';
 import '../providers/settings_provider.dart';
+import 'sentence_completion_matcher.dart';
 
 enum PdfExportType { questionsOnly, withAnswers }
 
 class TestSheetService {
   final HtmlEscape _htmlEscape = const HtmlEscape();
 
+  static bool canUseSentenceCompletion(Word word) {
+    return sentenceCompletionMatch(word) != null;
+  }
+
+  static SentenceCompletionMatch? sentenceCompletionMatch(Word word) {
+    final sentence = word.exampleSentence?.trim() ?? '';
+    if (sentence.isEmpty) return null;
+    final override = word.sentenceBlankAnswer?.trim() ?? '';
+    if (override.isNotEmpty) {
+      return SentenceCompletionMatcher.findLiteral(override, sentence);
+    }
+    final target = word.word.trim();
+    return target.isEmpty ? null : SentenceCompletionMatcher.find(target, sentence);
+  }
+
+  static bool hasMultipleSentenceForms(Word word) {
+    if ((word.sentenceBlankAnswer?.trim().isNotEmpty ?? false) ||
+        (word.exampleSentence?.trim().isEmpty ?? true)) {
+      return false;
+    }
+    final forms = SentenceCompletionMatcher.findAll(
+      word.word, word.exampleSentence!,
+    ).map((match) => match.answer.toLowerCase()).toSet();
+    return forms.length > 1;
+  }
+
+  static String _sentenceKey(Word word) =>
+      (word.exampleSentence ?? '').trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  static List<Word> sentenceCompletionCandidates(
+    List<Word> words, {
+    required bool repeatSharedSentences,
+  }) {
+    final seen = <String>{};
+    return words.where((word) =>
+        canUseSentenceCompletion(word) &&
+        (repeatSharedSentences || seen.add(_sentenceKey(word)))).toList();
+  }
+
   String _getQuestionText(Word word, SelfTestType type) {
     if (type == SelfTestType.wordToMeaning) return word.word;
     if (type == SelfTestType.meaningToWord) return word.meaning;
     if (type == SelfTestType.sentenceCompletion) {
-      if (word.exampleSentence == null || word.exampleSentence!.isEmpty) return word.meaning;
-      final pattern = RegExp(r'\b' + RegExp.escape(word.word) + r'\b', caseSensitive: false);
-      return word.exampleSentence!.replaceAll(pattern, '_________');
+      if (!canUseSentenceCompletion(word)) {
+        throw StateError('예문에 해당 단어 표기가 없어 문장 완성 빈칸을 만들 수 없습니다.');
+      }
+      final sentence = word.exampleSentence!;
+      final match = sentenceCompletionMatch(word)!;
+      return sentence.replaceRange(match.start, match.end, '_________');
     }
     return '';
   }
@@ -36,7 +79,9 @@ class TestSheetService {
   String _getAnswerText(Word word, SelfTestType type) {
     if (type == SelfTestType.wordToMeaning) return word.meaning;
     if (type == SelfTestType.meaningToWord) return word.word;
-    if (type == SelfTestType.sentenceCompletion) return word.word;
+    if (type == SelfTestType.sentenceCompletion) {
+      return sentenceCompletionMatch(word)!.answer;
+    }
     return '';
   }
 
@@ -100,13 +145,28 @@ class TestSheetService {
     return options.length > 1 ? options : const [];
   }
 
-  List<Map<String, dynamic>> _prepareTestData(List<Word> allWords, AppSettings settings) {
+  List<Map<String, dynamic>> prepareTestData(List<Word> allWords, AppSettings settings) {
     if (allWords.isEmpty) return [];
+    if (settings.testTypes.isEmpty) {
+      throw StateError('시험 유형을 하나 이상 선택해주세요.');
+    }
 
-    final sourceCopy = List<Word>.from(allWords);
+    final sentenceOnly = settings.testTypes.length == 1 &&
+        settings.testTypes.contains(SelfTestType.sentenceCompletion);
+    final sourceCopy = sentenceOnly
+        ? sentenceCompletionCandidates(
+            allWords,
+            repeatSharedSentences: settings.repeatSharedSentences,
+          )
+        : allWords.where((word) => settings.testTypes.any((type) =>
+              type != SelfTestType.sentenceCompletion ||
+              canUseSentenceCompletion(word))).toList();
+    if (sourceCopy.isEmpty) {
+      throw StateError('문장 완성 문제를 만들 수 없습니다. 예문에 해당 단어가 포함되어 있는지 확인해주세요.');
+    }
     final random = Random();
     final sessionWords = <Word>[];
-    final wordCount = settings.wordCount.clamp(1, allWords.length);
+    final wordCount = settings.wordCount.clamp(1, sourceCopy.length);
 
     for (int i = 0; i < wordCount; i++) {
       if (sourceCopy.isEmpty) break;
@@ -114,23 +174,28 @@ class TestSheetService {
       sessionWords.add(sourceCopy.removeAt(randomIndex));
     }
 
-    List<Map<String, dynamic>> testData = [];
+    final testData = <Map<String, dynamic>>[];
+    final usedSentences = <String>{};
     for (final word in sessionWords) {
       final availableTypes = List<SelfTestType>.from(settings.testTypes);
 
       if (availableTypes.contains(SelfTestType.sentenceCompletion) &&
-          (word.exampleSentence == null ||
-              word.exampleSentence!.isEmpty ||
-              word.exampleSentenceTranslation == null ||
-              word.exampleSentenceTranslation!.isEmpty)) {
+          !canUseSentenceCompletion(word)) {
+        availableTypes.remove(SelfTestType.sentenceCompletion);
+      }
+      if (!settings.repeatSharedSentences &&
+          usedSentences.contains(_sentenceKey(word))) {
         availableTypes.remove(SelfTestType.sentenceCompletion);
       }
 
       if (availableTypes.isEmpty) {
-        availableTypes.add(SelfTestType.meaningToWord);
+        throw StateError('선택한 시험 유형으로 출제할 수 없는 단어입니다.');
       }
 
       final currentType = availableTypes[random.nextInt(availableTypes.length)];
+      if (currentType == SelfTestType.sentenceCompletion) {
+        usedSentences.add(_sentenceKey(word));
+      }
       final questionText = _getQuestionText(word, currentType);
       final answerText = _getAnswerText(word, currentType);
       final questionData = <String, dynamic>{
@@ -203,7 +268,7 @@ class TestSheetService {
     String? savePath,
     bool openAfterSave = true,
   }) async {
-    final testData = _prepareTestData(allWords, settings);
+    final testData = prepareTestData(allWords, settings);
     if (testData.isEmpty) throw Exception("시험지를 생성할 단어가 없습니다.");
 
     final font = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Regular.ttf"));
@@ -297,7 +362,7 @@ class TestSheetService {
     String? savePath,
     bool openAfterSave = true,
   }) async {
-    final testData = _prepareTestData(allWords, settings);
+    final testData = prepareTestData(allWords, settings);
     if (testData.isEmpty) throw Exception("시험지를 생성할 단어가 없습니다.");
 
     final html = _generateWordTestHtml(title, testData, settings);
@@ -448,7 +513,7 @@ class TestSheetService {
   }
 
   List<int>? _generateExcelBytes(List<Word> allWords, AppSettings settings) {
-    final testData = _prepareTestData(allWords, settings);
+    final testData = prepareTestData(allWords, settings);
     if (testData.isEmpty) throw Exception("시험지를 생성할 단어가 없습니다.");
     var excel = Excel.createExcel();
     final excelFontSize = settings.fontSize.round().clamp(8, 20).toInt();

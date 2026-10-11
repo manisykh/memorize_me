@@ -63,6 +63,7 @@ class AiQuestion {
   final String type;
   final String? questionFormat,
       targetWord,
+      grammarChapterId,
       passage,
       script,
       question,
@@ -75,6 +76,7 @@ class AiQuestion {
     required this.type,
     this.questionFormat,
     this.targetWord,
+    this.grammarChapterId,
     this.passage,
     this.script,
     this.question,
@@ -90,6 +92,7 @@ class AiQuestion {
       type: _stringOrEmpty(json['type']),
       questionFormat: _stringOrNull(json['questionFormat']),
       targetWord: _stringOrNull(json['targetWord']),
+      grammarChapterId: _stringOrNull(json['chapterId']),
       passage: _stringOrNull(json['passage']),
       script: _stringOrNull(json['script']),
       question: _stringOrNull(json['question']),

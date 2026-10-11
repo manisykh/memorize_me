@@ -1,20 +1,22 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/entitlement_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/wordbook_manager.dart';
 import '../services/study_sound_service.dart';
 import '../themes/app_theme.dart';
+import '../themes/memorize_identity.dart';
 import '../widgets/ai_settings_card.dart';
-import '../widgets/glassmorphic_card.dart';
+import '../widgets/google_account_avatar.dart';
 import '../widgets/study_guide.dart';
 import 'onboarding_screen.dart';
 import 'select_spreadsheet_screen.dart';
 import 'tts_settings_screen.dart';
+import 'wordbook_management_screen.dart';
 
 class AppSettingsScreen extends StatefulWidget {
   const AppSettingsScreen({super.key});
@@ -43,88 +45,199 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final identity = MemorizeIdentity.of(theme);
     final canPop = ModalRoute.of(context)?.canPop ?? false;
+    final authProvider = context.watch<AuthProvider>();
+    final themeNotifier = context.watch<ThemeNotifier>();
+    final manager = context.watch<WordbookManager>();
+    final activeWordbook = manager.activeWordbook;
+    final googleUser = authProvider.currentUser;
+    final accountStatus =
+        authProvider.isGoogleDriveConnected
+            ? '연결됨'
+            : authProvider.hasGoogleCloudIdentity
+            ? '계정 보관됨'
+            : '연결 필요';
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: identity.canvas,
       appBar: canPop ? AppBar(automaticallyImplyLeading: true) : null,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
+          key: const PageStorageKey<String>('memorize-settings-identity-v1'),
+          padding: const EdgeInsets.fromLTRB(
+            MemorizeIdentity.pagePadding,
+            18,
+            MemorizeIdentity.pagePadding,
+            28,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 '앱 설정',
-                style: theme.textTheme.displaySmall?.copyWith(
-                  fontSize: 29,
-                  height: 1.08,
+                style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w900,
-                  color: theme.colorScheme.onSurface,
+                  color: identity.ink,
                 ),
               ),
-              const SizedBox(height: 18),
-              _buildSettingsExpansion(
-                theme: theme,
-                icon: CupertinoIcons.person_crop_circle,
-                title: '계정과 Google 시트',
-                description: 'Google 연결, 초기 사용자 혜택과 클라우드 정보를 관리합니다.',
-                expanded: _isAccountSettingsExpanded,
-                onToggle:
-                    () => setState(
-                      () => _isAccountSettingsExpanded = !_isAccountSettingsExpanded,
-                    ),
-                child: _buildGoogleAccountSection(context),
+              const SizedBox(height: 6),
+              Text(
+                '앱 사용 환경을 설정하고 관리합니다.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: identity.mutedInk,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              const SizedBox(height: 12),
-              _buildSettingsExpansion(
-                theme: theme,
-                icon: CupertinoIcons.paintbrush_fill,
-                title: '디자인',
-                description: '밝음, 어두움, 시력 보호 테마를 선택합니다.',
-                expanded: _isDesignSettingsExpanded,
-                onToggle:
-                    () => setState(
-                      () => _isDesignSettingsExpanded = !_isDesignSettingsExpanded,
+              const SizedBox(height: 20),
+              _SettingsGroup(
+                identity: identity,
+                children: [
+                  _SettingsIdentityRow(
+                    identity: identity,
+                    leading:
+                        googleUser != null
+                            ? GoogleAccountAvatar(
+                              account: googleUser,
+                              radius: 24,
+                            )
+                            : _SettingsIconBadge(
+                              icon: CupertinoIcons.person_crop_circle,
+                              color: identity.primaryAction,
+                              background: identity.softInfo,
+                            ),
+                    title: '계정과 Google 시트',
+                    subtitle:
+                        authProvider.isGoogleDriveConnected
+                            ? 'Google 시트가 연결되어 있어요.'
+                            : 'Google 연결과 클라우드 정보를 관리합니다.',
+                    trailing: _SettingsStatusChip(
+                      label: accountStatus,
+                      color:
+                          authProvider.isGoogleDriveConnected
+                              ? identity.success
+                              : identity.mutedInk,
+                      background:
+                          authProvider.isGoogleDriveConnected
+                              ? identity.softSuccess
+                              : identity.softContext,
                     ),
-                child: _buildThemeSettingsSection(context),
-              ),
-              const SizedBox(height: 12),
-              _buildSettingsExpansion(
-                theme: theme,
-                icon: CupertinoIcons.question_circle_fill,
-                title: '가이드',
-                description: '사용 방법과 주요 기능 소개를 다시 확인합니다.',
-                expanded: _isGuideSettingsExpanded,
-                onToggle:
-                    () => setState(
-                      () => _isGuideSettingsExpanded = !_isGuideSettingsExpanded,
+                    expanded: _isAccountSettingsExpanded,
+                    onTap:
+                        () => setState(
+                          () =>
+                              _isAccountSettingsExpanded =
+                                  !_isAccountSettingsExpanded,
+                        ),
+                    expandedChild: _buildGoogleAccountSection(context),
+                  ),
+                  _SettingsIdentityRow(
+                    identity: identity,
+                    leading: _SettingsIconBadge(
+                      icon: CupertinoIcons.paintbrush_fill,
+                      color: identity.primaryAction,
+                      background: identity.softInfo,
                     ),
-                child: _buildGuideSettingsSection(),
-              ),
-              const SizedBox(height: 12),
-              _buildSettingsExpansion(
-                theme: theme,
-                icon: CupertinoIcons.speaker_2_fill,
-                title: '소리와 음성',
-                description: '학습 효과음과 발음·듣기 음성을 설정합니다.',
-                expanded: _isSoundSettingsExpanded,
-                onToggle:
-                    () => setState(
-                      () => _isSoundSettingsExpanded = !_isSoundSettingsExpanded,
+                    title: '디자인',
+                    subtitle: '밝음 · 어두움 · 시력 보호',
+                    trailing: _ThemePreviewStrip(
+                      selectedTheme: themeNotifier.currentTheme,
                     ),
-                child: _buildSoundSettingsSection(),
+                    expanded: _isDesignSettingsExpanded,
+                    onTap:
+                        () => setState(
+                          () =>
+                              _isDesignSettingsExpanded =
+                                  !_isDesignSettingsExpanded,
+                        ),
+                    expandedChild: _buildThemeSettingsSection(context),
+                  ),
+                  _SettingsIdentityRow(
+                    identity: identity,
+                    leading: _SettingsIconBadge(
+                      icon: CupertinoIcons.book,
+                      color: identity.success,
+                      background: identity.softSuccess,
+                    ),
+                    title: '가이드',
+                    subtitle: '앱 사용법과 주요 기능을 확인합니다.',
+                    expanded: _isGuideSettingsExpanded,
+                    onTap:
+                        () => setState(
+                          () =>
+                              _isGuideSettingsExpanded =
+                                  !_isGuideSettingsExpanded,
+                        ),
+                    expandedChild: _buildGuideSettingsSection(),
+                  ),
+                  _SettingsIdentityRow(
+                    identity: identity,
+                    leading: _SettingsIconBadge(
+                      icon: CupertinoIcons.speaker_2_fill,
+                      color: identity.review,
+                      background: identity.softReview,
+                    ),
+                    title: '소리와 음성',
+                    subtitle: '효과음, 발음과 듣기 음성을 관리합니다.',
+                    expanded: _isSoundSettingsExpanded,
+                    onTap:
+                        () => setState(
+                          () =>
+                              _isSoundSettingsExpanded =
+                                  !_isSoundSettingsExpanded,
+                        ),
+                    expandedChild: _buildSoundSettingsSection(),
+                  ),
+                  _SettingsIdentityRow(
+                    identity: identity,
+                    leading: _SettingsIconBadge(
+                      icon: CupertinoIcons.sparkles,
+                      color: const Color(0xFF7846E8),
+                      background:
+                          theme.brightness == Brightness.dark
+                              ? identity.softInfo
+                              : const Color(0xFFF1ECFF),
+                    ),
+                    title: 'AI 모델과 API',
+                    subtitle: 'AI 제공업체, API 키와 자동 대체를 설정합니다.',
+                    expanded: _isAiSettingsExpanded,
+                    onTap:
+                        () => setState(
+                          () => _isAiSettingsExpanded = !_isAiSettingsExpanded,
+                        ),
+                    expandedChild: const AiSettingsCard(embedded: true),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              _buildSettingsExpansion(
-                theme: theme,
-                icon: CupertinoIcons.sparkles,
-                title: 'AI 모델과 API',
-                description: '사용할 AI와 API 키, 자동 대체 후보를 관리합니다.',
-                expanded: _isAiSettingsExpanded,
-                onToggle:
-                    () => setState(() => _isAiSettingsExpanded = !_isAiSettingsExpanded),
-                child: const AiSettingsCard(embedded: true),
+              const SizedBox(height: 24),
+              Text(
+                '학습 관리',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: identity.mutedInk,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _SettingsGroup(
+                identity: identity,
+                children: [
+                  _SettingsIdentityRow(
+                    identity: identity,
+                    leading: _SettingsIconBadge(
+                      icon: CupertinoIcons.book,
+                      color: identity.success,
+                      background: identity.softSuccess,
+                    ),
+                    title: '현재 학습 단어장',
+                    subtitle: activeWordbook?.name ?? '선택된 단어장이 없습니다.',
+                    onTap:
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const WordbookManagementScreen(),
+                          ),
+                        ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -135,7 +248,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
   Future<void> _loadConnectedSheetCount() async {
     final preferences = await SharedPreferences.getInstance();
-    final count = preferences.getStringList(_recentSpreadsheetsKey)?.length ?? 0;
+    final count =
+        preferences.getStringList(_recentSpreadsheetsKey)?.length ?? 0;
     if (!mounted) return;
     setState(() => _connectedSheetCount = count);
   }
@@ -169,9 +283,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   }
 
   Future<void> _openConnectedSheets() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const SelectSpreadsheetScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SelectSpreadsheetScreen()));
     await _loadConnectedSheetCount();
   }
 
@@ -267,10 +381,13 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     final googleUser = authProvider.currentUser;
     final isConnected = authProvider.isGoogleDriveConnected;
     final hasCloudIdentity = authProvider.hasGoogleCloudIdentity;
-    final isFounding = entitlement.isFoundingMember && entitlement.isServerConfirmed;
+    final isFounding =
+        entitlement.isFoundingMember && entitlement.isServerConfirmed;
     final isProtected = isFounding && hasCloudIdentity;
     final isBusy =
-        _isAccountActionRunning || authProvider.isLoading || entitlement.loading;
+        _isAccountActionRunning ||
+        authProvider.isLoading ||
+        entitlement.loading;
     final accountEmail = googleUser?.email ?? authProvider.cloudIdentityEmail;
 
     final foundingTitle =
@@ -296,7 +413,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
           Row(
             children: [
               if (googleUser != null)
-                GoogleUserCircleAvatar(identity: googleUser)
+                GoogleAccountAvatar(account: googleUser, radius: 21)
               else
                 Container(
                   width: 42,
@@ -340,7 +457,10 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
               ),
               if (isConnected)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: colors.primaryContainer,
                     borderRadius: BorderRadius.circular(8),
@@ -552,9 +672,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             subtitle: const Text('처음 시작, 초기 사용자 혜택, 학습과 AI 안내'),
             trailing: const Icon(CupertinoIcons.right_chevron),
             onTap:
-                () => Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (_) => const StudyGuideScreen())),
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const StudyGuideScreen()),
+                ),
           ),
           const Divider(height: 1),
           ListTile(
@@ -590,7 +710,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             title: const Text('학습 효과음'),
             subtitle: const Text('정답·오답과 카드 스와이프를 소리로 구분'),
             value: context.watch<StudySoundService>().enabled,
-            onChanged: (value) => context.read<StudySoundService>().setEnabled(value),
+            onChanged:
+                (value) => context.read<StudySoundService>().setEnabled(value),
           ),
           const Divider(height: 1),
           const Padding(
@@ -601,62 +722,261 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       ),
     );
   }
+}
 
-  Widget _buildSettingsExpansion({
-    required ThemeData theme,
-    required IconData icon,
-    required String title,
-    required String description,
-    required bool expanded,
-    required VoidCallback onToggle,
-    required Widget child,
-  }) {
-    return GlassmorphicCard(
-      borderRadius: 14,
-      padding: EdgeInsets.zero,
+class _SettingsGroup extends StatelessWidget {
+  final MemorizeIdentity identity;
+  final List<Widget> children;
+
+  const _SettingsGroup({required this.identity, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: identity.surface,
+        borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+        border: Border.all(color: identity.border),
+      ),
       child: Column(
         children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
-            leading: Icon(icon),
-            title: Text(
-              title,
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            subtitle: Text(description),
-            trailing: AnimatedRotation(
-              turns: expanded ? 0.5 : 0,
-              duration: const Duration(milliseconds: 180),
-              child: const Icon(CupertinoIcons.chevron_down),
-            ),
-            onTap: onToggle,
-          ),
-          ClipRect(
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeInOutCubic,
-              alignment: Alignment.topCenter,
-              child:
-                  expanded
-                      ? Column(
-                        key: ValueKey('$title-expanded'),
-                        children: [
-                          Divider(
-                            height: 1,
-                            color: theme.colorScheme.outlineVariant,
-                          ),
-                          child,
-                        ],
-                      )
-                      : SizedBox(
-                        key: ValueKey('$title-collapsed'),
-                        width: double.infinity,
-                      ),
-            ),
-          ),
+          for (var index = 0; index < children.length; index++) ...[
+            children[index],
+            if (index != children.length - 1)
+              Divider(height: 1, color: identity.border, indent: 74),
+          ],
         ],
       ),
     );
   }
+}
 
+class _SettingsIdentityRow extends StatelessWidget {
+  final MemorizeIdentity identity;
+  final Widget leading;
+  final String title;
+  final String subtitle;
+  final Widget? trailing;
+  final bool expanded;
+  final VoidCallback onTap;
+  final Widget? expandedChild;
+
+  const _SettingsIdentityRow({
+    required this.identity,
+    required this.leading,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.trailing,
+    this.expanded = false,
+    this.expandedChild,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Center(child: leading),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: identity.ink,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: identity.mutedInk,
+                            height: 1.38,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 8),
+                    Flexible(child: trailing!),
+                  ],
+                  const SizedBox(width: 6),
+                  AnimatedRotation(
+                    turns: expanded ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(
+                      CupertinoIcons.chevron_right,
+                      color: identity.mutedInk,
+                      size: 18,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        ClipRect(
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeInOutCubic,
+            alignment: Alignment.topCenter,
+            child:
+                expanded && expandedChild != null
+                    ? Column(
+                      children: [
+                        Divider(height: 1, color: identity.border),
+                        expandedChild!,
+                      ],
+                    )
+                    : const SizedBox(width: double.infinity),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsIconBadge extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final Color background;
+
+  const _SettingsIconBadge({
+    required this.icon,
+    required this.color,
+    required this.background,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Icon(icon, color: color, size: 24),
+    );
+  }
+}
+
+class _SettingsStatusChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  final Color background;
+
+  const _SettingsStatusChip({
+    required this.label,
+    required this.color,
+    required this.background,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemePreviewStrip extends StatelessWidget {
+  final AppThemeType selectedTheme;
+
+  const _ThemePreviewStrip({required this.selectedTheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ThemePreview(
+          icon: CupertinoIcons.sun_max_fill,
+          foreground: const Color(0xFFFF9800),
+          background: Colors.white,
+          selected: selectedTheme == AppThemeType.lightGreen,
+        ),
+        const SizedBox(width: 5),
+        _ThemePreview(
+          icon: CupertinoIcons.moon_fill,
+          foreground: Colors.white,
+          background: const Color(0xFF17243A),
+          selected: selectedTheme == AppThemeType.dark,
+        ),
+        const SizedBox(width: 5),
+        _ThemePreview(
+          icon: CupertinoIcons.leaf_arrow_circlepath,
+          foreground: const Color(0xFF31835E),
+          background: const Color(0xFFE5F2DD),
+          selected: selectedTheme == AppThemeType.visionProtection,
+        ),
+      ],
+    );
+  }
+}
+
+class _ThemePreview extends StatelessWidget {
+  final IconData icon;
+  final Color foreground;
+  final Color background;
+  final bool selected;
+
+  const _ThemePreview({
+    required this.icon,
+    required this.foreground,
+    required this.background,
+    required this.selected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 31,
+      height: 31,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(
+          color: selected ? const Color(0xFF1E73F7) : const Color(0xFFD9E2F0),
+          width: selected ? 2 : 1,
+        ),
+      ),
+      child: Icon(icon, color: foreground, size: 16),
+    );
+  }
 }

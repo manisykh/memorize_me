@@ -21,8 +21,10 @@ import 'word_list_provider.dart';
 class WordbookManager extends ChangeNotifier {
   static const String _studyActivityDatesKey = 'study_activity_dates';
   static const String _lastActiveWordbookIdKey = 'last_active_wordbook_id';
-  static const String _lastActiveWordbookDbFileNameKey = 'last_active_wordbook_db_file_name';
+  static const String _lastActiveWordbookDbFileNameKey =
+      'last_active_wordbook_db_file_name';
   static const String _lastActiveWordbookNameKey = 'last_active_wordbook_name';
+  static const int _builtinContentRevision = 2;
   static const List<BuiltinWordbookTemplate> _builtinTemplates = [
     BuiltinWordbookTemplate(
       name: '필수 영어단어 1단계',
@@ -139,7 +141,9 @@ class WordbookManager extends ChangeNotifier {
   }
 
   Future<void> loadInitialMetadata() {
-    return _metadataInitializationFuture ??= _loadInitialMetadata().catchError((error) {
+    return _metadataInitializationFuture ??= _loadInitialMetadata().catchError((
+      error,
+    ) {
       _metadataInitializationFuture = null;
       throw error;
     });
@@ -153,9 +157,12 @@ class WordbookManager extends ChangeNotifier {
         ..clear()
         ..addAll(prefs.getStringList(_studyActivityDatesKey) ?? const []);
       final lastActiveId = prefs.getInt(_lastActiveWordbookIdKey);
-      final lastActiveDbFileName = prefs.getString(_lastActiveWordbookDbFileNameKey);
+      final lastActiveDbFileName = prefs.getString(
+        _lastActiveWordbookDbFileNameKey,
+      );
 
       await _loadWordbooks(shouldNotify: false);
+      await _synchronizeInstalledBuiltinContent(prefs);
       await _loadStudyPlans(shouldNotify: false);
       await StudyHistoryService.instance.ensureLoaded();
 
@@ -170,8 +177,8 @@ class WordbookManager extends ChangeNotifier {
   }
 
   Future<void> loadActiveWordbookWords() {
-    return _activeWordbookInitializationFuture ??=
-        _loadActiveWordbookWords().catchError((error) {
+    return _activeWordbookInitializationFuture ??= _loadActiveWordbookWords()
+        .catchError((error) {
           _activeWordbookInitializationFuture = null;
           throw error;
         });
@@ -234,10 +241,46 @@ class WordbookManager extends ChangeNotifier {
       );
       final savedWordbook = await _dbService.addWordbook(wordbook);
       await _dbService.addWordsInBatch(savedWordbook.dbFileName, words);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _builtinContentRevisionKey(template),
+        _builtinContentRevision,
+      );
       await _loadWordbooks(shouldNotify: false);
-      final loadedWordbook = getWordbookByDbFileName(savedWordbook.dbFileName) ?? savedWordbook;
+      final loadedWordbook =
+          getWordbookByDbFileName(savedWordbook.dbFileName) ?? savedWordbook;
       await setActiveWordbook(loadedWordbook);
       return loadedWordbook;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<Wordbook> createManualWordbook(String name) async {
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty || trimmedName.length > 80) {
+      throw ArgumentError('단어장 이름은 1~80자로 입력해주세요.');
+    }
+    if (_wordbooks.any(
+      (book) => book.name.toLowerCase() == trimmedName.toLowerCase(),
+    )) {
+      throw StateError('같은 이름의 단어장이 이미 있습니다.');
+    }
+
+    _setLoading(true);
+    try {
+      final wordbook = Wordbook(
+        name: trimmedName,
+        dbFileName:
+            'wordbook_manual_${DateTime.now().microsecondsSinceEpoch}.db',
+        source: WordbookSource.manual,
+      );
+      await _dbService.ensureWordbookDatabase(wordbook.dbFileName);
+      final saved = await _dbService.addWordbook(wordbook);
+      await _loadWordbooks(shouldNotify: false);
+      await setActiveWordbook(saved);
+      notifyListeners();
+      return saved;
     } finally {
       _setLoading(false);
     }
@@ -252,8 +295,54 @@ class WordbookManager extends ChangeNotifier {
     );
   }
 
+  String _builtinContentRevisionKey(BuiltinWordbookTemplate template) {
+    return 'builtin_content_revision_${template.dbFileName}';
+  }
+
+  Future<void> _synchronizeInstalledBuiltinContent(
+    SharedPreferences prefs,
+  ) async {
+    for (final template in _builtinTemplates) {
+      final installed = getWordbookByDbFileName(template.dbFileName);
+      if (installed == null ||
+          (prefs.getInt(_builtinContentRevisionKey(template)) ?? 0) >=
+              _builtinContentRevision) {
+        continue;
+      }
+
+      final currentWords = await _dbService.getAllWords(template.dbFileName);
+      final seedWords = await _loadBuiltinWords(template);
+      if (currentWords.length != seedWords.length ||
+          seedWords.length != template.targetCount) {
+        continue;
+      }
+
+      currentWords.sort((a, b) => (a.id ?? 0).compareTo(b.id ?? 0));
+      final changedWords = <Word>[];
+      for (var index = 0; index < seedWords.length; index++) {
+        final current = currentWords[index];
+        final seed = seedWords[index];
+        if (current.word == seed.word && current.meaning == seed.meaning) {
+          continue;
+        }
+        changedWords.add(
+          current.copyWith(word: seed.word, meaning: seed.meaning),
+        );
+      }
+
+      if (changedWords.isNotEmpty) {
+        await _dbService.updateWordSrsBatch(template.dbFileName, changedWords);
+      }
+      await prefs.setInt(
+        _builtinContentRevisionKey(template),
+        _builtinContentRevision,
+      );
+    }
+  }
+
   Future<void> _loadStudyPlans({bool shouldNotify = true}) async {
-    final wordbookDbNames = _wordbooks.map((wordbook) => wordbook.dbFileName).toSet();
+    final wordbookDbNames =
+        _wordbooks.map((wordbook) => wordbook.dbFileName).toSet();
     _studyPlans =
         (await _dbService.getStudyPlans())
             .where((plan) => wordbookDbNames.contains(plan.dbFileName))
@@ -304,7 +393,11 @@ class WordbookManager extends ChangeNotifier {
 
     _activeWordbook = wordbook;
     if (wordbook != null) {
-      await _wordListNotifier.loadWords(wordbook.dbFileName);
+      final isManual = wordbook.source == WordbookSource.manual;
+      if (isManual) {
+        await _dbService.ensureWordbookDatabase(wordbook.dbFileName);
+      }
+      await _wordListNotifier.loadWords(wordbook.dbFileName, force: isManual);
     } else {
       _wordListNotifier.clearWords();
     }
@@ -317,7 +410,10 @@ class WordbookManager extends ChangeNotifier {
       } else {
         await prefs.remove(_lastActiveWordbookIdKey);
       }
-      await prefs.setString(_lastActiveWordbookDbFileNameKey, wordbook.dbFileName);
+      await prefs.setString(
+        _lastActiveWordbookDbFileNameKey,
+        wordbook.dbFileName,
+      );
       await prefs.setString(_lastActiveWordbookNameKey, wordbook.name);
     } else {
       await prefs.remove(_lastActiveWordbookIdKey);
@@ -333,24 +429,33 @@ class WordbookManager extends ChangeNotifier {
 
   List<Word> getWordsForReview() {
     if (_activeWordbook == null) return [];
-    return _srsService.dueWords(wordsAvailableForPlan(_wordListNotifier.words, plan: activeStudyPlan));
+    return _srsService.dueWords(
+      wordsAvailableForPlan(_wordListNotifier.words, plan: activeStudyPlan),
+    );
   }
 
   List<Word> getPendingMcqReviewWords() {
-    return quizReviewEntries().where((e) =>
-        e.pendingModes.contains(StudyHistoryMode.multipleChoice)).map((e) => e.word).toList();
+    return quizReviewEntries()
+        .where((e) => e.pendingModes.contains(StudyHistoryMode.multipleChoice))
+        .map((e) => e.word)
+        .toList();
   }
 
   List<Word> getPendingSpellingReviewWords() {
-    return quizReviewEntries().where((e) =>
-        e.pendingModes.contains(StudyHistoryMode.spelling)).map((e) => e.word).toList();
+    return quizReviewEntries()
+        .where((e) => e.pendingModes.contains(StudyHistoryMode.spelling))
+        .map((e) => e.word)
+        .toList();
   }
 
   List<QuizReviewEntry> quizReviewEntries({bool cumulative = false}) {
     if (_activeWordbook == null) return [];
-    return const QuizReviewService().entries(dbFileName: _activeWordbook!.dbFileName,
-      words: _wordListNotifier.words, sessions: StudyHistoryService.instance.sessions,
-      cumulative: cumulative);
+    return const QuizReviewService().entries(
+      dbFileName: _activeWordbook!.dbFileName,
+      words: _wordListNotifier.words,
+      sessions: StudyHistoryService.instance.sessions,
+      cumulative: cumulative,
+    );
   }
 
   StudyPlan? planFor(Wordbook? wordbook) {
@@ -363,40 +468,73 @@ class WordbookManager extends ChangeNotifier {
 
   StudyPlan? planForSession(Wordbook wordbook, List<Word> words) {
     final plan = planFor(wordbook);
-    if (plan == null || plan.status != StudyPlanStatus.active || words.isEmpty) return null;
+    if (plan == null || plan.status != StudyPlanStatus.active || words.isEmpty) {
+      return null;
+    }
     if (plan.mode == StudyPlanMode.free) {
-      final keys = StudyScheduleService().bundleKeys(_wordListNotifier.words, plan);
-      if (words.any((word) => !keys.contains(StudyScheduleService.wordKey(word)))) return null;
+      final keys = StudyScheduleService().bundleKeys(
+        _wordListNotifier.words,
+        plan,
+      );
+      if (words.any(
+        (word) => !keys.contains(StudyScheduleService.wordKey(word)),
+      )) {
+        return null;
+      }
     }
     return plan;
   }
 
   StudyPlan? get activeStudyPlan => planFor(_activeWordbook);
 
-  List<Word> wordsAvailableForPlan(List<Word> words, {required StudyPlan? plan}) {
+  List<Word> wordsAvailableForPlan(
+    List<Word> words, {
+    required StudyPlan? plan,
+  }) {
     final activePlan = plan;
     return StudyScheduleService().availableWords(
-      words, activePlan,
-      introducedToday: activePlan == null ? 0 :
-          StudyHistoryService.instance.introducedKeys(activePlan.dbFileName, DateTime.now()).length,
+      words,
+      activePlan,
+      introducedToday:
+          activePlan == null
+              ? 0
+              : StudyHistoryService.instance
+                  .introducedKeys(activePlan.dbFileName, DateTime.now())
+                  .length,
     );
   }
 
   int lockedNewWordCount(List<Word> words, {required StudyPlan? plan}) {
-    final available = wordsAvailableForPlan(words, plan: plan).map(StudyScheduleService.wordKey).toSet();
-    return words.where((w) => _srsService.isNewWord(w) && !available.contains(StudyScheduleService.wordKey(w))).length;
+    final available =
+        wordsAvailableForPlan(
+          words,
+          plan: plan,
+        ).map(StudyScheduleService.wordKey).toSet();
+    return words
+        .where(
+          (w) =>
+              _srsService.isNewWord(w) &&
+              !available.contains(StudyScheduleService.wordKey(w)),
+        )
+        .length;
   }
 
   int plannedNewWordSessionCount(List<Word> words, {required StudyPlan? plan}) {
     final activePlan = plan;
     final available = wordsAvailableForPlan(words, plan: activePlan);
     final newCount = available.where(_srsService.isNewWord).length;
-    if (activePlan == null || activePlan.status != StudyPlanStatus.active || activePlan.mode == StudyPlanMode.free) return newCount;
+    if (activePlan == null ||
+        activePlan.status != StudyPlanStatus.active ||
+        activePlan.mode == StudyPlanMode.free) {
+      return newCount;
+    }
     return min(activePlan.dailyNewTarget, newCount);
   }
 
-  int recommendedNewWordSessionCount(List<Word> words, {required StudyPlan? plan}) =>
-      plannedNewWordSessionCount(words, plan: plan);
+  int recommendedNewWordSessionCount(
+    List<Word> words, {
+    required StudyPlan? plan,
+  }) => plannedNewWordSessionCount(words, plan: plan);
 
   Future<StudyPlan?> createStudyPlanForWordbook(
     Wordbook wordbook, {
@@ -410,26 +548,42 @@ class WordbookManager extends ChangeNotifier {
     if (words.isEmpty) return null;
     final now = DateTime.now();
     final existing = planFor(wordbook);
-    final keys = _orderedPlanWords(words).map(StudyScheduleService.wordKey).toList();
+    final keys =
+        _orderedPlanWords(words).map(StudyScheduleService.wordKey).toList();
     final oldOrder = existing?.wordOrder ?? const <String>[];
     final oldKeys = oldOrder.toSet();
     final order = [...oldOrder, ...keys.where((key) => !oldKeys.contains(key))];
     final restart = existing == null || existing.mode != mode || resetSchedule;
-    final revision = max((existing?.revision ?? 0) + 1,
-        await _dbService.nextStudyPlanRevision(wordbook.dbFileName));
-    final groups = (bundleCount ?? existing?.chunkCount ?? 10).clamp(1, order.length).toInt();
+    final revision = max(
+      (existing?.revision ?? 0) + 1,
+      await _dbService.nextStudyPlanRevision(wordbook.dbFileName),
+    );
+    final groups =
+        (bundleCount ?? existing?.chunkCount ?? 10)
+            .clamp(1, order.length)
+            .toInt();
     final plan = StudyPlan(
-      id: existing?.id, wordbookId: wordbook.id, dbFileName: wordbook.dbFileName,
-      wordbookName: wordbook.name, totalWords: order.length,
-      chunkSize: max(1, chunkSize), dailyNewTarget: max(1, dailyNewTarget),
+      id: existing?.id,
+      wordbookId: wordbook.id,
+      dbFileName: wordbook.dbFileName,
+      wordbookName: wordbook.name,
+      totalWords: order.length,
+      chunkSize: max(1, chunkSize),
+      dailyNewTarget: max(1, dailyNewTarget),
       startDate: restart ? studyDateKey(now) : existing.startDate,
       createdAt: existing?.createdAt ?? now.toIso8601String(),
-      mode: mode, bundleCount: groups,
+      mode: mode,
+      bundleCount: groups,
       selectedBundle: (existing?.selectedBundle ?? 1).clamp(1, groups).toInt(),
-      revision: revision, wordOrder: order,
-      scheduleWordKeys: restart
-          ? _orderedPlanWords(words).where(_srsService.isNewWord).map(StudyScheduleService.wordKey).toList()
-          : existing.scheduleWordKeys,
+      revision: revision,
+      wordOrder: order,
+      scheduleWordKeys:
+          restart
+              ? _orderedPlanWords(words)
+                  .where(_srsService.isNewWord)
+                  .map(StudyScheduleService.wordKey)
+                  .toList()
+              : existing.scheduleWordKeys,
     );
     final saved = await _dbService.saveStudyPlan(plan);
     _studyPlans.removeWhere((p) => p.dbFileName == wordbook.dbFileName);
@@ -440,11 +594,14 @@ class WordbookManager extends ChangeNotifier {
   }
 
   Future<void> selectPlanBundle(StudyPlan plan, int bundle) async {
-    final current = _studyPlans.where((p) => p.dbFileName == plan.dbFileName).firstOrNull;
+    final current =
+        _studyPlans.where((p) => p.dbFileName == plan.dbFileName).firstOrNull;
     if (current == null || current.mode != StudyPlanMode.free) return;
-    final saved = await _dbService.saveStudyPlan(current.copyWith(
-      selectedBundle: bundle.clamp(1, current.chunkCount).toInt(),
-    ));
+    final saved = await _dbService.saveStudyPlan(
+      current.copyWith(
+        selectedBundle: bundle.clamp(1, current.chunkCount).toInt(),
+      ),
+    );
     _studyPlans[_studyPlans.indexOf(current)] = saved;
     _statsRevision++;
     notifyListeners();
@@ -483,7 +640,9 @@ class WordbookManager extends ChangeNotifier {
           final key = StudyScheduleService.wordKey(word);
           if (identical(pending[key], word)) pending.remove(key);
         }
-        if (_unsavedSrs.values.every((words) => words.isEmpty)) srsSaveError = null;
+        if (_unsavedSrs.values.every((words) => words.isEmpty)) {
+          srsSaveError = null;
+        }
       } catch (error) {
         srsSaveError = error;
       }
@@ -495,17 +654,22 @@ class WordbookManager extends ChangeNotifier {
   Future<void> retrySrsSaving() async {
     await _srsWrites;
     for (final entry in _unsavedSrs.entries.toList()) {
-      if (entry.value.isNotEmpty) await queueWordsSrsData(entry.key, entry.value.values.toList());
+      if (entry.value.isNotEmpty) {
+        await queueWordsSrsData(entry.key, entry.value.values.toList());
+      }
     }
   }
 
   List<Word> latestStudyWords(String dbFileName, List<Word> words) {
     final latest = <String, Word>{
       if (_wordListNotifier.activeDbFileName == dbFileName)
-        for (final word in _wordListNotifier.words) StudyScheduleService.wordKey(word): word,
+        for (final word in _wordListNotifier.words)
+          StudyScheduleService.wordKey(word): word,
       ...?_unsavedSrs[dbFileName],
     };
-    return words.map((word) => latest[StudyScheduleService.wordKey(word)] ?? word).toList();
+    return words
+        .map((word) => latest[StudyScheduleService.wordKey(word)] ?? word)
+        .toList();
   }
 
   Future<List<Word>> getAllWordsFrom(Wordbook wordbook) async {
@@ -520,7 +684,9 @@ class WordbookManager extends ChangeNotifier {
     _studyActivityDates.add(todayKey);
     final sortedDates = _studyActivityDates.toList()..sort();
     final trimmedDates =
-        sortedDates.length > 370 ? sortedDates.sublist(sortedDates.length - 370) : sortedDates;
+        sortedDates.length > 370
+            ? sortedDates.sublist(sortedDates.length - 370)
+            : sortedDates;
     _studyActivityDates
       ..clear()
       ..addAll(trimmedDates);
@@ -555,11 +721,24 @@ class WordbookManager extends ChangeNotifier {
   }
 
   List<Word> _orderedPlanWords(List<Word> words) {
-    return List<Word>.from(words)..sort((a, b) => (a.id ?? 0).compareTo(b.id ?? 0));
+    return List<Word>.from(words)
+      ..sort((a, b) => (a.id ?? 0).compareTo(b.id ?? 0));
   }
 
-  Future<void> updateWordsInWordbook(Wordbook wordbook, List<Word> words) async {
+  Future<void> updateWordsInWordbook(
+    Wordbook wordbook,
+    List<Word> words,
+  ) async {
     await _dbService.updateWordSrsBatch(wordbook.dbFileName, words);
+    _statsRevision++;
+    if (_activeWordbook?.id == wordbook.id) {
+      await _wordListNotifier.refreshWords();
+    }
+    notifyListeners();
+  }
+
+  Future<void> addWordToWordbook(Wordbook wordbook, Word word) async {
+    await _dbService.addWord(wordbook.dbFileName, word);
     _statsRevision++;
     if (_activeWordbook?.id == wordbook.id) {
       await _wordListNotifier.refreshWords();
@@ -581,7 +760,10 @@ class WordbookManager extends ChangeNotifier {
     _setLoading(true);
     final Map<Wordbook, List<Word>> searchResults = {};
     for (final wordbook in _wordbooks) {
-      final foundWords = await _dbService.searchWordsInWordbook(wordbook.dbFileName, query);
+      final foundWords = await _dbService.searchWordsInWordbook(
+        wordbook.dbFileName,
+        query,
+      );
       if (foundWords.isNotEmpty) {
         searchResults[wordbook] = foundWords;
       }
@@ -593,14 +775,16 @@ class WordbookManager extends ChangeNotifier {
   Future<void> createNewWordbookFromCsv(BuildContext context) async {
     _setLoading(true);
     try {
-      final imported = await const LocalWordFileService().pickAndPreview(context);
+      final imported = await const LocalWordFileService().pickAndPreview(
+        context,
+      );
       if (imported == null) return;
       final words = imported.words;
 
       if (words.isEmpty && context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('파일에서 유효한 단어와 뜻을 찾을 수 없습니다.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('파일에서 유효한 단어와 뜻을 찾을 수 없습니다.')),
+        );
         return;
       }
       if (!context.mounted) {
@@ -643,7 +827,11 @@ class WordbookManager extends ChangeNotifier {
                 ),
                 FilledButton(
                   child: const Text('생성'),
-                  onPressed: () => popDialogAfterUnfocus<String>(dialogContext, draftName.trim()),
+                  onPressed:
+                      () => popDialogAfterUnfocus<String>(
+                        dialogContext,
+                        draftName.trim(),
+                      ),
                 ),
               ],
             ),
@@ -671,7 +859,9 @@ class WordbookManager extends ChangeNotifier {
     } catch (e) {
       debugPrint("Error creating wordbook from local file: $e");
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('파일 처리 중 오류 발생: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('파일 처리 중 오류 발생: $e')));
       }
     } finally {
       _setLoading(false);
@@ -692,7 +882,10 @@ class WordbookManager extends ChangeNotifier {
     _setLoading(false);
   }
 
-  Future<MergeWordbooksResult> mergeWordbooks(Set<int> wordbookIds, String newName) async {
+  Future<MergeWordbooksResult> mergeWordbooks(
+    Set<int> wordbookIds,
+    String newName,
+  ) async {
     _setLoading(true);
     try {
       final List<Word> mergedWords = [];

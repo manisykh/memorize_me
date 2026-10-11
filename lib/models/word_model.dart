@@ -9,6 +9,7 @@ class Word {
   final List<String> additionalMeanings;
   final String? exampleSentence;
   final String? exampleSentenceTranslation; // ▼▼▼ [추가] 예문 번역 필드
+  final String? sentenceBlankAnswer;
   final int srsLevel;
   final String? nextReviewDate;
   final String? lastReviewedAt;
@@ -24,6 +25,7 @@ class Word {
     this.additionalMeanings = const [],
     this.exampleSentence,
     this.exampleSentenceTranslation, // ▼▼▼ [추가]
+    this.sentenceBlankAnswer,
     this.srsLevel = 0,
     this.nextReviewDate,
     this.lastReviewedAt,
@@ -41,6 +43,7 @@ class Word {
       'additionalMeanings': jsonEncode(additionalMeanings),
       'exampleSentence': exampleSentence,
       'exampleSentenceTranslation': exampleSentenceTranslation, // ▼▼▼ [추가]
+      'sentenceBlankAnswer': sentenceBlankAnswer,
       'srsLevel': srsLevel,
       'nextReviewDate': nextReviewDate,
       'lastReviewedAt': lastReviewedAt,
@@ -65,6 +68,7 @@ class Word {
       additionalMeanings: _decodeAdditionalMeanings(map['additionalMeanings']),
       exampleSentence: map['exampleSentence'],
       exampleSentenceTranslation: map['exampleSentenceTranslation'], // ▼▼▼ [추가]
+      sentenceBlankAnswer: map['sentenceBlankAnswer'],
       srsLevel: map['srsLevel'] ?? 0,
       nextReviewDate: map['nextReviewDate'],
       lastReviewedAt: map['lastReviewedAt'],
@@ -82,6 +86,7 @@ class Word {
     List<String>? additionalMeanings,
     String? exampleSentence,
     String? exampleSentenceTranslation, // ▼▼▼ [추가]
+    String? sentenceBlankAnswer,
     int? srsLevel,
     String? nextReviewDate,
     String? lastReviewedAt,
@@ -98,6 +103,7 @@ class Word {
       exampleSentence: exampleSentence ?? this.exampleSentence,
       exampleSentenceTranslation:
           exampleSentenceTranslation ?? this.exampleSentenceTranslation, // ▼▼▼ [추가]
+      sentenceBlankAnswer: sentenceBlankAnswer ?? this.sentenceBlankAnswer,
       srsLevel: srsLevel ?? this.srsLevel,
       nextReviewDate: nextReviewDate ?? this.nextReviewDate,
       lastReviewedAt: lastReviewedAt ?? this.lastReviewedAt,

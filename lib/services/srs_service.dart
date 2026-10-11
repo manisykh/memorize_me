@@ -10,7 +10,12 @@ enum SrsDifficulty { again, good }
 
 enum SrsUpdateSource { flashcard, multipleChoiceQuiz, spellingQuiz }
 
-enum SrsStage { newWord, due, learning, mature }
+/// A word's persistent memory stage.
+///
+/// `reviewing` is intentionally not included here. It is a transient session
+/// state while a due word is open in a review flow, not a state persisted on
+/// the word itself.
+enum SrsStage { newWord, learning, scheduled, due, mature }
 
 enum LearningFocus { review, newWords, quiz, rest }
 
@@ -32,42 +37,62 @@ class DailyLearningPlan {
   final List<Word> dueWords;
   final List<Word> newWords;
   final List<Word> learningWords;
+  final List<Word> scheduledWords;
   final List<Word> matureWords;
 
   const DailyLearningPlan({
     required this.dueWords,
     required this.newWords,
     required this.learningWords,
+    required this.scheduledWords,
     required this.matureWords,
   });
 
   bool get hasReview => dueWords.isNotEmpty;
   bool get hasNewWords => newWords.isNotEmpty;
-  bool get canTakeQuiz => dueWords.isNotEmpty || learningWords.isNotEmpty;
+  bool get canTakeQuiz =>
+      dueWords.isNotEmpty ||
+      learningWords.isNotEmpty ||
+      scheduledWords.isNotEmpty;
   int get suggestedNewWordBatchSize => newWords.length;
 }
 
 class SrsService {
   // Always pass the question's initial snapshot so retries cannot stack penalties.
-  Word updateQuizSrs({required Word word, required bool spelling,
-      required bool cleanCorrect, DateTime? now}) {
+  Word updateQuizSrs({
+    required Word word,
+    required bool spelling,
+    required bool cleanCorrect,
+    DateTime? now,
+  }) {
     final date = now ?? DateTime.now();
     final day = DateTime(date.year, date.month, date.day);
     final sameDay = wasReviewedToday(word, baseDate: day);
-    final level = cleanCorrect
-        ? (sameDay ? word.srsLevel : min(_srsIntervals.length - 1, word.srsLevel + 1))
-        : max(0, word.srsLevel - 1);
+    final level =
+        cleanCorrect
+            ? (sameDay
+                ? word.srsLevel
+                : min(_srsIntervals.length - 1, word.srsLevel + 1))
+            : max(0, word.srsLevel - 1);
     final previousDue = reviewDateFor(word);
-    final next = !cleanCorrect ? day : sameDay && previousDue != null
-        ? (previousDue.isAfter(day) ? previousDue : day.add(const Duration(days: 1)))
-        : day.add(Duration(days: _srsIntervals[level]));
+    final next =
+        !cleanCorrect
+            ? day
+            : sameDay && previousDue != null
+            ? (previousDue.isAfter(day)
+                ? previousDue
+                : day.add(const Duration(days: 1)))
+            : day.add(Duration(days: _srsIntervals[level]));
     return word.copyWith(
-      srsLevel: level, nextReviewDate: DateFormat('yyyy-MM-dd').format(next),
+      srsLevel: level,
+      nextReviewDate: DateFormat('yyyy-MM-dd').format(next),
       lastReviewedAt: DateFormat('yyyy-MM-dd').format(day),
       correctStreak: cleanCorrect ? word.correctStreak + (sameDay ? 0 : 1) : 0,
       incorrectCount: word.incorrectCount + (cleanCorrect ? 0 : 1),
-      pendingMcqReview: spelling ? word.pendingMcqReview : (cleanCorrect ? 0 : 1),
-      pendingSpellingReview: spelling ? (cleanCorrect ? 0 : 1) : word.pendingSpellingReview,
+      pendingMcqReview:
+          spelling ? word.pendingMcqReview : (cleanCorrect ? 0 : 1),
+      pendingSpellingReview:
+          spelling ? (cleanCorrect ? 0 : 1) : word.pendingSpellingReview,
     );
   }
 
@@ -112,7 +137,9 @@ class SrsService {
   }
 
   bool isNewWord(Word word) {
-    return word.srsLevel == 0 && reviewDateFor(word) == null && word.correctStreak == 0;
+    return word.srsLevel == 0 &&
+        reviewDateFor(word) == null &&
+        word.correctStreak == 0;
   }
 
   bool isDueForReview(Word word, {DateTime? baseDate}) {
@@ -123,25 +150,32 @@ class SrsService {
   }
 
   SrsStage stageFor(Word word, {DateTime? baseDate}) {
-    if (isDueForReview(word, baseDate: baseDate)) return SrsStage.due;
     if (isNewWord(word)) return SrsStage.newWord;
+    if (isDueForReview(word, baseDate: baseDate)) return SrsStage.due;
     if (word.srsLevel >= 5) return SrsStage.mature;
+    if (word.srsLevel >= 2) return SrsStage.scheduled;
     return SrsStage.learning;
   }
 
   int reviewPriority(Word word, {DateTime? baseDate}) {
     final targetDate = baseDate ?? today();
     final reviewDate = reviewDateFor(word);
-    final overdueDays = reviewDate == null ? 0 : targetDate.difference(reviewDate).inDays;
+    final overdueDays =
+        reviewDate == null ? 0 : targetDate.difference(reviewDate).inDays;
     return (overdueDays * 100) + (word.incorrectCount * 10) - word.srsLevel;
   }
 
   List<Word> dueWords(List<Word> words, {DateTime? baseDate}) {
     final targetDate = baseDate ?? today();
-    final due = words.where((word) => isDueForReview(word, baseDate: targetDate)).toList();
+    final due =
+        words
+            .where((word) => isDueForReview(word, baseDate: targetDate))
+            .toList();
     due.sort(
-      (a, b) =>
-          reviewPriority(b, baseDate: targetDate).compareTo(reviewPriority(a, baseDate: targetDate)),
+      (a, b) => reviewPriority(
+        b,
+        baseDate: targetDate,
+      ).compareTo(reviewPriority(a, baseDate: targetDate)),
     );
     return due;
   }
@@ -151,6 +185,7 @@ class SrsService {
     final newWords = <Word>[];
     final dueWords = <Word>[];
     final learningWords = <Word>[];
+    final scheduledWords = <Word>[];
     final matureWords = <Word>[];
 
     for (final word in words) {
@@ -164,6 +199,9 @@ class SrsService {
         case SrsStage.learning:
           learningWords.add(word);
           break;
+        case SrsStage.scheduled:
+          scheduledWords.add(word);
+          break;
         case SrsStage.mature:
           matureWords.add(word);
           break;
@@ -171,8 +209,10 @@ class SrsService {
     }
 
     dueWords.sort(
-      (a, b) =>
-          reviewPriority(b, baseDate: targetDate).compareTo(reviewPriority(a, baseDate: targetDate)),
+      (a, b) => reviewPriority(
+        b,
+        baseDate: targetDate,
+      ).compareTo(reviewPriority(a, baseDate: targetDate)),
     );
     newWords.sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
 
@@ -180,6 +220,7 @@ class SrsService {
       dueWords: dueWords,
       newWords: newWords,
       learningWords: learningWords,
+      scheduledWords: scheduledWords,
       matureWords: matureWords,
     );
   }
@@ -187,11 +228,13 @@ class SrsService {
   String labelForStage(SrsStage stage) {
     switch (stage) {
       case SrsStage.newWord:
-        return '새 단어';
-      case SrsStage.due:
-        return '오늘 복습';
+        return '진입';
       case SrsStage.learning:
         return '학습 중';
+      case SrsStage.scheduled:
+        return '복습 예정';
+      case SrsStage.due:
+        return '복습 필요';
       case SrsStage.mature:
         return '안정 기억';
     }
@@ -200,11 +243,13 @@ class SrsService {
   String descriptionForStage(SrsStage stage) {
     switch (stage) {
       case SrsStage.newWord:
-        return '아직 SRS 일정에 들어가기 전이라 첫 노출이 필요한 단어';
-      case SrsStage.due:
-        return '복습 예정일이 오늘이거나 이미 지나서 지금 다시 봐야 하는 단어';
+        return '아직 학습하지 않아 첫 노출이 필요한 단어';
       case SrsStage.learning:
-        return '한 번 이상 학습했고 다음 복습일을 기다리는 단어';
+        return '첫 학습을 시작했고 기억을 짧게 확인하는 단어';
+      case SrsStage.scheduled:
+        return '초기 학습을 마치고 다음 복습일을 기다리는 단어';
+      case SrsStage.due:
+        return '복습일이 오늘이거나 지나 지금 다시 봐야 하는 단어';
       case SrsStage.mature:
         return '복습 간격이 길어졌고 비교적 안정적으로 기억 중인 단어';
     }
@@ -216,15 +261,18 @@ class SrsService {
     switch (stage) {
       case SrsStage.newWord:
         return '첫 학습 전';
+      case SrsStage.learning:
+        if (reviewDate == null) return '기억 정착 중';
+        return '${DateFormat('M/d').format(reviewDate)} 짧은 확인 예정';
+      case SrsStage.scheduled:
+        if (reviewDate == null) return '다음 복습 예정';
+        return '${DateFormat('M/d').format(reviewDate)} 복습 예정';
       case SrsStage.due:
-        if (reviewDate == null) return '오늘 복습 대상';
+        if (reviewDate == null) return '오늘 복습 필요';
         final targetDate = baseDate ?? today();
         final overdueDays = targetDate.difference(reviewDate).inDays;
-        if (overdueDays > 0) return '$overdueDays일 밀림';
-        return '오늘 복습일';
-      case SrsStage.learning:
-        if (reviewDate == null) return '다음 복습 대기';
-        return '${DateFormat('M/d').format(reviewDate)} 복습 예정';
+        if (overdueDays > 0) return '$overdueDays일 지남';
+        return '오늘 복습 필요';
       case SrsStage.mature:
         if (reviewDate == null) return '장기 기억 단계';
         return '${DateFormat('M/d').format(reviewDate)} 복습 예정';
@@ -258,7 +306,7 @@ class SrsService {
         focus: LearningFocus.quiz,
         title: '짧은 테스트로 기억을 확인해보세요',
         description:
-            '학습 중인 단어가 남아 있어요. 바로 떠오르는지 확인하면 다음 복습 우선순위가 더 선명해집니다.',
+            '학습 중이거나 복습 예정인 단어가 있어요. 바로 떠오르는지 확인하면 다음 복습 우선순위가 더 선명해집니다.',
         actionLabel: '짧은 테스트 시작',
       );
     }

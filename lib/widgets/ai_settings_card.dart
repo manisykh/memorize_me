@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/ai_settings_provider.dart';
 import '../services/ai_service.dart';
 import '../services/api_key_service.dart';
+import '../themes/memorize_identity.dart';
 import 'glassmorphic_card.dart';
 
 class AiSettingsCard extends StatefulWidget {
@@ -78,10 +79,8 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                   ),
                   onChanged: (value) => draftApiKey = value,
                   onSubmitted:
-                      (value) => _popDialogAfterUnfocus(
-                        dialogContext,
-                        value.trim(),
-                      ),
+                      (value) =>
+                          _popDialogAfterUnfocus(dialogContext, value.trim()),
                 ),
               ],
             ),
@@ -158,10 +157,10 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
     setState(() => _isTestingConnection = true);
     try {
       await context.read<AiService>().testConnection(
-            provider: aiSettings.selectedProvider,
-            modelName: aiSettings.selectedModel,
-            endpoint: aiSettings.selectedEndpoint,
-          );
+        provider: aiSettings.selectedProvider,
+        modelName: aiSettings.selectedModel,
+        endpoint: aiSettings.selectedEndpoint,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -173,14 +172,14 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
       _checkApiStatus();
     } on CustomApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('AI 연결 테스트에 실패했습니다: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('AI 연결 테스트에 실패했습니다: $e')));
     } finally {
       if (mounted) setState(() => _isTestingConnection = false);
     }
@@ -200,115 +199,127 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
     final aiSettings = context.watch<AiSettingsProvider>();
 
     final content = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!widget.embedded) ...[
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!widget.embedded) ...[
+          Text(
+            'AI 설정',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '사용할 AI와 대체 후보를 관리합니다.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        _buildAiDataNotice(theme, aiSettings),
+        const SizedBox(height: 14),
+        _buildProviderDropdown(aiSettings),
+        const SizedBox(height: 12),
+        _buildModelSelector(aiSettings),
+        if (aiSettings.selectedProvider == AiProvider.customOpenAI) ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            initialValue: aiSettings.customOpenAiEndpoint,
+            decoration: const InputDecoration(
+              labelText: 'Chat Completions Endpoint',
+              hintText: 'https://integrate.api.nvidia.com/v1/chat/completions',
+              helperText: 'OpenAI 호환 API 서버를 직접 연결합니다.',
+            ),
+            onChanged: aiSettings.setCustomOpenAiEndpoint,
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed:
+                  () => aiSettings.setCustomOpenAiEndpoint(
+                    'https://integrate.api.nvidia.com/v1/chat/completions',
+                  ),
+              icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+              label: const Text('NVIDIA NIM endpoint 사용'),
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        _buildCurrentStatus(theme, aiSettings),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed:
+                _isTestingConnection
+                    ? null
+                    : () => _testSelectedConnection(aiSettings),
+            icon:
+                _isTestingConnection
+                    ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                    : const Icon(Icons.network_check_rounded),
+            label: Text(
+              _isTestingConnection ? '연결 테스트 중...' : '현재 AI 설정 연결 테스트',
+            ),
+          ),
+        ),
+        const Divider(height: 28),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('자동 대체 사용'),
+          subtitle: const Text('오류가 나면 체크한 후보로 이어서 시도합니다.'),
+          value: aiSettings.autoFallbackEnabled,
+          onChanged: aiSettings.setAutoFallbackEnabled,
+        ),
+        if (aiSettings.autoFallbackEnabled) ...[
+          const SizedBox(height: 8),
+          if (aiSettings.fallbackOrder.isNotEmpty) ...[
             Text(
-              'AI 설정',
-              style: theme.textTheme.titleMedium?.copyWith(
+              '대체 우선순위',
+              style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              '사용할 AI와 대체 후보를 관리합니다.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            ...aiSettings.fallbackOrder.map(
+              (provider) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _buildFallbackOrderRow(aiSettings, provider),
               ),
             ),
-            const SizedBox(height: 12),
-          ],
-          _buildAiDataNotice(theme, aiSettings),
-          const SizedBox(height: 14),
-          _buildProviderDropdown(aiSettings),
-          const SizedBox(height: 12),
-          _buildModelSelector(aiSettings),
-          if (aiSettings.selectedProvider == AiProvider.customOpenAI) ...[
-            const SizedBox(height: 12),
-            TextFormField(
-              initialValue: aiSettings.customOpenAiEndpoint,
-              decoration: const InputDecoration(
-                labelText: 'Chat Completions Endpoint',
-                hintText: 'https://integrate.api.nvidia.com/v1/chat/completions',
-                helperText: 'OpenAI 호환 API 서버를 직접 연결합니다.',
-              ),
-              onChanged: aiSettings.setCustomOpenAiEndpoint,
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed:
-                    () => aiSettings.setCustomOpenAiEndpoint(
-                      'https://integrate.api.nvidia.com/v1/chat/completions',
-                    ),
-                icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
-                label: const Text('NVIDIA NIM endpoint 사용'),
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          _buildCurrentStatus(theme, aiSettings),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _isTestingConnection ? null : () => _testSelectedConnection(aiSettings),
-              icon:
-                  _isTestingConnection
-                      ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                      : const Icon(Icons.network_check_rounded),
-              label: Text(_isTestingConnection ? '연결 테스트 중...' : '현재 AI 설정 연결 테스트'),
-            ),
-          ),
-          const Divider(height: 28),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('자동 대체 사용'),
-            subtitle: const Text('오류가 나면 체크한 후보로 이어서 시도합니다.'),
-            value: aiSettings.autoFallbackEnabled,
-            onChanged: aiSettings.setAutoFallbackEnabled,
-          ),
-          if (aiSettings.autoFallbackEnabled) ...[
-            const SizedBox(height: 8),
-            if (aiSettings.fallbackOrder.isNotEmpty) ...[
-              Text(
-                '대체 우선순위',
-                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              ...aiSettings.fallbackOrder.map(
-                (provider) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _buildFallbackOrderRow(aiSettings, provider),
-                ),
-              ),
-            ] else
-              _buildEmptyFallbackHint(theme),
-          ],
-          const Divider(height: 28),
-          Text('API 키 등록 현황', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          ...aiSettings.configuredProviders.map(
-            (provider) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _buildApiStatusRow(
-                provider: provider,
-                isRegistered: _registeredProviders[provider] ?? false,
-                isActive: provider == aiSettings.selectedProvider,
-                isLastFallback: _isLastFallback(aiSettings, provider),
-              ),
-            ),
-          ),
-          if (aiSettings.autoFallbackEnabled) ...[
-            const Divider(height: 28),
-            _buildFallbackCandidateGrid(aiSettings),
-          ],
+          ] else
+            _buildEmptyFallbackHint(theme),
         ],
-      );
+        const Divider(height: 28),
+        Text(
+          'API 키 등록 현황',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...aiSettings.configuredProviders.map(
+          (provider) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _buildApiStatusRow(
+              provider: provider,
+              isRegistered: _registeredProviders[provider] ?? false,
+              isActive: provider == aiSettings.selectedProvider,
+              isLastFallback: _isLastFallback(aiSettings, provider),
+            ),
+          ),
+        ),
+        if (aiSettings.autoFallbackEnabled) ...[
+          const Divider(height: 28),
+          _buildFallbackCandidateGrid(aiSettings),
+        ],
+      ],
+    );
 
     if (widget.embedded) {
       return Padding(
@@ -317,9 +328,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
       );
     }
 
-    return GlassmorphicCard(
-      child: content,
-    );
+    return GlassmorphicCard(child: content);
   }
 
   Widget _buildAiDataNotice(ThemeData theme, AiSettingsProvider aiSettings) {
@@ -333,12 +342,18 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.16)),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.16),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.privacy_tip_outlined, color: theme.colorScheme.primary, size: 20),
+          Icon(
+            Icons.privacy_tip_outlined,
+            color: theme.colorScheme.primary,
+            size: 20,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -393,7 +408,9 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                   value: model,
                   child: Row(
                     children: [
-                      Expanded(child: Text(model, overflow: TextOverflow.ellipsis)),
+                      Expanded(
+                        child: Text(model, overflow: TextOverflow.ellipsis),
+                      ),
                       const SizedBox(width: 8),
                       _buildCostHintBadge(
                         Theme.of(context),
@@ -436,12 +453,13 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
 
   Widget _buildCostHintBadge(ThemeData theme, String label) {
     final lower = label.toLowerCase();
+    final identity = MemorizeIdentity.of(theme);
     final Color color =
-        label.contains('무료')
-            ? Colors.green
-            : label.contains('유료')
-                ? theme.colorScheme.error
-                : theme.colorScheme.tertiary;
+        lower.contains('무료')
+            ? identity.success
+            : lower.contains('유료')
+            ? theme.colorScheme.error
+            : theme.colorScheme.tertiary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -464,7 +482,8 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
 
   Widget _buildCurrentStatus(ThemeData theme, AiSettingsProvider aiSettings) {
     final lastUsed = aiSettings.lastUsedOption;
-    final hasFallback = lastUsed != null && lastUsed.provider != aiSettings.selectedProvider;
+    final hasFallback =
+        lastUsed != null && lastUsed.provider != aiSettings.selectedProvider;
 
     return Wrap(
       spacing: 8,
@@ -532,7 +551,9 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
       children: [
         Text(
           '대체 후보',
-          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 8),
         LayoutBuilder(
@@ -544,9 +565,13 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
               constraints: const BoxConstraints(maxHeight: 360),
               padding: const EdgeInsets.only(right: 2),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.38),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.38,
+                ),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.24)),
+                border: Border.all(
+                  color: theme.colorScheme.outline.withValues(alpha: 0.24),
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: theme.shadowColor.withValues(alpha: 0.05),
@@ -568,7 +593,10 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                         AiProvider.values.map((provider) {
                           return SizedBox(
                             width: cardWidth,
-                            child: _buildFallbackCandidateBox(aiSettings, provider),
+                            child: _buildFallbackCandidateBox(
+                              aiSettings,
+                              provider,
+                            ),
                           );
                         }).toList(),
                   ),
@@ -581,7 +609,10 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
     );
   }
 
-  Widget _buildFallbackCandidateBox(AiSettingsProvider aiSettings, AiProvider provider) {
+  Widget _buildFallbackCandidateBox(
+    AiSettingsProvider aiSettings,
+    AiProvider provider,
+  ) {
     final theme = Theme.of(context);
     final isActive = provider == aiSettings.selectedProvider;
     final isFallback = aiSettings.isFallbackProviderEnabled(provider);
@@ -592,10 +623,10 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
         isActive
             ? theme.colorScheme.primary
             : isLastFallback
-                ? theme.colorScheme.tertiary
-                : selected
-                    ? theme.colorScheme.secondary
-                    : theme.colorScheme.outline;
+            ? theme.colorScheme.tertiary
+            : selected
+            ? theme.colorScheme.secondary
+            : theme.colorScheme.outline;
     final cardColor =
         selected
             ? Color.alphaBlend(
@@ -615,8 +646,8 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
         isActive
             ? '현재 사용'
             : isFallback
-                ? '대체 후보'
-                : '미사용';
+            ? '대체 후보'
+            : '미사용';
     final keyLabel = isRegistered ? 'API 키 등록됨' : 'API 키 필요';
 
     return InkWell(
@@ -624,17 +655,20 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
       onTap:
           isActive
               ? null
-              : () => aiSettings.setFallbackProviderEnabled(provider, !isFallback),
+              : () =>
+                  aiSettings.setFallbackProviderEnabled(provider, !isFallback),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.fromLTRB(10, 12, 13, 12),
         decoration: BoxDecoration(
           color: cardColor,
-        borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: borderColor, width: selected ? 1.4 : 1),
           boxShadow: [
             BoxShadow(
-              color: theme.shadowColor.withValues(alpha: selected ? 0.12 : 0.08),
+              color: theme.shadowColor.withValues(
+                alpha: selected ? 0.12 : 0.08,
+              ),
               blurRadius: selected ? 10 : 7,
               spreadRadius: -5,
               offset: Offset(0, selected ? 4 : 3),
@@ -664,8 +698,8 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                 isActive
                     ? Icons.radio_button_checked_rounded
                     : isFallback
-                        ? Icons.check_circle_rounded
-                        : Icons.circle_outlined,
+                    ? Icons.check_circle_rounded
+                    : Icons.circle_outlined,
                 size: 20,
                 color: accentColor,
               ),
@@ -697,9 +731,9 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                             isActive
                                 ? null
                                 : () => aiSettings.setFallbackProviderEnabled(
-                                      provider,
-                                      !isFallback,
-                                    ),
+                                  provider,
+                                  !isFallback,
+                                ),
                       ),
                     ],
                   ),
@@ -722,10 +756,16 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                       _buildMiniBadge(
                         theme,
                         keyLabel,
-                        isRegistered ? Colors.green : Colors.orange,
+                        isRegistered
+                            ? MemorizeIdentity.of(theme).success
+                            : _warningColor(theme),
                       ),
                       if (isLastFallback)
-                        _buildMiniBadge(theme, '최근 대체', theme.colorScheme.tertiary),
+                        _buildMiniBadge(
+                          theme,
+                          '최근 대체',
+                          theme.colorScheme.tertiary,
+                        ),
                     ],
                   ),
                 ],
@@ -745,7 +785,12 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
     required VoidCallback? onTap,
   }) {
     return Tooltip(
-      message: isActive ? '현재 사용 모델' : selected ? '대체 후보에서 제외' : '대체 후보로 추가',
+      message:
+          isActive
+              ? '현재 사용 모델'
+              : selected
+              ? '대체 후보에서 제외'
+              : '대체 후보로 추가',
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
@@ -756,7 +801,9 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
           decoration: BoxDecoration(
             color: color.withValues(alpha: selected ? 0.14 : 0.06),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: color.withValues(alpha: selected ? 0.28 : 0.14)),
+            border: Border.all(
+              color: color.withValues(alpha: selected ? 0.28 : 0.14),
+            ),
           ),
           child: Icon(
             selected ? Icons.check_rounded : Icons.add_rounded,
@@ -773,12 +820,16 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.42,
+        ),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Text(
         '대체 후보를 체크하면 이곳에 우선순위와 API 키 상태가 표시됩니다.',
-        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }
@@ -794,15 +845,21 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
         isActive
             ? theme.colorScheme.primary
             : isLastFallback
-                ? theme.colorScheme.tertiary
-                : theme.colorScheme.outline;
+            ? theme.colorScheme.tertiary
+            : theme.colorScheme.outline;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: accentColor.withValues(alpha: isActive || isLastFallback ? 0.10 : 0.04),
+        color: accentColor.withValues(
+          alpha: isActive || isLastFallback ? 0.10 : 0.04,
+        ),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accentColor.withValues(alpha: isActive || isLastFallback ? 0.32 : 0.14)),
+        border: Border.all(
+          color: accentColor.withValues(
+            alpha: isActive || isLastFallback ? 0.32 : 0.14,
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -814,7 +871,9 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                   provider.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Wrap(
@@ -824,10 +883,22 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                     _buildMiniBadge(
                       theme,
                       isRegistered ? '등록 완료' : '등록 필요',
-                      isRegistered ? Colors.green : Colors.orange,
+                      isRegistered
+                          ? MemorizeIdentity.of(theme).success
+                          : _warningColor(theme),
                     ),
-                    if (isActive) _buildMiniBadge(theme, '현재 사용', theme.colorScheme.primary),
-                    if (isLastFallback) _buildMiniBadge(theme, '최근 대체', theme.colorScheme.tertiary),
+                    if (isActive)
+                      _buildMiniBadge(
+                        theme,
+                        '현재 사용',
+                        theme.colorScheme.primary,
+                      ),
+                    if (isLastFallback)
+                      _buildMiniBadge(
+                        theme,
+                        '최근 대체',
+                        theme.colorScheme.tertiary,
+                      ),
                   ],
                 ),
               ],
@@ -863,7 +934,10 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
     );
   }
 
-  Widget _buildFallbackOrderRow(AiSettingsProvider aiSettings, AiProvider provider) {
+  Widget _buildFallbackOrderRow(
+    AiSettingsProvider aiSettings,
+    AiProvider provider,
+  ) {
     final theme = Theme.of(context);
     final order = aiSettings.fallbackOrder;
     final index = order.indexOf(provider);
@@ -876,11 +950,15 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
         color:
             isLastFallback
                 ? theme.colorScheme.tertiary.withValues(alpha: 0.10)
-                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.36),
+                : theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.36,
+                ),
         borderRadius: BorderRadius.circular(14),
         border:
             isLastFallback
-                ? Border.all(color: theme.colorScheme.tertiary.withValues(alpha: 0.30))
+                ? Border.all(
+                  color: theme.colorScheme.tertiary.withValues(alpha: 0.30),
+                )
                 : null,
       ),
       child: Row(
@@ -889,7 +967,9 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
             width: 28,
             child: Text(
               '${index + 1}',
-              style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
           Expanded(
@@ -901,7 +981,10 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: isRegistered ? null : theme.colorScheme.onSurfaceVariant,
+                    color:
+                        isRegistered
+                            ? null
+                            : theme.colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -909,7 +992,10 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                 Text(
                   isRegistered ? '대체 가능' : 'API 키 등록 필요',
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: isRegistered ? Colors.green : Colors.orange,
+                    color:
+                        isRegistered
+                            ? MemorizeIdentity.of(theme).success
+                            : _warningColor(theme),
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -918,7 +1004,10 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
           ),
           IconButton(
             tooltip: '위로',
-            onPressed: index <= 0 ? null : () => aiSettings.moveFallbackProvider(provider, -1),
+            onPressed:
+                index <= 0
+                    ? null
+                    : () => aiSettings.moveFallbackProvider(provider, -1),
             icon: const Icon(Icons.keyboard_arrow_up),
           ),
           IconButton(
@@ -939,5 +1028,11 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
     return lastUsed != null &&
         lastUsed.provider == provider &&
         lastUsed.provider != aiSettings.selectedProvider;
+  }
+
+  Color _warningColor(ThemeData theme) {
+    return theme.brightness == Brightness.dark
+        ? const Color(0xFFFFB454)
+        : const Color(0xFFE77B12);
   }
 }

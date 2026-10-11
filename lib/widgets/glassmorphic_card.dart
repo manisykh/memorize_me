@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../themes/app_theme.dart';
+import '../themes/memorize_identity.dart';
 
 class GlassmorphicCard extends StatelessWidget {
   final Widget child;
@@ -14,65 +14,28 @@ class GlassmorphicCard extends StatelessWidget {
     this.onTap,
     this.isActive = false,
     this.padding = const EdgeInsets.all(16.0),
-    this.borderRadius = 18.0,
+    this.borderRadius = MemorizeIdentity.cardRadius,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final identity = MemorizeIdentity.of(theme);
     final isDark = theme.brightness == Brightness.dark;
-    final isVision = theme.primaryColor == const Color(0xFFC76E40);
-
-    final Color fillColor;
-    final Color borderColor;
-    final Color activeBorderColor;
-    final List<BoxShadow> shadows;
-
-    if (isDark) {
-      fillColor = theme.colorScheme.surface;
-      borderColor = Colors.white.withValues(alpha: 0.16);
-      activeBorderColor = theme.colorScheme.primary;
-      shadows = [
+    final shadows = <BoxShadow>[
+      if (!isDark)
         BoxShadow(
-          color: Colors.black.withValues(alpha: 0.28),
-          blurRadius: 18,
-          spreadRadius: -12,
-          offset: const Offset(0, 8),
+          color: identity.ink.withValues(alpha: 0.035),
+          blurRadius: 12,
+          spreadRadius: -10,
+          offset: const Offset(0, 6),
         ),
-      ];
-    } else if (isVision) {
-      fillColor = theme.colorScheme.surface;
-      borderColor = theme.colorScheme.outline;
-      activeBorderColor = theme.colorScheme.primary;
-      shadows = [
-        BoxShadow(
-          color: const Color(0xFF7F5431).withValues(alpha: 0.10),
-          blurRadius: 16,
-          spreadRadius: -12,
-          offset: const Offset(0, 7),
-        ),
-      ];
-    } else {
-      fillColor = const Color(0xFFFFFCF7);
-      borderColor = const Color(0xFFE5D8C8);
-      activeBorderColor = AppTheme.accentCoral;
-      shadows = [
-        BoxShadow(
-          color: AppTheme.ink.withValues(alpha: 0.075),
-          blurRadius: 18,
-          spreadRadius: -14,
-          offset: const Offset(0, 10),
-        ),
-      ];
-    }
+    ];
 
     final radius = BorderRadius.circular(borderRadius);
 
     return Container(
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        boxShadow: shadows,
-      ),
+      decoration: BoxDecoration(borderRadius: radius, boxShadow: shadows),
       child: ClipRRect(
         borderRadius: radius,
         child: Material(
@@ -84,11 +47,11 @@ class GlassmorphicCard extends StatelessWidget {
             child: Ink(
               padding: padding,
               decoration: BoxDecoration(
-                color: fillColor,
+                color: isActive ? identity.softInfo : identity.surface,
                 borderRadius: radius,
                 border: Border.all(
-                  color: isActive ? activeBorderColor : borderColor,
-                  width: isActive ? 1.4 : 1.0,
+                  color: isActive ? identity.primaryAction : identity.border,
+                  width: isActive ? 1.5 : 1.0,
                 ),
               ),
               child: child,

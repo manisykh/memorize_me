@@ -1,4 +1,4 @@
-enum WordbookSource { googleSheet, localCsv, builtin }
+enum WordbookSource { googleSheet, localCsv, builtin, manual }
 
 class Wordbook {
   final int? id;

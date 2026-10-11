@@ -17,6 +17,7 @@ class AppSettings {
   final double fontSize;
   final bool includeTranslation; // ▼▼▼ [추가] 해석 포함 여부 설정
   final bool includeSpellingHint;
+  final bool repeatSharedSentences;
 
   AppSettings({
     this.wordCount = 20,
@@ -26,6 +27,7 @@ class AppSettings {
     this.fontSize = 12.0,
     this.includeTranslation = true, // ▼▼▼ [추가] 기본값은 true (보이게)
     this.includeSpellingHint = false,
+    this.repeatSharedSentences = true,
   });
 
   AppSettings copyWith({
@@ -36,6 +38,7 @@ class AppSettings {
     double? fontSize,
     bool? includeTranslation, // ▼▼▼ [추가]
     bool? includeSpellingHint,
+    bool? repeatSharedSentences,
   }) => AppSettings(
     wordCount: wordCount ?? this.wordCount,
     testTypes: testTypes ?? this.testTypes,
@@ -44,6 +47,7 @@ class AppSettings {
     fontSize: fontSize ?? this.fontSize,
     includeTranslation: includeTranslation ?? this.includeTranslation, // ▼▼▼ [추가]
     includeSpellingHint: includeSpellingHint ?? this.includeSpellingHint,
+    repeatSharedSentences: repeatSharedSentences ?? this.repeatSharedSentences,
   );
 }
 
@@ -92,6 +96,11 @@ class SettingsNotifier extends ChangeNotifier {
 
   void setIncludeSpellingHint(bool value) {
     _settings = _settings.copyWith(includeSpellingHint: value);
+    notifyListeners();
+  }
+
+  void setRepeatSharedSentences(bool value) {
+    _settings = _settings.copyWith(repeatSharedSentences: value);
     notifyListeners();
   }
 }

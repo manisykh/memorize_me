@@ -7,6 +7,7 @@ import '../models/ai_quiz_model.dart';
 import '../services/test_sheet_service.dart';
 import '../services/analytics_service.dart';
 import '../services/tts_service.dart';
+import '../themes/memorize_identity.dart';
 import '../widgets/glassmorphic_card.dart';
 
 class AiQuizPlayerScreen extends StatefulWidget {
@@ -110,7 +111,8 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                   RadioGroup<PdfExportType>(
                     groupValue: tempSelectedType,
                     onChanged: (value) {
-                      if (value != null) setDialogState(() => tempSelectedType = value);
+                      if (value != null)
+                        setDialogState(() => tempSelectedType = value);
                     },
                     child: const Column(
                       mainAxisSize: MainAxisSize.min,
@@ -129,7 +131,10 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                 ],
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('취소'),
+                ),
                 FilledButton(
                   onPressed: () {
                     setState(() => _selectedPdfType = tempSelectedType);
@@ -165,7 +170,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF 생성 중 오류 발생: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('PDF 생성 중 오류 발생: $e')));
       }
     } finally {
       if (mounted) {
@@ -190,7 +197,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('HTML 생성 중 오류 발생: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('HTML 생성 중 오류 발생: $e')));
       }
     } finally {
       if (mounted) {
@@ -285,7 +294,11 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
             final question = widget.quizResponse.questions[index - 1];
             final questionStartIndex = _questionNumberOffsets[index - 1];
             if (question.type == 'reading_section') {
-              return _buildReadingSectionBlock(question, questionStartIndex, theme);
+              return _buildReadingSectionBlock(
+                question,
+                questionStartIndex,
+                theme,
+              );
             }
             return _buildQuestionBlock(question, questionStartIndex, theme);
           },
@@ -299,7 +312,10 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     final progress =
         _totalQuestionCount == 0
             ? 0.0
-            : (_isSubmitted ? 1.0 : answeredCount / _totalQuestionCount).clamp(0.0, 1.0);
+            : (_isSubmitted ? 1.0 : answeredCount / _totalQuestionCount).clamp(
+              0.0,
+              1.0,
+            );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -323,11 +339,15 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                     children: [
                       Text(
                         _isSubmitted ? 'AI 퀴즈 결과' : 'AI 맞춤 퀴즈',
-                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        _isSubmitted ? '정답과 해설을 확인해보세요.' : '단어장을 바탕으로 생성된 문제입니다.',
+                        _isSubmitted
+                            ? '정답과 해설을 확인해보세요.'
+                            : '단어장을 바탕으로 생성된 문제입니다.',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -362,7 +382,10 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                 _buildInfoPill(
                   theme: theme,
                   icon: CupertinoIcons.doc_text_fill,
-                  label: _isSubmitted ? '${_scorePercent(_score, _totalQuestionCount)}%' : '해설 포함 가능',
+                  label:
+                      _isSubmitted
+                          ? '${_scorePercent(_score, _totalQuestionCount)}%'
+                          : '해설 포함 가능',
                   color: theme.colorScheme.tertiary,
                 ),
               ],
@@ -378,7 +401,8 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     int questionStartIndex,
     ThemeData theme,
   ) {
-    final subQuestions = readingSection.questions ?? const <AiReadingSubQuestion>[];
+    final subQuestions =
+        readingSection.questions ?? const <AiReadingSubQuestion>[];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -413,7 +437,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                       Divider(
                         height: 1,
                         thickness: 1,
-                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.72),
+                        color: theme.colorScheme.outlineVariant.withValues(
+                          alpha: 0.72,
+                        ),
                       ),
                       const SizedBox(height: 20),
                     ],
@@ -441,7 +467,11 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     );
   }
 
-  Widget _buildQuestionBlock(AiQuestion question, int questionIndex, ThemeData theme) {
+  Widget _buildQuestionBlock(
+    AiQuestion question,
+    int questionIndex,
+    ThemeData theme,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: GlassmorphicCard(
@@ -488,7 +518,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.38),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.38,
+        ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
@@ -511,7 +543,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.18)),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.18),
+        ),
       ),
       child: Row(
         children: [
@@ -524,7 +558,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              _isSubmitted ? script.replaceAll(RegExp(r'\[.*?\]'), ' ') : '듣기 버튼을 누른 뒤 답을 선택하세요.',
+              _isSubmitted
+                  ? script.replaceAll(RegExp(r'\[.*?\]'), ' ')
+                  : '듣기 버튼을 누른 뒤 답을 선택하세요.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color:
                     _isSubmitted
@@ -554,7 +590,8 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     final success = _successColor(theme);
     final error = theme.colorScheme.error;
 
-    Color backgroundColor = theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.28);
+    Color backgroundColor = theme.colorScheme.surfaceContainerHighest
+        .withValues(alpha: 0.28);
     Color borderColor = theme.colorScheme.outlineVariant;
     Color foregroundColor = theme.colorScheme.onSurface;
     IconData optionIcon = CupertinoIcons.circle;
@@ -591,7 +628,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
               onTap:
                   _isSubmitted
                       ? null
-                      : () => setState(() => _userAnswers[questionIndex] = optionText),
+                      : () => setState(
+                        () => _userAnswers[questionIndex] = optionText,
+                      ),
               borderRadius: BorderRadius.circular(18),
               child: Container(
                 width: double.infinity,
@@ -601,7 +640,10 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: borderColor,
-                    width: isSelected || (_isSubmitted && isCorrectAnswer) ? 1.4 : 1.0,
+                    width:
+                        isSelected || (_isSubmitted && isCorrectAnswer)
+                            ? 1.4
+                            : 1.0,
                   ),
                 ),
                 child: Row(
@@ -618,7 +660,10 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: foregroundColor,
                           height: 1.42,
-                          fontWeight: isSelected || isCorrectAnswer ? FontWeight.w800 : FontWeight.w600,
+                          fontWeight:
+                              isSelected || isCorrectAnswer
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
                         ),
                       ),
                     ),
@@ -639,7 +684,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                 decoration: BoxDecoration(
                   color: theme.colorScheme.tertiary.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: theme.colorScheme.tertiary.withValues(alpha: 0.20)),
+                  border: Border.all(
+                    color: theme.colorScheme.tertiary.withValues(alpha: 0.20),
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -654,7 +701,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                       child: Text(
                         explanation,
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.78),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.78,
+                          ),
                           height: 1.45,
                           fontWeight: FontWeight.w600,
                         ),
@@ -683,7 +732,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                   children: [
                     Text(
                       '답을 모두 고른 뒤 결과를 확인하세요.',
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -712,7 +763,8 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
   }
 
   Widget _buildResultCard(ThemeData theme, int totalQuestions) {
-    final ratio = totalQuestions == 0 ? 0.0 : (_score / totalQuestions).clamp(0.0, 1.0);
+    final ratio =
+        totalQuestions == 0 ? 0.0 : (_score / totalQuestions).clamp(0.0, 1.0);
     final percent = _scorePercent(_score, totalQuestions);
     final toneColor =
         ratio >= 0.8
@@ -737,7 +789,8 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                     CircularProgressIndicator(
                       value: ratio,
                       strokeWidth: 9,
-                      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                      backgroundColor:
+                          theme.colorScheme.surfaceContainerHighest,
                       color: toneColor,
                       strokeCap: StrokeCap.round,
                     ),
@@ -760,7 +813,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                   children: [
                     Text(
                       '퀴즈 결과',
-                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -792,7 +847,8 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                 child: _buildResultMetric(
                   theme: theme,
                   label: '오답',
-                  value: '${(totalQuestions - _score).clamp(0, totalQuestions)}',
+                  value:
+                      '${(totalQuestions - _score).clamp(0, totalQuestions)}',
                   color: theme.colorScheme.error,
                 ),
               ),
@@ -1020,9 +1076,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
   }
 
   Color _successColor(ThemeData theme) {
-    return theme.brightness == Brightness.dark
-        ? const Color(0xFF8FCB91)
-        : const Color(0xFF5C8A6E);
+    return MemorizeIdentity.of(theme).success;
   }
 
   int _scorePercent(int score, int total) {

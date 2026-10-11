@@ -9,6 +9,7 @@ class AiQuizValidator {
     AiQuizResponse response, {
     int? expectedAnswerableCount,
     Iterable<String>? allowedTargetWords,
+    Set<String>? allowedGrammarChapterIds,
     Set<String>? expectedTypes,
     AiDifficultyProfile? difficultyProfile,
     bool requireFormatDiversity = false,
@@ -42,6 +43,13 @@ class AiQuizValidator {
         throw CustomApiException(
           'model_response_invalid',
           '요청하지 않은 문제 유형이 포함되어 있습니다.',
+        );
+      }
+      if (question.type == 'grammar' && allowedGrammarChapterIds != null &&
+          !allowedGrammarChapterIds.contains(question.grammarChapterId?.trim())) {
+        throw CustomApiException(
+          'model_response_invalid',
+          '선택하지 않은 문법 챕터가 포함되었거나 챕터 정보가 누락되었습니다.',
         );
       }
 
@@ -102,6 +110,7 @@ class AiQuizValidator {
               type: question.type,
               questionFormat: question.questionFormat,
               targetWord: question.targetWord,
+              grammarChapterId: question.grammarChapterId,
               passage: question.passage,
               script: question.script,
               question: question.question,
