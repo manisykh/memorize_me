@@ -1,6 +1,7 @@
 # Miscellaneous
 *.class
 *.log
+*.hprof
 *.pyc
 *.swp
 .DS_Store
@@ -55,3 +56,4 @@ app.*.map.json
 
 # Local build-time environment values
 /env/*.json
+!/env/release.example.json

@@ -29,9 +29,12 @@ import '../widgets/study_guide.dart';
 import '../widgets/study_plan_panel.dart';
 import '../widgets/study_calendar.dart';
 import '../widgets/bundle_history_panel.dart';
+import '../widgets/ai_settings_card.dart';
 import '../widgets/wordbook_selection_dialog.dart';
 import 'mistake_review_screen.dart';
 import 'ai_grammar_quiz_setup_screen.dart';
+import 'ai_quiz_library_screen.dart';
+import 'ai_provider_setup_screen.dart';
 import 'ai_quiz_setup_screen.dart';
 import 'app_settings_screen.dart';
 import 'flashcard_screen.dart';
@@ -53,6 +56,29 @@ Future<void> _selectActiveWordbook(BuildContext context) async {
   final selectedWordbook = await showWordbookSelectionDialog(context);
   if (selectedWordbook == null || !context.mounted) return;
   await context.read<WordbookManager>().setActiveWordbook(selectedWordbook);
+}
+
+Future<void> _openAiSettingsSheet(BuildContext context) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder:
+        (sheetContext) => SafeArea(
+          child: DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.88,
+            minChildSize: 0.55,
+            maxChildSize: 0.96,
+            builder:
+                (_, controller) => SingleChildScrollView(
+                  controller: controller,
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                  child: const AiSettingsCard(),
+                ),
+          ),
+        ),
+  );
 }
 
 class _ShellPalette {
@@ -169,6 +195,7 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
   final SrsService _srsService = SrsService();
   final RestorableInt _restoredTabIndex = RestorableInt(0);
   final Map<Object, Future<_DeckStats>> _deckStatsFutures = {};
+  late final Map<_ShellTab, ScrollController> _tabScrollControllers;
   _ShellTab _currentTab = _ShellTab.home;
   bool _tabRestoredFromState = false;
   int? _cachedStatsRevision;
@@ -180,6 +207,9 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
   @override
   void initState() {
     super.initState();
+    _tabScrollControllers = {
+      for (final tab in _ShellTab.values) tab: ScrollController(),
+    };
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_tabRestoredFromState) _restoreLastTab();
       _maybeShowFirstRunGuide();
@@ -201,6 +231,9 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
 
   @override
   void dispose() {
+    for (final controller in _tabScrollControllers.values) {
+      controller.dispose();
+    }
     _restoredTabIndex.dispose();
     super.dispose();
   }
@@ -224,6 +257,10 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
 
   void _selectTab(int index) {
     final nextTab = _ShellTab.values[index];
+    if (nextTab == _currentTab) {
+      _scrollTabToTop(nextTab);
+      return;
+    }
     setState(() {
       if (nextTab == _ShellTab.home) {
         _homeWordbookPagerRevision++;
@@ -234,6 +271,16 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
     context.read<AnalyticsService>().logTabViewed(nextTab.name);
     SharedPreferences.getInstance().then(
       (prefs) => prefs.setString(_lastShellTabKey, nextTab.name),
+    );
+  }
+
+  void _scrollTabToTop(_ShellTab tab) {
+    final controller = _tabScrollControllers[tab];
+    if (controller == null || !controller.hasClients) return;
+    controller.animateTo(
+      0,
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeOutCubic,
     );
   }
 
@@ -441,10 +488,6 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
     final palette = _ShellPalette.of(theme);
     final identity = MemorizeIdentity.of(theme);
     final isDark = theme.brightness == Brightness.dark;
-    // Every primary tab now owns its page title and context. Keeping the
-    // legacy shared app bar above only some tabs made the rebuilt screens feel
-    // like different products.
-    const usesIdentityHeader = true;
     final currentTheme = context.select<ThemeNotifier, AppThemeType>(
       (notifier) => notifier.currentTheme,
     );
@@ -487,118 +530,13 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
     );
 
     return Scaffold(
-      backgroundColor:
-          usesIdentityHeader ? identity.canvas : palette.background,
+      backgroundColor: identity.canvas,
       body: SafeArea(
         child: Column(
           children: [
-            if (!usesIdentityHeader)
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: palette.topBar,
-                  border: Border(
-                    bottom: BorderSide(
-                      color: palette.border.withValues(
-                        alpha: isDark ? 0.52 : 0.78,
-                      ),
-                    ),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: (isDark ? Colors.black : palette.border)
-                          .withValues(alpha: isDark ? 0.24 : 0.34),
-                      blurRadius: 18,
-                      spreadRadius: -12,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 10),
-                  child: Row(
-                    children: [
-                      _ThemeIconButton(
-                        currentTheme: currentTheme,
-                        palette: palette,
-                        onTap: _cycleTheme,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap:
-                              () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => const WordbookManagementScreen(),
-                                ),
-                              ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 3),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Memorize Me',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 16,
-                                    color: palette.brand,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 9,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: palette.iconSurface.withValues(
-                                      alpha: isDark ? 0.72 : 0.92,
-                                    ),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: palette.border.withValues(
-                                        alpha: isDark ? 0.72 : 0.82,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    learningScopeSubtitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.labelMedium
-                                        ?.copyWith(
-                                          color: palette.brand,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      _ProfileAvatarButton(
-                        user: user,
-                        onTap:
-                            () => _showProfileSheet(
-                              context,
-                              theme,
-                              manager,
-                              dailyPlan,
-                              user,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             Expanded(
               child: ColoredBox(
-                color:
-                    usesIdentityHeader ? identity.canvas : palette.background,
+                color: identity.canvas,
                 child: _buildCurrentTab(
                   manager: manager,
                   dailyPlan: dailyPlan,
@@ -744,6 +682,7 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
     switch (_currentTab) {
       case _ShellTab.home:
         return _BloomHomeDashboardTab(
+          scrollController: _tabScrollControllers[_ShellTab.home]!,
           dailyPlan: dailyPlan,
           studyPlan: activeStudyPlan,
           plannedNewWordSessionCount: plannedNewWordSessionCount,
@@ -760,11 +699,13 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
         );
       case _ShellTab.review:
         return _BloomReviewTab(
+          scrollController: _tabScrollControllers[_ShellTab.review]!,
           dailyPlan: dailyPlan,
           activeWordbook: activeWordbook,
         );
       case _ShellTab.stats:
         return _BloomStatsTab(
+          scrollController: _tabScrollControllers[_ShellTab.stats]!,
           fullDailyPlan: fullDailyPlan,
           planDailyPlan: dailyPlan,
           totalWordCount: totalWordCount,
@@ -776,12 +717,13 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
         );
       case _ShellTab.ai:
         return _BloomAiLearningTab(
+          scrollController: _tabScrollControllers[_ShellTab.ai]!,
           learningScopeSubtitle: learningScopeSubtitle,
-          onOpenSettings:
-              () => _selectTab(_ShellTab.values.indexOf(_ShellTab.settings)),
+          onOpenSettings: () => _openAiSettingsSheet(context),
         );
       case _ShellTab.calendar:
         return SingleChildScrollView(
+          controller: _tabScrollControllers[_ShellTab.calendar],
           key: const PageStorageKey('calendar-tab'),
           padding: EdgeInsets.fromLTRB(16, 16, 16, 22),
           child: StudyCalendar(
@@ -793,106 +735,10 @@ class _AppShellScreenState extends State<AppShellScreen> with RestorationMixin {
           ),
         );
       case _ShellTab.settings:
-        return const AppSettingsScreen();
+        return AppSettingsScreen(
+          scrollController: _tabScrollControllers[_ShellTab.settings],
+        );
     }
-  }
-}
-
-class _ThemeIconButton extends StatelessWidget {
-  final AppThemeType currentTheme;
-  final _ShellPalette palette;
-  final VoidCallback onTap;
-
-  const _ThemeIconButton({
-    required this.currentTheme,
-    required this.palette,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Tooltip(
-      message: _themeTooltip,
-      child: Semantics(
-        button: true,
-        label: _themeTooltip,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: onTap,
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface.withValues(
-                  alpha: isDark ? 0.36 : 0.72,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: palette.border.withValues(alpha: isDark ? 0.82 : 0.94),
-                  width: 1.2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (isDark ? Colors.black : palette.brand).withValues(
-                      alpha: isDark ? 0.16 : 0.07,
-                    ),
-                    blurRadius: 14,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Icon(_themeIcon, color: palette.accent, size: 23),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  IconData get _themeIcon {
-    switch (currentTheme) {
-      case AppThemeType.lightGreen:
-        return CupertinoIcons.sun_max;
-      case AppThemeType.dark:
-        return CupertinoIcons.moon;
-      case AppThemeType.visionProtection:
-        return CupertinoIcons.eye;
-    }
-  }
-
-  String get _themeTooltip {
-    switch (currentTheme) {
-      case AppThemeType.lightGreen:
-        return '라이트 모드';
-      case AppThemeType.dark:
-        return '다크 모드';
-      case AppThemeType.visionProtection:
-        return '시력 보호 모드';
-    }
-  }
-}
-
-class _ProfileAvatarButton extends StatelessWidget {
-  final GoogleSignInAccount? user;
-  final VoidCallback onTap;
-
-  const _ProfileAvatarButton({required this.user, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: '프로필',
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: _UserAvatar(user: user, radius: 22),
-      ),
-    );
   }
 }
 
@@ -923,6 +769,7 @@ class _UserAvatar extends StatelessWidget {
 }
 
 class _BloomHomeDashboardTab extends StatefulWidget {
+  final ScrollController scrollController;
   final DailyLearningPlan dailyPlan;
   final StudyPlan? studyPlan;
   final int plannedNewWordSessionCount;
@@ -938,6 +785,7 @@ class _BloomHomeDashboardTab extends StatefulWidget {
   final VoidCallback onProfileTap;
 
   const _BloomHomeDashboardTab({
+    required this.scrollController,
     required this.dailyPlan,
     required this.studyPlan,
     required this.plannedNewWordSessionCount,
@@ -1024,6 +872,7 @@ class _BloomHomeDashboardTabState extends State<_BloomHomeDashboardTab> {
             ? '${widget.studyPlan!.progressLabel} 진행'
             : '오늘 목표 완료';
     return SingleChildScrollView(
+      controller: widget.scrollController,
       key: const PageStorageKey<String>('memorize-home-identity-v1'),
       padding: const EdgeInsets.fromLTRB(
         MemorizeIdentity.pagePadding,
@@ -1238,7 +1087,7 @@ class _BloomHomeDashboardTabState extends State<_BloomHomeDashboardTab> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Text(
-                      '같은 단어를 여러 방식으로 학습해도 중복되지 않으며, 다시 맞혀 SRS의 복습 필요가 해소되면 완료 수만 올라갑니다.',
+                      '같은 단어를 여러 방식으로 학습해도 중복되지 않으며, 다시 맞혀 복습 필요 상태가 해소되면 완료 수만 올라갑니다.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: identity.mutedInk,
                         height: 1.45,
@@ -1317,6 +1166,27 @@ class _HomeIdentityHeader extends StatelessWidget {
     final theme = Theme.of(context);
     return Row(
       children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(11),
+            boxShadow: [
+              BoxShadow(
+                color: identity.ink.withValues(alpha: 0.10),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Image.asset(
+            'assets/icons/icon_1.png',
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.high,
+          ),
+        ),
+        const SizedBox(width: 11),
         Expanded(
           child: Text(
             'Memorize Me',
@@ -1476,7 +1346,6 @@ class _HomeTodayHeading extends StatelessWidget {
               Text(
                 '오늘 학습',
                 style: theme.textTheme.displaySmall?.copyWith(
-                  fontSize: 30,
                   height: 1.12,
                   fontWeight: FontWeight.w900,
                   color: identity.ink,
@@ -1614,64 +1483,60 @@ class _HomeGoalRingState extends State<_HomeGoalRing>
                   ),
                 ),
                 SizedBox(
-                  width: widget.size * 0.58,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.summary.additionalCount > 0)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            _HomeGoalNumber(
-                              label: '기본',
-                              value: widget.summary.baseCount,
-                              color: widget.identity.primaryAction,
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(7, 0, 7, 7),
-                              child: Text(
-                                '+',
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  color: widget.identity.mutedInk,
-                                  fontWeight: FontWeight.w800,
+                  width: widget.size * 0.64,
+                  height: widget.size * 0.62,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.center,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.summary.additionalCount > 0)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              _HomeGoalNumber(
+                                label: '기본',
+                                value: widget.summary.baseCount,
+                                color: widget.identity.primaryAction,
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(7, 0, 7, 7),
+                                child: Text(
+                                  '+',
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    color: widget.identity.mutedInk,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
-                            ),
-                            _HomeGoalNumber(
-                              label: '추가',
-                              value: widget.summary.additionalCount,
-                              color: widget.identity.scheduled,
-                            ),
-                          ],
-                        )
-                      else
-                        _HomeGoalNumber(
-                          label: '기본',
-                          value: widget.summary.baseCount,
-                          color: widget.identity.primaryAction,
+                              _HomeGoalNumber(
+                                label: '추가',
+                                value: widget.summary.additionalCount,
+                                color: widget.identity.scheduled,
+                              ),
+                            ],
+                          )
+                        else
+                          _HomeGoalNumber(
+                            label: '기본',
+                            value: widget.summary.baseCount,
+                            color: widget.identity.primaryAction,
+                            emphasized: true,
+                          ),
+                        const SizedBox(height: 14),
+                        Text(
+                          '${widget.summary.completedCount}개 완료 · ${widget.summary.remainingCount}개 남음',
+                          maxLines: 1,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: widget.identity.mutedInk,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      const SizedBox(height: 7),
-                      Divider(height: 1, color: widget.identity.border),
-                      const SizedBox(height: 8),
-                      Text(
-                        '오늘 범위 ${widget.summary.totalCount}개',
-                        maxLines: 1,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: widget.identity.ink,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${widget.summary.completedCount}개 완료 · ${widget.summary.remainingCount}개 남음',
-                        maxLines: 1,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: widget.identity.mutedInk,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -1687,11 +1552,13 @@ class _HomeGoalNumber extends StatelessWidget {
   final String label;
   final int value;
   final Color color;
+  final bool emphasized;
 
   const _HomeGoalNumber({
     required this.label,
     required this.value,
     required this.color,
+    this.emphasized = false,
   });
 
   @override
@@ -1709,11 +1576,15 @@ class _HomeGoalNumber extends StatelessWidget {
         ),
         Text(
           '$value',
-          style: theme.textTheme.headlineMedium?.copyWith(
-            height: 1.05,
-            color: color,
-            fontWeight: FontWeight.w900,
-          ),
+          style: (emphasized
+                  ? theme.textTheme.displaySmall
+                  : theme.textTheme.headlineMedium)
+              ?.copyWith(
+                height: 1.05,
+                fontSize: emphasized ? 42 : null,
+                color: color,
+                fontWeight: FontWeight.w900,
+              ),
         ),
       ],
     );
@@ -1859,13 +1730,13 @@ class _HomeFocusDetails extends StatelessWidget {
     final theme = Theme.of(context);
     final goalText =
         !hasActiveWordbook
-            ? '학습할 단어장을\n준비해 주세요'
+            ? '단어장을 추가하세요'
             : summary.remainingCount == 0
             ? '오늘 학습을\n마쳤어요'
             : '오늘 ${summary.remainingCount}개가\n남았어요';
     final reasonText =
         !hasActiveWordbook
-            ? '단어장을 선택하면 오늘 범위를 계산해요.'
+            ? '추가하면 오늘 학습 범위를 계산해요.'
             : summary.additionalCount > 0
             ? '기본 목표와 중복을 뺀 오답 ${summary.additionalCount}개가 추가됐어요.'
             : summary.remainingCount == 0
@@ -1873,7 +1744,7 @@ class _HomeFocusDetails extends StatelessWidget {
             : '같은 단어는 여러 번 학습해도 한 번만 계산해요.';
     final actionTitle =
         !hasActiveWordbook
-            ? '단어장 만들기'
+            ? '단어장 추가'
             : summary.remainingCount == 0
             ? '전체 카드 보기'
             : '${summary.remainingCount}개 학습 시작';
@@ -1881,17 +1752,33 @@ class _HomeFocusDetails extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          goalText,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontSize: 22,
-            height: 1.18,
-            fontWeight: FontWeight.w900,
-            color: identity.ink,
+        if (!hasActiveWordbook)
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              goalText,
+              maxLines: 1,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontSize: 22,
+                height: 1.18,
+                fontWeight: FontWeight.w900,
+                color: identity.ink,
+              ),
+            ),
+          )
+        else
+          Text(
+            goalText,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontSize: 22,
+              height: 1.18,
+              fontWeight: FontWeight.w900,
+              color: identity.ink,
+            ),
           ),
-        ),
         const SizedBox(height: 9),
         Text(
           reasonText,
@@ -2209,6 +2096,7 @@ class _HomeTimelineText extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _HomeLearningHero extends StatelessWidget {
   final String userName;
   final int remainingCount;
@@ -2236,7 +2124,6 @@ class _HomeLearningHero extends StatelessWidget {
         Text(
           '오늘 학습',
           style: theme.textTheme.displaySmall?.copyWith(
-            fontSize: 29,
             height: 1.08,
             fontWeight: FontWeight.w900,
             color: theme.colorScheme.onSurface,
@@ -2259,6 +2146,7 @@ class _HomeLearningHero extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _TodayLearningPanel extends StatelessWidget {
   final String prescriptionTitle;
   final String prescriptionDescription;
@@ -2291,6 +2179,7 @@ class _TodayLearningPanel extends StatelessWidget {
     required this.actionSubtitle,
     required this.onActionTap,
     required this.palette,
+    // ignore: unused_element_parameter
     this.onGuideTap,
   });
 
@@ -2673,6 +2562,7 @@ class _StudyPlanStatusCard extends StatelessWidget {
       StudyPlanPanel(plan: plan, homeIdentity: true);
 }
 
+// ignore: unused_element
 class _HomeInsightCard extends StatelessWidget {
   final String label;
   final String value;
@@ -2933,7 +2823,6 @@ class _WordbookStatusSlide extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final identity = MemorizeIdentity.of(theme);
-    final isDark = theme.brightness == Brightness.dark;
     final manager = context.read<WordbookManager>();
 
     return Material(
@@ -3110,6 +2999,7 @@ class _CompactDeckBadge extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _ReviewAlertChip extends StatelessWidget {
   final String label;
   final bool isDue;
@@ -3170,6 +3060,7 @@ class _ReviewAlertChip extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _MemoryDistributionBar extends StatelessWidget {
   final _DeckStats? stats;
 
@@ -3230,6 +3121,7 @@ class _MemoryDistributionBar extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _StatusMetricPill extends StatelessWidget {
   final String label;
   final int? value;
@@ -3280,6 +3172,7 @@ class _StatusMetricPill extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _StatusBadge extends StatelessWidget {
   final String text;
   final Color color;
@@ -3307,6 +3200,7 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _PlanBadge extends StatelessWidget {
   final _ShellPalette palette;
 
@@ -3428,9 +3322,11 @@ class _BarSegment {
 }
 
 class _BloomReviewTab extends _ReviewTab {
+  final ScrollController scrollController;
   final Wordbook? activeWordbook;
 
   const _BloomReviewTab({
+    required this.scrollController,
     required super.dailyPlan,
     required this.activeWordbook,
   });
@@ -3455,6 +3351,7 @@ class _BloomReviewTab extends _ReviewTab {
             : '${activeWordbook!.name} · ${activePlan.progressLabel}';
 
     return SingleChildScrollView(
+      controller: scrollController,
       key: const PageStorageKey<String>('memorize-review-identity-v1'),
       padding: const EdgeInsets.fromLTRB(
         MemorizeIdentity.pagePadding,
@@ -3468,7 +3365,6 @@ class _BloomReviewTab extends _ReviewTab {
           Text(
             '학습',
             style: theme.textTheme.displaySmall?.copyWith(
-              fontSize: 30,
               height: 1.12,
               fontWeight: FontWeight.w900,
               color: identity.ink,
@@ -3976,6 +3872,7 @@ class _ReviewMethodRow extends StatelessWidget {
 }
 
 class _BloomStatsTab extends StatefulWidget {
+  final ScrollController scrollController;
   final DailyLearningPlan fullDailyPlan;
   final DailyLearningPlan planDailyPlan;
   final int totalWordCount;
@@ -3986,6 +3883,7 @@ class _BloomStatsTab extends StatefulWidget {
   final void Function(DateTime date, bool usePlanScope) onOpenCalendar;
 
   const _BloomStatsTab({
+    required this.scrollController,
     required this.fullDailyPlan,
     required this.planDailyPlan,
     required this.totalWordCount,
@@ -4035,6 +3933,7 @@ class _BloomStatsTabState extends State<_BloomStatsTab> {
             : '${widget.activeWordbook!.name} · 전체 단어장';
 
     return SingleChildScrollView(
+      controller: widget.scrollController,
       key: const PageStorageKey<String>('memorize-stats-identity-v1'),
       padding: const EdgeInsets.fromLTRB(
         MemorizeIdentity.pagePadding,
@@ -4873,7 +4772,7 @@ class _StatsDetailRows extends StatelessWidget {
       children: [
         _StatsDetailRow(
           icon: CupertinoIcons.doc_on_doc,
-          title: '단어별 SRS 상태',
+          title: '단어별 기억 상태',
           subtitle: '기억 단계와 다음 복습일',
           identity: identity,
           onTap: onOpenSrs,
@@ -4881,7 +4780,7 @@ class _StatsDetailRows extends StatelessWidget {
         Divider(height: 1, color: identity.border),
         _StatsDetailRow(
           icon: CupertinoIcons.question_circle,
-          title: 'SRS 기준 안내',
+          title: '맞춤 복습 기준 안내',
           subtitle: '단어가 다음 단계로 이동하는 기준',
           identity: identity,
           onTap: onOpenGuide,
@@ -4961,10 +4860,12 @@ class _StatsDetailRow extends StatelessWidget {
 }
 
 class _BloomAiLearningTab extends _AiLearningTab {
+  final ScrollController scrollController;
   final String learningScopeSubtitle;
   final VoidCallback onOpenSettings;
 
   const _BloomAiLearningTab({
+    required this.scrollController,
     required this.learningScopeSubtitle,
     required this.onOpenSettings,
   });
@@ -4982,6 +4883,7 @@ class _BloomAiLearningTab extends _AiLearningTab {
             : '학습 단어장 · ${learningScopeSubtitle.replaceFirst('현재 학습 기준 · ', '')}';
 
     return SingleChildScrollView(
+      controller: scrollController,
       key: const PageStorageKey<String>('memorize-ai-learning-identity-v1'),
       padding: const EdgeInsets.fromLTRB(
         MemorizeIdentity.pagePadding,
@@ -4994,7 +4896,8 @@ class _BloomAiLearningTab extends _AiLearningTab {
         children: [
           Text(
             'AI 학습',
-            style: theme.textTheme.headlineMedium?.copyWith(
+            style: theme.textTheme.displaySmall?.copyWith(
+              height: 1.12,
               color: identity.ink,
               fontWeight: FontWeight.w900,
             ),
@@ -5037,7 +4940,7 @@ class _BloomAiLearningTab extends _AiLearningTab {
           const SizedBox(height: 12),
           _BloomFeatureCard(
             title: '예문·뜻 보강',
-            subtitle: '예문 생성과 뜻·해석·오타 검토를 도와줘요.',
+            subtitle: '예문·뜻·오타를 한 번에 보강해요.',
             icon: CupertinoIcons.doc_text,
             accentColor: identity.primaryAction,
             onTap: () {
@@ -5074,6 +4977,18 @@ class _BloomAiLearningTab extends _AiLearningTab {
                 MaterialPageRoute(
                   builder: (_) => const AiGrammarQuizSetupScreen(),
                 ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _BloomFeatureCard(
+            title: '저장된 AI 퀴즈',
+            subtitle: '저장한 문제를 다시 보거나 여러 퀴즈를 합쳐요.',
+            icon: Icons.library_books_rounded,
+            accentColor: identity.scheduled,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AiQuizLibraryScreen()),
               );
             },
           ),
@@ -5134,7 +5049,7 @@ class _AiBetaSummaryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'AI 생성은 베타 기능입니다.',
+                  'AI 생성은 개인 API를 사용하는 베타 기능입니다',
                   style: theme.textTheme.titleSmall?.copyWith(
                     color: identity.ink,
                     fontWeight: FontWeight.w900,
@@ -5142,7 +5057,7 @@ class _AiBetaSummaryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '단어장과 설정 정보는 외부 AI 제공업체로 전송되며, 생성된 내용은 검토 후 사용해 주세요. $fallbackText',
+                  '개인 API 키 등록이 필요하며 요청 내용은 선택한 제공업체로 전송됩니다. 무료 API·모델은 응답 지연, 시간 초과, 토큰·요청 한도가 있을 수 있으니 생성 결과를 학습 전에 확인해 주세요. $fallbackText',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: identity.mutedInk,
                     height: 1.42,
@@ -5239,7 +5154,7 @@ class _AiReadinessCard extends StatelessWidget {
                         Text(
                           hasApiKey
                               ? '지금 바로 AI 학습을 이용할 수 있습니다.'
-                              : '설정에서 API 키를 등록하세요.',
+                              : '무료 API를 안내받거나 보유한 키를 직접 연결하세요.',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
@@ -5252,19 +5167,64 @@ class _AiReadinessCard extends StatelessWidget {
                   ),
                 ],
               );
-              final button = FilledButton(
-                onPressed: onOpenSettings,
-                style: FilledButton.styleFrom(
-                  minimumSize: Size(compact ? double.infinity : 122, 48),
-                  backgroundColor: identity.primaryAction,
-                  foregroundColor: Colors.white,
-                  shape: const StadiumBorder(),
-                ),
-                child: const Text(
-                  'AI 설정 관리',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-              );
+              final button =
+                  hasApiKey
+                      ? FilledButton(
+                        onPressed: onOpenSettings,
+                        style: FilledButton.styleFrom(
+                          minimumSize: Size(
+                            compact ? double.infinity : 122,
+                            48,
+                          ),
+                          backgroundColor: identity.primaryAction,
+                          foregroundColor: Colors.white,
+                          shape: const StadiumBorder(),
+                        ),
+                        child: const Text(
+                          'AI 설정 관리',
+                          style: TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      )
+                      : SizedBox(
+                        width: compact ? double.infinity : 178,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FilledButton(
+                              onPressed:
+                                  () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder:
+                                          (_) => const AiProviderSetupScreen(),
+                                    ),
+                                  ),
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size.fromHeight(46),
+                                backgroundColor: identity.primaryAction,
+                                foregroundColor: Colors.white,
+                                shape: const StadiumBorder(),
+                              ),
+                              child: const Text(
+                                '무료 API로 시작',
+                                style: TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            TextButton(
+                              onPressed:
+                                  () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder:
+                                          (_) => const AiProviderSetupScreen(
+                                            freeFirst: false,
+                                          ),
+                                    ),
+                                  ),
+                              child: const Text('보유한 API 키 연결'),
+                            ),
+                          ],
+                        ),
+                      );
 
               if (compact) {
                 return Column(
@@ -5276,7 +5236,7 @@ class _AiReadinessCard extends StatelessWidget {
                   Expanded(child: status),
                   Container(
                     width: 1,
-                    height: 58,
+                    height: hasApiKey ? 58 : 92,
                     margin: const EdgeInsets.symmetric(horizontal: 14),
                     color: identity.border,
                   ),
@@ -5328,20 +5288,18 @@ class _TabIntroHeader extends StatelessWidget {
         Text(
           title,
           style: theme.textTheme.displaySmall?.copyWith(
-            fontSize: 29,
-            height: 1.08,
+            height: 1.12,
             fontWeight: FontWeight.w900,
             color: theme.colorScheme.onSurface,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           subtitle,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.titleSmall?.copyWith(
+          style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
-            height: 1.42,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -5356,15 +5314,12 @@ class _BloomFeatureCard extends StatelessWidget {
   final IconData icon;
   final Color accentColor;
   final VoidCallback onTap;
-  final bool prominent;
-
   const _BloomFeatureCard({
     required this.title,
     required this.subtitle,
     required this.icon,
     required this.accentColor,
     required this.onTap,
-    this.prominent = false,
   });
 
   @override
@@ -5379,10 +5334,7 @@ class _BloomFeatureCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
         onTap: onTap,
         child: Container(
-          padding:
-              prominent
-                  ? const EdgeInsets.fromLTRB(16, 17, 16, 17)
-                  : const EdgeInsets.fromLTRB(14, 13, 14, 13),
+          padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
             border: Border.all(color: identity.border),
@@ -5390,18 +5342,14 @@ class _BloomFeatureCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: prominent ? 54 : 50,
-                height: prominent ? 54 : 50,
+                width: 50,
+                height: 50,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: accentColor.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: Icon(
-                  icon,
-                  color: accentColor,
-                  size: prominent ? 26 : 24,
-                ),
+                child: Icon(icon, color: accentColor, size: 24),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -5415,7 +5363,7 @@ class _BloomFeatureCard extends StatelessWidget {
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: identity.ink,
                         fontWeight: FontWeight.w900,
-                        fontSize: prominent ? 17 : 16,
+                        fontSize: 16,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -5446,6 +5394,7 @@ class _BloomFeatureCard extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _MasteryOverviewCard extends StatelessWidget {
   final double progress;
   final int totalWordCount;
@@ -5652,9 +5601,7 @@ class _AiLearningTab extends StatelessWidget {
           _AiReadinessCard(
             palette: palette,
             onOpenSettings: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AppSettingsScreen()),
-              );
+              _openAiSettingsSheet(context);
             },
           ),
           const SizedBox(height: 12),

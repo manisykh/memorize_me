@@ -5545,14 +5545,26 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
           Expanded(
             child: SizedBox(
               height: 50,
-              child: OutlinedButton.icon(
+              child: OutlinedButton(
                 onPressed: canUseHint ? _advanceHint : null,
-                icon: const Icon(CupertinoIcons.lightbulb, size: 18),
-                label: const Text(
-                  '힌트 보기',
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.visible,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(CupertinoIcons.lightbulb, size: 18),
+                    SizedBox(width: 7),
+                    Flexible(
+                      child: Text(
+                        '힌트 보기',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.visible,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

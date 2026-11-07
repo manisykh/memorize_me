@@ -70,4 +70,46 @@ All seven source mockups are 853 × 1844 pixels:
 - Confirm long Korean and spreadsheet names wrap or truncate without shifting selection controls.
 - Confirm dark and vision themes retain semantic contrast after light-theme fidelity is accepted.
 
+## AI setup screens — 2026-10-12
+
+### Source visual truth
+
+- Example and meaning enrichment: `C:\Users\manis\.codex\generated_images\01a07040-f246-72c1-8b26-4b764692d4f6\exec-2b662bf8-2585-424d-87c1-095c6bdc777f.png`
+- AI quiz generation: `C:\Users\manis\.codex\generated_images\01a07040-f246-72c1-8b26-4b764692d4f6\exec-b542dd15-29ef-476f-9cdc-9c7f1080b2a2.png`
+- Grammar generation, final accordion direction: `C:\Users\manis\.codex\generated_images\01a07040-f246-72c1-8b26-4b764692d4f6\exec-a6c6f5f6-2f84-4718-9a26-eb3834ff162f.png`
+
+### Implementation evidence
+
+- Intended viewport: 390 × 844 logical pixels, mobile portrait
+- Implementation screenshot path and pixel dimensions: unavailable
+- Density normalization: unavailable
+- State: initial AI setup, selected quiz scope, and expanded grammar-topic state
+
+### Static verification
+
+- Targeted Flutter analysis passed with no issues.
+- Grammar curriculum, AI review, AI quiz validation, SRS, and quiz-review tests passed (33 tests).
+
+### Findings
+
+- [P1] The rendered AI setup screens cannot yet be compared with their three source mockups.
+  - Evidence: no Android device or emulator is connected, so matching Flutter screenshots cannot be captured.
+  - Impact: typography, vertical density, wrapping, bottom safe-area spacing, and accordion expansion remain visually unverified.
+  - Fix: capture all three states on a 390 × 844-equivalent device and compare each source/capture pair together.
+
+### Fidelity surfaces
+
+- Fonts and typography: app theme weights and hierarchy are implemented; rendered comparison pending.
+- Spacing and layout rhythm: grouped rows, 18 px page insets, 20–24 px radii, and safe-area bottom actions are implemented; rendered comparison pending.
+- Colors and tokens: existing primary blue, mint connected state, coral errors, navy text, and pale blue surfaces are used; rendered comparison pending.
+- Image quality and assets: no new raster assets are required; standard Cupertino icons are used.
+- Copy and content: selected provider, wordbook, dynamic counts, scope, curriculum, topic, subtopic, and API disclosure are data-driven.
+
+### Implementation checklist
+
+- Capture 예문·뜻 보강 initial state.
+- Capture AI 퀴즈 생성 with 오늘 학습 selected.
+- Capture 문법 문제 생성 with 시제 expanded and two 세부 주제 selected.
+- Compare source and implementation together and resolve any P0/P1/P2 differences.
+
 final result: blocked

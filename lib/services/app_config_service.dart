@@ -69,6 +69,8 @@ class AppConfigService extends ChangeNotifier {
     'free_wordbook_limit': -1,
     'free_pdf_export_limit': -1,
     'ai_beta_enabled': true,
+    'ai_provider_catalog_json': '',
+    'ai_provider_catalog_verified_at': '2026-10-11',
   };
 
   AppConfigBackend? _backend;
@@ -87,18 +89,30 @@ class AppConfigService extends ChangeNotifier {
   bool get _canUseBackend => _initialized && _backendReady && _backend != null;
 
   String get monetizationMode =>
-      _canUseBackend ? _backend!.getString('monetization_mode') : _defaultString('monetization_mode');
+      _canUseBackend
+          ? _backend!.getString('monetization_mode')
+          : _defaultString('monetization_mode');
   bool get isLaunchFree => monetizationMode != freemiumMode;
   bool get bannerAdsEnabled =>
-      _canUseBackend ? _backend!.getBool('enable_banner_ads') : _defaultBool('enable_banner_ads');
+      _canUseBackend
+          ? _backend!.getBool('enable_banner_ads')
+          : _defaultBool('enable_banner_ads');
   bool get interstitialAdsEnabled =>
-      _canUseBackend ? _backend!.getBool('enable_interstitial_ads') : _defaultBool('enable_interstitial_ads');
+      _canUseBackend
+          ? _backend!.getBool('enable_interstitial_ads')
+          : _defaultBool('enable_interstitial_ads');
   bool get paywallEnabled =>
-      _canUseBackend ? _backend!.getBool('enable_paywall') : _defaultBool('enable_paywall');
+      _canUseBackend
+          ? _backend!.getBool('enable_paywall')
+          : _defaultBool('enable_paywall');
   bool get foundingProgramOpen =>
-      _canUseBackend ? _backend!.getBool('founding_program_open') : _defaultBool('founding_program_open');
+      _canUseBackend
+          ? _backend!.getBool('founding_program_open')
+          : _defaultBool('founding_program_open');
   bool get launchNoticeEnabled =>
-      _canUseBackend ? _backend!.getBool('show_launch_notice') : _defaultBool('show_launch_notice');
+      _canUseBackend
+          ? _backend!.getBool('show_launch_notice')
+          : _defaultBool('show_launch_notice');
   int get launchNoticeVersion {
     final configuredVersion =
         _canUseBackend
@@ -108,8 +122,11 @@ class AppConfigService extends ChangeNotifier {
         ? _currentLaunchNoticeContentVersion
         : configuredVersion;
   }
+
   String get launchNoticeTitle =>
-      _canUseBackend ? _backend!.getString('launch_notice_title') : _defaultString('launch_notice_title');
+      _canUseBackend
+          ? _backend!.getString('launch_notice_title')
+          : _defaultString('launch_notice_title');
   String get launchNoticeMessage {
     final message =
         _canUseBackend
@@ -122,12 +139,27 @@ class AppConfigService extends ChangeNotifier {
           '출시 기간에 앱을 시작하면 초기 사용자 혜택이 자동 등록되며',
         );
   }
+
   int get freeWordbookLimit =>
-      _canUseBackend ? _backend!.getInt('free_wordbook_limit') : _defaultInt('free_wordbook_limit');
+      _canUseBackend
+          ? _backend!.getInt('free_wordbook_limit')
+          : _defaultInt('free_wordbook_limit');
   int get freePdfExportLimit =>
-      _canUseBackend ? _backend!.getInt('free_pdf_export_limit') : _defaultInt('free_pdf_export_limit');
+      _canUseBackend
+          ? _backend!.getInt('free_pdf_export_limit')
+          : _defaultInt('free_pdf_export_limit');
   bool get aiBetaEnabled =>
-      _canUseBackend ? _backend!.getBool('ai_beta_enabled') : _defaultBool('ai_beta_enabled');
+      _canUseBackend
+          ? _backend!.getBool('ai_beta_enabled')
+          : _defaultBool('ai_beta_enabled');
+  String get aiProviderCatalogJson =>
+      _canUseBackend
+          ? _backend!.getString('ai_provider_catalog_json')
+          : _defaultString('ai_provider_catalog_json');
+  String get aiProviderCatalogVerifiedAt =>
+      _canUseBackend
+          ? _backend!.getString('ai_provider_catalog_verified_at')
+          : _defaultString('ai_provider_catalog_verified_at');
 
   Future<void> initialize() {
     return _initializationFuture ??= _initialize();

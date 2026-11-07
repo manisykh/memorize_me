@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class OnboardingStateService {
   const OnboardingStateService();
 
-  static const String seenKey = 'onboarding_seen_v1';
+  static const String seenKey = 'onboarding_seen_v3';
 
   Future<bool> shouldShow() async {
     final prefs = await SharedPreferences.getInstance();

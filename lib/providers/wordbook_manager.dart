@@ -114,6 +114,8 @@ class WordbookManager extends ChangeNotifier {
   int get statsRevision => _statsRevision;
   Future<void> _srsWrites = Future<void>.value();
   final Map<String, Map<String, Word>> _unsavedSrs = {};
+  bool _srsFlushScheduled = false;
+  int _activeSelectionGeneration = 0;
   Object? srsSaveError;
   Future<void> get pendingSrsWrites => _srsWrites;
   final Set<String> _studyActivityDates = {};
@@ -381,6 +383,7 @@ class WordbookManager extends ChangeNotifier {
   }
 
   Future<void> setActiveWordbook(Wordbook? wordbook) async {
+    final selectionGeneration = ++_activeSelectionGeneration;
     final wasSame =
         wordbook != null &&
         _activeWordbook != null &&
@@ -401,6 +404,8 @@ class WordbookManager extends ChangeNotifier {
     } else {
       _wordListNotifier.clearWords();
     }
+
+    if (selectionGeneration != _activeSelectionGeneration) return;
 
     // 활성화된 단어장 ID를 기기에 저장합니다.
     final prefs = await SharedPreferences.getInstance();
@@ -468,7 +473,9 @@ class WordbookManager extends ChangeNotifier {
 
   StudyPlan? planForSession(Wordbook wordbook, List<Word> words) {
     final plan = planFor(wordbook);
-    if (plan == null || plan.status != StudyPlanStatus.active || words.isEmpty) {
+    if (plan == null ||
+        plan.status != StudyPlanStatus.active ||
+        words.isEmpty) {
       return null;
     }
     if (plan.mode == StudyPlanMode.free) {
@@ -620,7 +627,7 @@ class WordbookManager extends ChangeNotifier {
     await _recordStudyActivityIfNeeded(words);
     _statsRevision++;
     if (_activeWordbook?.dbFileName == dbFileName) {
-      await _wordListNotifier.refreshWords();
+      _wordListNotifier.applyUpdatedWords(dbFileName, words);
       notifyListeners();
       return;
     }
@@ -628,24 +635,46 @@ class WordbookManager extends ChangeNotifier {
   }
 
   Future<void> queueWordsSrsData(String dbFileName, List<Word> words) {
-    final snapshot = List<Word>.from(words);
     final pending = _unsavedSrs.putIfAbsent(dbFileName, () => {});
-    for (final word in snapshot) {
+    for (final word in words) {
       pending[StudyScheduleService.wordKey(word)] = word;
     }
+
+    if (_srsFlushScheduled) return _srsWrites;
+    _srsFlushScheduled = true;
     _srsWrites = _srsWrites.then((_) async {
-      try {
-        await updateWordsSrsData(dbFileName, snapshot);
-        for (final word in snapshot) {
-          final key = StudyScheduleService.wordKey(word);
-          if (identical(pending[key], word)) pending.remove(key);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      while (true) {
+        final pendingBatches = <String, List<Word>>{
+          for (final entry in _unsavedSrs.entries)
+            if (entry.value.isNotEmpty)
+              entry.key: List<Word>.from(entry.value.values),
+        };
+        if (pendingBatches.isEmpty) break;
+
+        var failed = false;
+        for (final entry in pendingBatches.entries) {
+          try {
+            await updateWordsSrsData(entry.key, entry.value);
+            final currentPending = _unsavedSrs[entry.key];
+            for (final word in entry.value) {
+              final key = StudyScheduleService.wordKey(word);
+              if (identical(currentPending?[key], word)) {
+                currentPending?.remove(key);
+              }
+            }
+          } catch (error) {
+            srsSaveError = error;
+            failed = true;
+            break;
+          }
         }
-        if (_unsavedSrs.values.every((words) => words.isEmpty)) {
-          srsSaveError = null;
-        }
-      } catch (error) {
-        srsSaveError = error;
+        if (failed) break;
       }
+      if (_unsavedSrs.values.every((words) => words.isEmpty)) {
+        srsSaveError = null;
+      }
+      _srsFlushScheduled = false;
       notifyListeners();
     });
     return _srsWrites;
@@ -673,6 +702,9 @@ class WordbookManager extends ChangeNotifier {
   }
 
   Future<List<Word>> getAllWordsFrom(Wordbook wordbook) async {
+    if (_wordListNotifier.activeDbFileName == wordbook.dbFileName) {
+      return List<Word>.from(_wordListNotifier.words);
+    }
     return await _dbService.getAllWords(wordbook.dbFileName);
   }
 
@@ -732,16 +764,19 @@ class WordbookManager extends ChangeNotifier {
     await _dbService.updateWordSrsBatch(wordbook.dbFileName, words);
     _statsRevision++;
     if (_activeWordbook?.id == wordbook.id) {
-      await _wordListNotifier.refreshWords();
+      _wordListNotifier.applyUpdatedWords(wordbook.dbFileName, words);
     }
     notifyListeners();
   }
 
   Future<void> addWordToWordbook(Wordbook wordbook, Word word) async {
-    await _dbService.addWord(wordbook.dbFileName, word);
+    final id = await _dbService.addWord(wordbook.dbFileName, word);
     _statsRevision++;
     if (_activeWordbook?.id == wordbook.id) {
-      await _wordListNotifier.refreshWords();
+      _wordListNotifier.addLoadedWord(
+        wordbook.dbFileName,
+        word.copyWith(id: id),
+      );
     }
     notifyListeners();
   }
@@ -750,7 +785,7 @@ class WordbookManager extends ChangeNotifier {
     await _dbService.deleteWord(wordbook.dbFileName, wordId);
     _statsRevision++;
     if (_activeWordbook?.id == wordbook.id) {
-      await _wordListNotifier.refreshWords();
+      _wordListNotifier.removeLoadedWord(wordbook.dbFileName, wordId);
     }
     notifyListeners();
   }

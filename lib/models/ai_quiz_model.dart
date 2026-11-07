@@ -48,7 +48,15 @@ class AiQuizResponse {
         AiQuestion.fromJson(Map<String, dynamic>.from(questionsData)),
       ];
     }
-    return AiQuizResponse(questions: questionsList);
+    return AiQuizResponse(
+      questions: questionsList,
+      requestedQuestionCount:
+          (json['requestedQuestionCount'] as num?)?.toInt() ?? 0,
+      droppedDuplicateCount:
+          (json['droppedDuplicateCount'] as num?)?.toInt() ?? 0,
+      difficultyMismatchCount:
+          (json['difficultyMismatchCount'] as num?)?.toInt() ?? 0,
+    );
   }
 
   static AiQuizResponse parse(String jsonString) {
@@ -57,6 +65,13 @@ class AiQuizResponse {
     final decoded = jsonDecode(cleanedJson);
     return AiQuizResponse.fromJson(decoded);
   }
+
+  Map<String, dynamic> toJson() => {
+    'questions': questions.map((question) => question.toJson()).toList(),
+    'requestedQuestionCount': requestedQuestionCount,
+    'droppedDuplicateCount': droppedDuplicateCount,
+    'difficultyMismatchCount': difficultyMismatchCount,
+  };
 }
 
 class AiQuestion {
@@ -109,6 +124,21 @@ class AiQuestion {
               .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    if (questionFormat != null) 'questionFormat': questionFormat,
+    if (targetWord != null) 'targetWord': targetWord,
+    if (grammarChapterId != null) 'chapterId': grammarChapterId,
+    if (passage != null) 'passage': passage,
+    if (script != null) 'script': script,
+    if (question != null) 'question': question,
+    if (options != null) 'options': options,
+    if (answer != null) 'answer': answer,
+    if (explanation != null) 'explanation': explanation,
+    if (questions != null)
+      'questions': questions!.map((question) => question.toJson()).toList(),
+  };
 }
 
 class AiReadingSubQuestion {
@@ -141,4 +171,13 @@ class AiReadingSubQuestion {
       explanation: _stringOrNull(json['explanation']),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'questionFormat': questionFormat,
+    'targetWord': targetWord,
+    'question': question,
+    'options': options,
+    'answer': answer,
+    if (explanation != null) 'explanation': explanation,
+  };
 }

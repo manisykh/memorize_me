@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/ai_quiz_model.dart';
+import '../models/saved_ai_quiz.dart';
 import '../services/test_sheet_service.dart';
+import '../services/ai_quiz_library_service.dart';
 import '../services/analytics_service.dart';
 import '../services/tts_service.dart';
 import '../themes/memorize_identity.dart';
@@ -12,8 +14,15 @@ import '../widgets/glassmorphic_card.dart';
 
 class AiQuizPlayerScreen extends StatefulWidget {
   final AiQuizResponse quizResponse;
+  final String? savedTitle;
+  final AiQuizCategory? savedCategory;
 
-  const AiQuizPlayerScreen({super.key, required this.quizResponse});
+  const AiQuizPlayerScreen({
+    super.key,
+    required this.quizResponse,
+    this.savedTitle,
+    this.savedCategory,
+  });
 
   @override
   State<AiQuizPlayerScreen> createState() => _AiQuizPlayerScreenState();
@@ -27,6 +36,8 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
   late final TtsService _ttsService;
 
   bool _isExporting = false;
+  bool _isSaving = false;
+  bool _saved = false;
   PdfExportType _selectedPdfType = PdfExportType.withAnswers;
   late final TextEditingController _exportTitleController;
 
@@ -39,8 +50,11 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     super.initState();
     _ttsService = TtsService();
     _exportTitleController = TextEditingController(
-      text: 'AI 생성 퀴즈 - ${DateFormat('yyyy-MM-dd').format(DateTime.now())}',
+      text:
+          widget.savedTitle ??
+          'AI 생성 퀴즈 - ${DateFormat('yyyy-MM-dd').format(DateTime.now())}',
     );
+    _saved = widget.savedTitle != null;
     _prepareQuizData();
   }
 
@@ -111,8 +125,9 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                   RadioGroup<PdfExportType>(
                     groupValue: tempSelectedType,
                     onChanged: (value) {
-                      if (value != null)
+                      if (value != null) {
                         setDialogState(() => tempSelectedType = value);
+                      }
                     },
                     child: const Column(
                       mainAxisSize: MainAxisSize.min,
@@ -251,6 +266,88 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     );
   }
 
+  Future<void> _saveQuiz() async {
+    if (_isSaving) return;
+    var draftTitle = _exportTitleController.text;
+    var selectedCategory =
+        widget.savedCategory ?? classifyAiQuiz(widget.quizResponse);
+    final title = await showDialog<String>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('AI 퀴즈 저장'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  initialValue: draftTitle,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: '퀴즈 이름'),
+                  textInputAction: TextInputAction.done,
+                  onChanged: (value) => draftTitle = value,
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<AiQuizCategory>(
+                  initialValue: selectedCategory,
+                  decoration: const InputDecoration(labelText: '카테고리'),
+                  items:
+                      AiQuizCategory.values
+                          .map(
+                            (category) => DropdownMenuItem(
+                              value: category,
+                              child: Text(category.label),
+                            ),
+                          )
+                          .toList(),
+                  onChanged: (category) {
+                    if (category != null) selectedCategory = category;
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('취소'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final normalized = draftTitle.trim();
+                  if (normalized.isEmpty) return;
+                  FocusScope.of(dialogContext).unfocus();
+                  Navigator.pop(dialogContext, normalized);
+                },
+                child: const Text('저장'),
+              ),
+            ],
+          ),
+    );
+    if (title == null || title.isEmpty || !mounted) return;
+    setState(() => _isSaving = true);
+    try {
+      await context.read<AiQuizLibraryService>().save(
+        title: title,
+        quiz: widget.quizResponse,
+        category: selectedCategory,
+      );
+      if (!mounted) return;
+      setState(() {
+        _saved = true;
+        _exportTitleController.text = title;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('AI 퀴즈를 저장했습니다.')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('퀴즈를 저장하지 못했습니다: $error')));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -259,6 +356,21 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
       appBar: AppBar(
         title: const Text('AI 퀴즈'),
         actions: [
+          IconButton(
+            onPressed: _isSaving ? null : _saveQuiz,
+            tooltip: _saved ? '다른 이름으로 저장' : '퀴즈 저장',
+            icon:
+                _isSaving
+                    ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                    : Icon(
+                      _saved
+                          ? CupertinoIcons.bookmark_fill
+                          : CupertinoIcons.bookmark,
+                    ),
+          ),
           IconButton(
             icon:
                 _isExporting
@@ -587,6 +699,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
     final isSelected = userAnswer == optionText;
     final isCorrectAnswer = optionText == correctAnswer;
     final isWrongSelection = _isSubmitted && isSelected && !isCorrectAnswer;
+    final shouldEmphasize = isSelected || (_isSubmitted && isCorrectAnswer);
     final success = _successColor(theme);
     final error = theme.colorScheme.error;
 
@@ -661,7 +774,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
                           color: foregroundColor,
                           height: 1.42,
                           fontWeight:
-                              isSelected || isCorrectAnswer
+                              shouldEmphasize
                                   ? FontWeight.w800
                                   : FontWeight.w600,
                         ),

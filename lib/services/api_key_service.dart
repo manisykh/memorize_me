@@ -17,6 +17,12 @@ enum AiProvider {
   fireworks,
   customOpenAI,
   zAi,
+  nvidiaNim,
+  huggingFace,
+  cerebras,
+  siliconFlow,
+  // Keep new providers at the end so legacy index-based settings stay stable.
+  cohere,
 }
 
 extension AiProviderInfo on AiProvider {
@@ -48,6 +54,16 @@ extension AiProviderInfo on AiProvider {
         return 'Custom OpenAI Compatible';
       case AiProvider.zAi:
         return 'Z.AI';
+      case AiProvider.nvidiaNim:
+        return 'NVIDIA NIM';
+      case AiProvider.huggingFace:
+        return 'Hugging Face';
+      case AiProvider.cerebras:
+        return 'Cerebras';
+      case AiProvider.siliconFlow:
+        return 'SiliconFlow';
+      case AiProvider.cohere:
+        return 'Cohere';
     }
   }
 
@@ -79,6 +95,16 @@ extension AiProviderInfo on AiProvider {
         return 'Custom';
       case AiProvider.zAi:
         return 'Z.AI';
+      case AiProvider.nvidiaNim:
+        return 'NVIDIA';
+      case AiProvider.huggingFace:
+        return 'Hugging Face';
+      case AiProvider.cerebras:
+        return 'Cerebras';
+      case AiProvider.siliconFlow:
+        return 'SiliconFlow';
+      case AiProvider.cohere:
+        return 'Cohere';
     }
   }
 
@@ -116,13 +142,13 @@ extension AiProviderInfo on AiProvider {
         ];
       case AiProvider.groq:
         return const [
-          'llama-3.3-70b-versatile',
-          'llama-3.1-8b-instant',
-          'mixtral-8x7b-32768',
-          'gemma2-9b-it',
+          'openai/gpt-oss-120b',
+          'openai/gpt-oss-20b',
+          'qwen/qwen3.8-27b',
         ];
       case AiProvider.openRouter:
         return const [
+          'openrouter/free',
           'deepseek/deepseek-chat-v3-0324:free',
           'meta-llama/llama-3.3-70b-instruct:free',
           'openai/gpt-4o',
@@ -138,15 +164,9 @@ extension AiProviderInfo on AiProvider {
           'open-mixtral-8x22b',
         ];
       case AiProvider.deepSeek:
-        return const [
-          'deepseek-chat',
-          'deepseek-reasoner',
-        ];
+        return const ['deepseek-chat', 'deepseek-reasoner'];
       case AiProvider.xAI:
-        return const [
-          'grok-2-latest',
-          'grok-2-vision-latest',
-        ];
+        return const ['grok-2-latest', 'grok-2-vision-latest'];
       case AiProvider.perplexity:
         return const [
           'sonar',
@@ -188,6 +208,23 @@ extension AiProviderInfo on AiProvider {
           'glm-4.5-air',
           'glm-4.5-flash',
         ];
+      case AiProvider.nvidiaNim:
+        return const [
+          'deepseek-ai/deepseek-v4-flash',
+          'meta/llama-3.1-8b-instruct',
+        ];
+      case AiProvider.huggingFace:
+        return const ['openai/gpt-oss-120b', 'deepseek-ai/DeepSeek-V3-0324'];
+      case AiProvider.cerebras:
+        return const ['llama3.1-8b', 'qwen-3-32b'];
+      case AiProvider.siliconFlow:
+        return const ['Qwen/Qwen2.5-7B-Instruct', 'deepseek-ai/DeepSeek-V3'];
+      case AiProvider.cohere:
+        return const [
+          'command-a-plus-05-2026',
+          'command-a-03-2025',
+          'command-r7b-12-2024',
+        ];
     }
   }
 
@@ -202,7 +239,10 @@ extension AiProviderInfo on AiProvider {
       case AiProvider.groq:
         return '무료 플랜 가능';
       case AiProvider.openRouter:
-        return normalizedModel.endsWith(':free') ? '무료 모델' : '요금 확인';
+        return normalizedModel.endsWith(':free') ||
+                normalizedModel == 'openrouter/free'
+            ? '무료 모델'
+            : '요금 확인';
       case AiProvider.customOpenAI:
         if (normalizedEndpoint.contains('integrate.api.nvidia.com')) {
           return 'NVIDIA 무료 크레딧 확인';
@@ -217,15 +257,26 @@ extension AiProviderInfo on AiProvider {
           return '한시적 무료 · 정책 확인';
         }
         return '요금 확인';
+      case AiProvider.nvidiaNim:
+        return '개발·실험 무료';
+      case AiProvider.huggingFace:
+        return '월간 무료 크레딧';
+      case AiProvider.cerebras:
+        return '체험 크레딧';
+      case AiProvider.siliconFlow:
+        return '무료 모델 가능';
+      case AiProvider.cohere:
+        return '무료 평가 키 · 유료 확장';
       case AiProvider.openAI:
       case AiProvider.anthropic:
-      case AiProvider.mistral:
       case AiProvider.deepSeek:
       case AiProvider.xAI:
       case AiProvider.perplexity:
       case AiProvider.together:
       case AiProvider.fireworks:
         return '요금 확인';
+      case AiProvider.mistral:
+        return '무료 모드 가능';
     }
   }
 
@@ -251,6 +302,16 @@ extension AiProviderInfo on AiProvider {
         return 'https://api.fireworks.ai/inference/v1/chat/completions';
       case AiProvider.zAi:
         return 'https://api.z.ai/api/paas/v4/chat/completions';
+      case AiProvider.nvidiaNim:
+        return 'https://integrate.api.nvidia.com/v1/chat/completions';
+      case AiProvider.huggingFace:
+        return 'https://router.huggingface.co/v1/chat/completions';
+      case AiProvider.cerebras:
+        return 'https://api.cerebras.ai/v1/chat/completions';
+      case AiProvider.siliconFlow:
+        return 'https://api.siliconflow.com/v1/chat/completions';
+      case AiProvider.cohere:
+        return 'https://api.cohere.ai/compatibility/v1/chat/completions';
       case AiProvider.customOpenAI:
       case AiProvider.gemini:
       case AiProvider.anthropic:

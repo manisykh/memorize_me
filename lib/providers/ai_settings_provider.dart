@@ -12,6 +12,7 @@ class AiSettingsProvider extends ChangeNotifier {
   bool _autoFallbackEnabled = false;
   List<AiProvider> _fallbackOrder = List<AiProvider>.from(AiProvider.values);
   Set<AiProvider> _fallbackProviders = {};
+  final Map<AiProvider, bool> _freeSetupSources = {};
   AiRequestOption? _lastUsedOption;
 
   AiSettingsProvider() {
@@ -21,7 +22,9 @@ class AiSettingsProvider extends ChangeNotifier {
   AiProvider get selectedProvider => _selectedProvider;
   String get selectedModel => selectedModelFor(_selectedProvider);
   String? get selectedEndpoint =>
-      _selectedProvider == AiProvider.customOpenAI ? _customOpenAiEndpoint.trim() : null;
+      _selectedProvider == AiProvider.customOpenAI
+          ? _customOpenAiEndpoint.trim()
+          : null;
   String get customOpenAiEndpoint => _customOpenAiEndpoint;
   bool get autoFallbackEnabled => _autoFallbackEnabled;
   List<AiProvider> get fallbackOrder =>
@@ -47,15 +50,22 @@ class AiSettingsProvider extends ChangeNotifier {
   }
 
   String? endpointFor(AiProvider provider) {
-    return provider == AiProvider.customOpenAI ? _customOpenAiEndpoint.trim() : null;
+    return provider == AiProvider.customOpenAI
+        ? _customOpenAiEndpoint.trim()
+        : null;
   }
 
   bool isFallbackProviderEnabled(AiProvider provider) {
     return _fallbackProviders.contains(provider);
   }
 
+  bool? wasAddedFromFreeSetup(AiProvider provider) {
+    return _freeSetupSources[provider];
+  }
+
   bool _isEnabledFallbackProvider(AiProvider provider) {
-    return provider != _selectedProvider && _fallbackProviders.contains(provider);
+    return provider != _selectedProvider &&
+        _fallbackProviders.contains(provider);
   }
 
   Future<void> _initPrefs() async {
@@ -68,18 +78,39 @@ class AiSettingsProvider extends ChangeNotifier {
 
     for (final provider in AiProvider.values) {
       final storedModel = _prefs!.getString('ai_model_${provider.name}');
-      _selectedModels[provider] = storedModel ?? _legacyModelFor(provider) ?? provider.defaultModel;
+      _selectedModels[provider] =
+          storedModel ?? _legacyModelFor(provider) ?? provider.defaultModel;
     }
 
     _customOpenAiEndpoint = _prefs!.getString('custom_openai_endpoint') ?? '';
     _autoFallbackEnabled = _prefs!.getBool('ai_auto_fallback_enabled') ?? false;
     _fallbackOrder = _loadFallbackOrder();
     _fallbackProviders = _loadFallbackProviders();
+    _freeSetupSources
+      ..clear()
+      ..addAll(_loadSetupSources());
     notifyListeners();
   }
 
+  Map<AiProvider, bool> _loadSetupSources() {
+    final stored =
+        _prefs!.getStringList('ai_provider_setup_sources') ?? const <String>[];
+    final sources = <AiProvider, bool>{};
+    for (final value in stored) {
+      final separator = value.lastIndexOf(':');
+      if (separator <= 0) continue;
+      final provider = _providerByName(value.substring(0, separator));
+      if (provider == null) continue;
+      final source = value.substring(separator + 1);
+      if (source == 'free') sources[provider] = true;
+      if (source == 'owned') sources[provider] = false;
+    }
+    return sources;
+  }
+
   List<AiProvider> _loadFallbackOrder() {
-    final stored = _prefs!.getStringList('ai_fallback_order') ?? const <String>[];
+    final stored =
+        _prefs!.getStringList('ai_fallback_order') ?? const <String>[];
     final ordered = <AiProvider>[];
     for (final name in stored) {
       for (final provider in AiProvider.values) {
@@ -95,7 +126,8 @@ class AiSettingsProvider extends ChangeNotifier {
   }
 
   Set<AiProvider> _loadFallbackProviders() {
-    final stored = _prefs!.getStringList('ai_fallback_providers') ?? const <String>[];
+    final stored =
+        _prefs!.getStringList('ai_fallback_providers') ?? const <String>[];
     final providers = <AiProvider>{};
     for (final name in stored) {
       final provider = _providerByName(name);
@@ -120,7 +152,9 @@ class AiSettingsProvider extends ChangeNotifier {
     }
 
     final legacyIndex = _prefs!.getInt('ai_provider');
-    if (legacyIndex != null && legacyIndex >= 0 && legacyIndex < AiProvider.values.length) {
+    if (legacyIndex != null &&
+        legacyIndex >= 0 &&
+        legacyIndex < AiProvider.values.length) {
       return AiProvider.values[legacyIndex];
     }
     return AiProvider.gemini;
@@ -143,6 +177,11 @@ class AiSettingsProvider extends ChangeNotifier {
       case AiProvider.fireworks:
       case AiProvider.customOpenAI:
       case AiProvider.zAi:
+      case AiProvider.nvidiaNim:
+      case AiProvider.huggingFace:
+      case AiProvider.cerebras:
+      case AiProvider.siliconFlow:
+      case AiProvider.cohere:
         return null;
     }
   }
@@ -161,6 +200,15 @@ class AiSettingsProvider extends ChangeNotifier {
       'ai_fallback_providers',
       _fallbackProviders.map((provider) => provider.name).toList(),
     );
+    await _prefs!.setStringList(
+      'ai_provider_setup_sources',
+      _freeSetupSources.entries
+          .map(
+            (entry) =>
+                '${entry.key.name}:${entry.value ? 'free' : 'owned'}',
+          )
+          .toList(),
+    );
     for (final entry in _selectedModels.entries) {
       await _prefs!.setString('ai_model_${entry.key.name}', entry.value);
     }
@@ -170,6 +218,12 @@ class AiSettingsProvider extends ChangeNotifier {
   void setProvider(AiProvider provider) {
     if (_selectedProvider == provider) return;
     _selectedProvider = provider;
+    saveSettings();
+  }
+
+  void setSetupSource(AiProvider provider, {required bool freeSetup}) {
+    if (_freeSetupSources[provider] == freeSetup) return;
+    _freeSetupSources[provider] = freeSetup;
     saveSettings();
   }
 
@@ -195,7 +249,10 @@ class AiSettingsProvider extends ChangeNotifier {
 
   void setFallbackProviderEnabled(AiProvider provider, bool enabled) {
     if (provider == _selectedProvider) return;
-    final changed = enabled ? _fallbackProviders.add(provider) : _fallbackProviders.remove(provider);
+    final changed =
+        enabled
+            ? _fallbackProviders.add(provider)
+            : _fallbackProviders.remove(provider);
     if (!changed) return;
     if (!_fallbackOrder.contains(provider)) {
       _fallbackOrder.add(provider);
@@ -212,8 +269,24 @@ class AiSettingsProvider extends ChangeNotifier {
     activeOrder
       ..removeAt(index)
       ..insert(targetIndex, provider);
-    final inactiveOrder = _fallbackOrder.where((provider) => !activeOrder.contains(provider)).toList();
+    final inactiveOrder =
+        _fallbackOrder
+            .where((provider) => !activeOrder.contains(provider))
+            .toList();
     _fallbackOrder = [...activeOrder, ...inactiveOrder];
+    saveSettings();
+  }
+
+  void setProviderPriority(List<AiProvider> orderedProviders) {
+    if (orderedProviders.isEmpty) return;
+    _selectedProvider = orderedProviders.first;
+    _fallbackOrder = [
+      ...orderedProviders.skip(1),
+      ...AiProvider.values.where(
+        (provider) => !orderedProviders.contains(provider),
+      ),
+    ];
+    _fallbackProviders = orderedProviders.skip(1).toSet();
     saveSettings();
   }
 

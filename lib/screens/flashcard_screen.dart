@@ -450,7 +450,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         return _SessionEndContent(
           title: '새 단어 학습 완료',
           message:
-              '알아요 $_knownCount개 · 몰라요 $_unknownCount개가 SRS 일정에 반영됐어요. 객관식 퀴즈로 바로 확인할 수 있어요.',
+              '알아요 $_knownCount개 · 몰라요 $_unknownCount개가 다음 복습 일정에 반영됐어요. 객관식 퀴즈로 바로 확인할 수 있어요.',
         );
       case FlashcardSessionType.allWords:
         return _SessionEndContent(
@@ -688,7 +688,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '학습 결과는 SRS와 다음 복습 일정에 반영됩니다.',
+                    '학습 결과는 기억 단계와 다음 복습 일정에 반영됩니다.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: identity.mutedInk,
                       fontWeight: FontWeight.w600,

@@ -16,19 +16,25 @@ void main() {
       meaning: '가다',
       exampleSentence: 'He went home and will go again.',
     );
-    await tester.pumpWidget(MaterialApp(
-      home: AddEditWordScreen(wordbook: book, word: word),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(home: AddEditWordScreen(wordbook: book, word: word)),
+    );
+
+    final expansionTitle = find.text('문장 완성 빈칸 표현 (선택)');
+    await tester.ensureVisible(expansionTitle);
+    await tester.pumpAndSettle();
+    await tester.tap(expansionTitle);
+    await tester.pumpAndSettle();
 
     final blankField = find.byKey(const Key('sentence_blank_answer'));
-    await tester.scrollUntilVisible(
-      blankField, 180, scrollable: find.byType(Scrollable).first,
-    );
+    await tester.ensureVisible(blankField);
+    await tester.pumpAndSettle();
     await tester.enterText(blankField, 'go');
     await tester.pump();
     await tester.drag(find.byType(ListView), const Offset(0, -160));
     await tester.pumpAndSettle();
-    expect(find.text('출제 미리보기: He went home and will _________ again.'), findsOneWidget);
+    expect(find.text('출제 미리보기'), findsOneWidget);
+    expect(find.text('He went home and will _________ again.'), findsOneWidget);
 
     await tester.enterText(blankField, 'gone');
     await tester.pump();

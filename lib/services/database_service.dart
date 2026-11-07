@@ -3,7 +3,6 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -11,20 +10,9 @@ import '../models/study_plan_model.dart';
 import '../models/word_model.dart';
 import '../models/wordbook_model.dart';
 
-Future<List<Word>> _getAllWordsInBackground(Map<String, dynamic> params) async {
-  final String dbFileName = params['dbFileName'];
-  final RootIsolateToken rootIsolateToken = params['token'];
-  BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
-  Directory documentsDirectory = await getApplicationDocumentsDirectory();
-  String path = p.join(documentsDirectory.path, dbFileName);
-  final db = await openDatabase(path, singleInstance: false);
-  final List<Map<String, dynamic>> maps = await db.query('words', orderBy: 'id DESC');
-  await db.close();
-  return List.generate(maps.length, (i) => Word.fromMap(maps[i]));
-}
-
 class DatabaseService {
   Database? _metaDb;
+  final Map<String, Future<Database>> _wordDatabases = {};
 
   Future<Database> get _metaDatabase async {
     if (_metaDb != null) return _metaDb!;
@@ -35,7 +23,12 @@ class DatabaseService {
   Future<Database> _initMetaDB() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, "meta.db");
-    return await openDatabase(path, version: 6, onCreate: _createMetaDB, onUpgrade: _onUpgrade);
+    return await openDatabase(
+      path,
+      version: 6,
+      onCreate: _createMetaDB,
+      onUpgrade: _onUpgrade,
+    );
   }
 
   Future<void> _createMetaDB(Database db, int version) async {
@@ -103,19 +96,33 @@ class DatabaseService {
   }
 
   Future<void> _addFlexiblePlanColumns(Database db) async {
-    await db.execute("ALTER TABLE study_plans ADD COLUMN mode TEXT NOT NULL DEFAULT 'scheduled'");
-    await db.execute('ALTER TABLE study_plans ADD COLUMN bundleCount INTEGER NOT NULL DEFAULT 0');
-    await db.execute('ALTER TABLE study_plans ADD COLUMN selectedBundle INTEGER NOT NULL DEFAULT 1');
-    await db.execute('ALTER TABLE study_plans ADD COLUMN revision INTEGER NOT NULL DEFAULT 1');
-    await db.execute("ALTER TABLE study_plans ADD COLUMN wordOrder TEXT NOT NULL DEFAULT '[]'");
-    await db.execute('ALTER TABLE study_plans ADD COLUMN scheduleWordKeys TEXT');
+    await db.execute(
+      "ALTER TABLE study_plans ADD COLUMN mode TEXT NOT NULL DEFAULT 'scheduled'",
+    );
+    await db.execute(
+      'ALTER TABLE study_plans ADD COLUMN bundleCount INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'ALTER TABLE study_plans ADD COLUMN selectedBundle INTEGER NOT NULL DEFAULT 1',
+    );
+    await db.execute(
+      'ALTER TABLE study_plans ADD COLUMN revision INTEGER NOT NULL DEFAULT 1',
+    );
+    await db.execute(
+      "ALTER TABLE study_plans ADD COLUMN wordOrder TEXT NOT NULL DEFAULT '[]'",
+    );
+    await db.execute(
+      'ALTER TABLE study_plans ADD COLUMN scheduleWordKeys TEXT',
+    );
   }
 
   Future<void> _createStudyHistoryTables(Database db) async {
     await db.execute('''CREATE TABLE IF NOT EXISTS study_sessions(
       sessionId TEXT PRIMARY KEY, dbFileName TEXT NOT NULL,
       startedAt TEXT NOT NULL, data TEXT NOT NULL)''');
-    await db.execute('CREATE INDEX IF NOT EXISTS study_sessions_book_date ON study_sessions(dbFileName, startedAt)');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS study_sessions_book_date ON study_sessions(dbFileName, startedAt)',
+    );
     await db.execute('''CREATE TABLE IF NOT EXISTS study_plan_versions(
       dbFileName TEXT NOT NULL, revision INTEGER NOT NULL,
       effectiveFrom TEXT NOT NULL, data TEXT NOT NULL,
@@ -125,14 +132,18 @@ class DatabaseService {
   Future<List<Map<String, dynamic>>> getStudySessions() async {
     final db = await _metaDatabase;
     final rows = await db.query('study_sessions', orderBy: 'startedAt');
-    return rows.map((row) => jsonDecode(row['data'] as String) as Map<String, dynamic>).toList();
+    return rows
+        .map((row) => jsonDecode(row['data'] as String) as Map<String, dynamic>)
+        .toList();
   }
 
   Future<void> saveStudySession(Map<String, dynamic> data) async {
     final db = await _metaDatabase;
     await db.insert('study_sessions', {
-      'sessionId': data['id'], 'dbFileName': data['dbFileName'],
-      'startedAt': data['startedAt'], 'data': jsonEncode(data),
+      'sessionId': data['id'],
+      'dbFileName': data['dbFileName'],
+      'startedAt': data['startedAt'],
+      'data': jsonEncode(data),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -143,7 +154,10 @@ class DatabaseService {
 
   Future<List<Wordbook>> getWordbooks() async {
     final db = await _metaDatabase;
-    final List<Map<String, dynamic>> maps = await db.query('wordbooks', orderBy: 'id DESC');
+    final List<Map<String, dynamic>> maps = await db.query(
+      'wordbooks',
+      orderBy: 'id DESC',
+    );
     return List.generate(maps.length, (i) => Wordbook.fromMap(maps[i]));
   }
 
@@ -160,9 +174,25 @@ class DatabaseService {
   Future<void> deleteWordbook(int id, String dbFileName) async {
     final db = await _metaDatabase;
     await db.delete('wordbooks', where: 'id = ?', whereArgs: [id]);
-    await db.delete('study_plans', where: 'dbFileName = ?', whereArgs: [dbFileName]);
-    await db.delete('study_sessions', where: 'dbFileName = ?', whereArgs: [dbFileName]);
-    await db.delete('study_plan_versions', where: 'dbFileName = ?', whereArgs: [dbFileName]);
+    await db.delete(
+      'study_plans',
+      where: 'dbFileName = ?',
+      whereArgs: [dbFileName],
+    );
+    await db.delete(
+      'study_sessions',
+      where: 'dbFileName = ?',
+      whereArgs: [dbFileName],
+    );
+    await db.delete(
+      'study_plan_versions',
+      where: 'dbFileName = ?',
+      whereArgs: [dbFileName],
+    );
+    final wordDatabase = _wordDatabases.remove(dbFileName);
+    if (wordDatabase != null) {
+      await (await wordDatabase).close();
+    }
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = p.join(documentsDirectory.path, dbFileName);
     final file = File(path);
@@ -211,7 +241,11 @@ class DatabaseService {
 
   Future<void> deleteIncorrectWordbook(String wordbookName) async {
     final db = await _metaDatabase;
-    await db.delete('incorrect_words', where: 'wordbookName = ?', whereArgs: [wordbookName]);
+    await db.delete(
+      'incorrect_words',
+      where: 'wordbookName = ?',
+      whereArgs: [wordbookName],
+    );
   }
 
   Future<List<StudyPlan>> getStudyPlans() async {
@@ -223,22 +257,29 @@ class DatabaseService {
       if (plan.wordOrder.isEmpty && plan.totalWords > 0) {
         // Freeze legacy ordering once, without loading all word content at startup.
         final wordDb = await _openWordDB(plan.dbFileName);
-        late final List<Map<String, dynamic>> rows;
-        try {
-          rows = await wordDb.query('words', columns: ['id'], orderBy: 'id ASC');
-        } finally {
-          await wordDb.close();
-        }
+        final rows = await wordDb.query(
+          'words',
+          columns: ['id'],
+          orderBy: 'id ASC',
+        );
         final keys = rows.map((row) => '${row['id']}').toList();
         plan = plan.copyWith(wordOrder: keys, scheduleWordKeys: keys);
         final frozen = plan;
         await db.transaction((txn) async {
-          await txn.update('study_plans', {
-            'wordOrder': jsonEncode(keys), 'scheduleWordKeys': jsonEncode(keys),
-          }, where: 'id = ?', whereArgs: [frozen.id]);
+          await txn.update(
+            'study_plans',
+            {
+              'wordOrder': jsonEncode(keys),
+              'scheduleWordKeys': jsonEncode(keys),
+            },
+            where: 'id = ?',
+            whereArgs: [frozen.id],
+          );
           await txn.insert('study_plan_versions', {
-            'dbFileName': frozen.dbFileName, 'revision': frozen.revision,
-            'effectiveFrom': frozen.startDate, 'data': jsonEncode(frozen.toMap()),
+            'dbFileName': frozen.dbFileName,
+            'revision': frozen.revision,
+            'effectiveFrom': frozen.startDate,
+            'data': jsonEncode(frozen.toMap()),
           }, conflictAlgorithm: ConflictAlgorithm.ignore);
         });
       }
@@ -250,7 +291,9 @@ class DatabaseService {
   Future<int> nextStudyPlanRevision(String dbFileName) async {
     final db = await _metaDatabase;
     final rows = await db.rawQuery(
-      'SELECT MAX(revision) AS revision FROM study_plan_versions WHERE dbFileName = ?', [dbFileName]);
+      'SELECT MAX(revision) AS revision FROM study_plan_versions WHERE dbFileName = ?',
+      [dbFileName],
+    );
     return ((rows.first['revision'] as int?) ?? 0) + 1;
   }
 
@@ -259,21 +302,34 @@ class DatabaseService {
     final map = plan.toMap();
     map.remove('id');
     final id = await db.transaction((txn) async {
-      final previous = await txn.query('study_plans', where: 'dbFileName = ?', whereArgs: [plan.dbFileName]);
+      final previous = await txn.query(
+        'study_plans',
+        where: 'dbFileName = ?',
+        whereArgs: [plan.dbFileName],
+      );
       if (previous.isNotEmpty) {
         final old = StudyPlan.fromMap(previous.first);
         await txn.insert('study_plan_versions', {
-          'dbFileName': old.dbFileName, 'revision': old.revision,
-          'effectiveFrom': old.startDate, 'data': jsonEncode(old.toMap()),
+          'dbFileName': old.dbFileName,
+          'revision': old.revision,
+          'effectiveFrom': old.startDate,
+          'data': jsonEncode(old.toMap()),
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
       await txn.insert('study_plan_versions', {
-        'dbFileName': plan.dbFileName, 'revision': plan.revision,
-        'effectiveFrom': studyDateKey(DateTime.now()), 'data': jsonEncode(plan.toMap()),
+        'dbFileName': plan.dbFileName,
+        'revision': plan.revision,
+        'effectiveFrom': studyDateKey(DateTime.now()),
+        'data': jsonEncode(plan.toMap()),
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
       if (previous.isNotEmpty) {
         final existingId = previous.first['id'] as int;
-        await txn.update('study_plans', map, where: 'id = ?', whereArgs: [existingId]);
+        await txn.update(
+          'study_plans',
+          map,
+          where: 'id = ?',
+          whereArgs: [existingId],
+        );
         return existingId;
       }
       return txn.insert('study_plans', map);
@@ -283,20 +339,43 @@ class DatabaseService {
 
   Future<void> deleteStudyPlan(int id) async {
     final db = await _metaDatabase;
-    final rows = await db.query('study_plans', where: 'id = ?', whereArgs: [id]);
+    final rows = await db.query(
+      'study_plans',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
     if (rows.isNotEmpty) {
       final old = StudyPlan.fromMap(rows.first);
-      await saveStudyPlan(old.copyWith(status: StudyPlanStatus.paused, revision: old.revision + 1));
+      await saveStudyPlan(
+        old.copyWith(
+          status: StudyPlanStatus.paused,
+          revision: old.revision + 1,
+        ),
+      );
     }
     await db.delete('study_plans', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<Database> _openWordDB(String dbFileName) async {
-    Directory documentsDirectory = await getApplicationDocumentsDirectory();
-    String path = p.join(documentsDirectory.path, dbFileName);
-    return await openDatabase(
+    final existing = _wordDatabases[dbFileName];
+    if (existing != null) return existing;
+
+    late final Future<Database> opening;
+    opening = _createWordDatabase(dbFileName).catchError((Object error) {
+      if (identical(_wordDatabases[dbFileName], opening)) {
+        _wordDatabases.remove(dbFileName);
+      }
+      throw error;
+    });
+    _wordDatabases[dbFileName] = opening;
+    return opening;
+  }
+
+  Future<Database> _createWordDatabase(String dbFileName) async {
+    final documentsDirectory = await getApplicationDocumentsDirectory();
+    final path = p.join(documentsDirectory.path, dbFileName);
+    return openDatabase(
       path,
-      singleInstance: false,
       version: 9,
       onCreate: (db, version) async {
         await _createWordsTable(db);
@@ -311,11 +390,7 @@ class DatabaseService {
 
   Future<void> ensureWordbookDatabase(String dbFileName) async {
     final db = await _openWordDB(dbFileName);
-    try {
-      await _createWordsTable(db);
-    } finally {
-      await db.close();
-    }
+    await _createWordsTable(db);
   }
 
   Future<void> _createWordsTable(Database db) async {
@@ -340,16 +415,24 @@ class DatabaseService {
   Future<void> _upgradeWordDB(Database db, int version) async {
     try {
       if (version == 2) {
-        await db.execute('ALTER TABLE words ADD COLUMN srsLevel INTEGER NOT NULL DEFAULT 0');
+        await db.execute(
+          'ALTER TABLE words ADD COLUMN srsLevel INTEGER NOT NULL DEFAULT 0',
+        );
         await db.execute('ALTER TABLE words ADD COLUMN nextReviewDate TEXT');
       }
       if (version == 4) {
-        await db.execute('ALTER TABLE words ADD COLUMN incorrectCount INTEGER NOT NULL DEFAULT 0');
-        await db.execute('ALTER TABLE words ADD COLUMN correctStreak INTEGER NOT NULL DEFAULT 0');
+        await db.execute(
+          'ALTER TABLE words ADD COLUMN incorrectCount INTEGER NOT NULL DEFAULT 0',
+        );
+        await db.execute(
+          'ALTER TABLE words ADD COLUMN correctStreak INTEGER NOT NULL DEFAULT 0',
+        );
       }
       if (version == 5) {
         // ▼▼▼ [추가] 버전 5에 대한 스키마 업그레이드
-        await db.execute('ALTER TABLE words ADD COLUMN exampleSentenceTranslation TEXT');
+        await db.execute(
+          'ALTER TABLE words ADD COLUMN exampleSentenceTranslation TEXT',
+        );
       }
       if (version == 6) {
         await db.execute('ALTER TABLE words ADD COLUMN lastReviewedAt TEXT');
@@ -368,29 +451,30 @@ class DatabaseService {
         );
       }
       if (version == 9) {
-        await db.execute('ALTER TABLE words ADD COLUMN sentenceBlankAnswer TEXT');
+        await db.execute(
+          'ALTER TABLE words ADD COLUMN sentenceBlankAnswer TEXT',
+        );
       }
     } catch (e) {
-      debugPrint("Error upgrading WordDB to v$version: $e. It might already exist.");
+      debugPrint(
+        "Error upgrading WordDB to v$version: $e. It might already exist.",
+      );
     }
   }
 
   Future<List<Word>> getAllWords(String dbFileName) async {
-    final token = RootIsolateToken.instance;
-    if (token == null) {
-      return _getAllWordsInBackground({
-        'dbFileName': dbFileName,
-        'token': RootIsolateToken.instance,
-      });
-    }
-    final params = {'dbFileName': dbFileName, 'token': token};
-    return compute(_getAllWordsInBackground, params);
+    final db = await _openWordDB(dbFileName);
+    final maps = await db.query('words', orderBy: 'id DESC');
+    return maps.map(Word.fromMap).toList(growable: false);
   }
 
-  Future<void> addWord(String dbFileName, Word word) async {
+  Future<int> addWord(String dbFileName, Word word) async {
     final db = await _openWordDB(dbFileName);
-    await db.insert('words', word.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
-    await db.close();
+    return db.insert(
+      'words',
+      word.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<void> addWordsInBatch(String dbFileName, List<Word> words) async {
@@ -399,17 +483,24 @@ class DatabaseService {
     await db.transaction((txn) async {
       final batch = txn.batch();
       for (final word in words) {
-        batch.insert('words', word.toMapForInsert(), conflictAlgorithm: ConflictAlgorithm.replace);
+        batch.insert(
+          'words',
+          word.toMapForInsert(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
       }
       await batch.commit(noResult: true);
     });
-    await db.close();
   }
 
   Future<void> updateWord(String dbFileName, Word word) async {
     final db = await _openWordDB(dbFileName);
-    await db.update('words', word.toMap(), where: 'id = ?', whereArgs: [word.id]);
-    await db.close();
+    await db.update(
+      'words',
+      word.toMap(),
+      where: 'id = ?',
+      whereArgs: [word.id],
+    );
   }
 
   Future<void> updateWordSrsBatch(String dbFileName, List<Word> words) async {
@@ -418,26 +509,31 @@ class DatabaseService {
     await db.transaction((txn) async {
       final batch = txn.batch();
       for (final word in words) {
-        batch.update('words', word.toMap(), where: 'id = ?', whereArgs: [word.id]);
+        batch.update(
+          'words',
+          word.toMap(),
+          where: 'id = ?',
+          whereArgs: [word.id],
+        );
       }
       await batch.commit(noResult: true);
     });
-    await db.close();
   }
 
   Future<void> deleteWord(String dbFileName, int id) async {
     final db = await _openWordDB(dbFileName);
     await db.delete('words', where: 'id = ?', whereArgs: [id]);
-    await db.close();
   }
 
   Future<void> deleteAllWords(String dbFileName) async {
     final db = await _openWordDB(dbFileName);
     await db.delete('words');
-    await db.close();
   }
 
-  Future<List<Word>> searchWordsInWordbook(String dbFileName, String query) async {
+  Future<List<Word>> searchWordsInWordbook(
+    String dbFileName,
+    String query,
+  ) async {
     if (query.isEmpty) return [];
 
     final db = await _openWordDB(dbFileName);
@@ -446,8 +542,6 @@ class DatabaseService {
       where: 'word LIKE ? OR meaning LIKE ? OR additionalMeanings LIKE ?',
       whereArgs: ['%$query%', '%$query%', '%$query%'],
     );
-    await db.close();
-
     return List.generate(maps.length, (i) => Word.fromMap(maps[i]));
   }
 }

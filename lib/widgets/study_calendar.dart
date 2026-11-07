@@ -196,7 +196,8 @@ class _StudyCalendarState extends State<StudyCalendar>
       children: [
         Text(
           '학습 달력',
-          style: theme.textTheme.headlineMedium?.copyWith(
+          style: theme.textTheme.displaySmall?.copyWith(
+            height: 1.12,
             color: identity.ink,
             fontWeight: FontWeight.w900,
           ),
@@ -450,7 +451,7 @@ class _StudyCalendarState extends State<StudyCalendar>
                 label:
                     '${studyDateKey(date)}'
                     '${completed ? ' 학습 완료' : ''}'
-                    '${due ? ' SRS 복습 예정' : ''}'
+                    '${due ? ' 맞춤 복습 예정' : ''}'
                     '${planned ? ' 학습 계획' : ''}',
                 child: InkWell(
                   borderRadius: BorderRadius.circular(18),
@@ -862,7 +863,7 @@ class _StudyCalendarState extends State<StudyCalendar>
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
-                    'SRS 일정은 학습 결과에 따라 달라질 수 있어요.',
+                    '복습 일정은 학습 결과에 따라 달라질 수 있어요.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: identity.mutedInk,
                       fontWeight: FontWeight.w600,
@@ -996,7 +997,7 @@ class _StudyCalendarState extends State<StudyCalendar>
             icon: CupertinoIcons.arrow_2_circlepath,
             color: identity.primaryAction,
             background: identity.softInfo,
-            title: 'SRS 복습 $reviewCount개',
+            title: '맞춤 복습 $reviewCount개',
             subtitle:
                 '${book.book.name} · ${_isSameDay(date, today) ? '오늘 복습 예정' : '복습 예정'}',
             identity: identity,

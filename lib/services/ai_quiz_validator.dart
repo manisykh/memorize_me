@@ -14,6 +14,7 @@ class AiQuizValidator {
     AiDifficultyProfile? difficultyProfile,
     bool requireFormatDiversity = false,
     bool requireTypeDiversity = false,
+    bool requireKoreanQuestions = false,
   }) {
     if (response.questions.isEmpty) {
       throw CustomApiException('model_response_invalid', 'AI가 문제를 생성하지 않았습니다.');
@@ -45,8 +46,11 @@ class AiQuizValidator {
           '요청하지 않은 문제 유형이 포함되어 있습니다.',
         );
       }
-      if (question.type == 'grammar' && allowedGrammarChapterIds != null &&
-          !allowedGrammarChapterIds.contains(question.grammarChapterId?.trim())) {
+      if (question.type == 'grammar' &&
+          allowedGrammarChapterIds != null &&
+          !allowedGrammarChapterIds.contains(
+            question.grammarChapterId?.trim(),
+          )) {
         throw CustomApiException(
           'model_response_invalid',
           '선택하지 않은 문법 챕터가 포함되었거나 챕터 정보가 누락되었습니다.',
@@ -75,6 +79,15 @@ class AiQuizValidator {
         }
         final sanitizedSubQuestions = <AiReadingSubQuestion>[];
         for (final subQuestion in subQuestions) {
+          _validateQuestionLanguage(
+            subQuestion.question,
+            requireKoreanQuestions: requireKoreanQuestions,
+          );
+          _validateAnswerChoiceLanguage(
+            options: subQuestion.options,
+            answer: subQuestion.answer,
+            requireEnglishChoices: requireKoreanQuestions,
+          );
           final validatedFormat = _validatedQuestionFormat(
             type: question.type,
             format: subQuestion.questionFormat,
@@ -124,6 +137,15 @@ class AiQuizValidator {
         continue;
       }
 
+      _validateQuestionLanguage(
+        question.question,
+        requireKoreanQuestions: requireKoreanQuestions,
+      );
+      _validateAnswerChoiceLanguage(
+        options: question.options,
+        answer: question.answer,
+        requireEnglishChoices: requireKoreanQuestions,
+      );
       final validatedFormat = _validatedQuestionFormat(
         type: question.type,
         format: question.questionFormat,
@@ -201,6 +223,35 @@ class AiQuizValidator {
       droppedDuplicateCount: droppedDuplicateCount,
       difficultyMismatchCount: difficultyMismatchCount,
     );
+  }
+
+  static void _validateQuestionLanguage(
+    String? question, {
+    required bool requireKoreanQuestions,
+  }) {
+    if (!requireKoreanQuestions || question == null) return;
+    if (!RegExp(r'[가-힣]').hasMatch(question)) {
+      throw CustomApiException(
+        'model_response_invalid',
+        '한국어 출제 설정을 지키지 않은 AI 응답입니다. 다시 생성해주세요.',
+      );
+    }
+  }
+
+  static void _validateAnswerChoiceLanguage({
+    required List<String>? options,
+    required String? answer,
+    required bool requireEnglishChoices,
+  }) {
+    if (!requireEnglishChoices) return;
+    final containsKorean = RegExp(r'[가-힣]');
+    if ((options?.any(containsKorean.hasMatch) ?? false) ||
+        (answer != null && containsKorean.hasMatch(answer))) {
+      throw CustomApiException(
+        'model_response_invalid',
+        '한국어 출제는 질문만 한국어로 표시해야 합니다. 선택지와 정답은 영어로 유지해주세요.',
+      );
+    }
   }
 
   static bool _validateParts({

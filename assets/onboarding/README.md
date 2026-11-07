@@ -1,10 +1,10 @@
 # Memorize Me Onboarding Assets
 
-## Generated Panels
+## Archived Generated Panels
 
-Runtime onboarding panels use WebP quality 82. The original PNG files are
-preserved under `design_archive/onboarding/png/` so they are not bundled with
-the application.
+The current onboarding renders app-native feature cards and does not bundle
+the pencil-style panels below. They remain as archived design references. The
+original PNG files are preserved under `design_archive/onboarding/png/`.
 
 - `generated/01_sheet_import_colored_pencil.webp`
   - Google Sheet 파일 선택과 시트 선택 흐름을 설명하는 첫 페이지용 이미지.
@@ -17,7 +17,7 @@ the application.
 - `generated/05_ai_learning_colored_pencil.webp`
   - AI 학습, 퀴즈 생성, PDF/HTML 내보내기 흐름을 설명하는 이미지.
 - `generated/06_start_colored_pencil.webp`
-  - 마지막 시작 페이지용 이미지.
+  - 초기 6페이지 시안의 마지막 시작 이미지. 현재 5페이지 온보딩에서는 번들에 포함하지 않음.
 
 ## Source Screenshot Map
 

@@ -347,37 +347,42 @@ class _AddEditWordScreenState extends State<AddEditWordScreen> {
                             data: theme.copyWith(
                               dividerColor: Colors.transparent,
                             ),
-                            child: ExpansionTile(
-                              tilePadding: EdgeInsets.zero,
-                              childrenPadding: const EdgeInsets.only(bottom: 8),
-                              leading: Icon(
-                                CupertinoIcons.doc_text,
-                                color: identity.mutedInk,
-                              ),
-                              title: const Text('문장 완성 빈칸 표현 (선택)'),
-                              children: [
-                                TextFormField(
-                                  key: const Key('sentence_blank_answer'),
-                                  controller: _sentenceBlankAnswerController,
-                                  decoration: const InputDecoration(
-                                    labelText: '예문에 나온 표현',
-                                    helperText: '자동 인식이 안 될 때만 입력하세요.',
-                                  ),
-                                  onChanged: (_) => setState(() {}),
-                                  validator: (value) {
-                                    final answer = value?.trim() ?? '';
-                                    if (answer.isEmpty) return null;
-                                    if (SentenceCompletionMatcher.findLiteral(
-                                          answer,
-                                          _exampleController.text,
-                                        ) ==
-                                        null) {
-                                      return '예문에 있는 표현을 입력해주세요.';
-                                    }
-                                    return null;
-                                  },
+                            child: Material(
+                              color: Colors.transparent,
+                              child: ExpansionTile(
+                                tilePadding: EdgeInsets.zero,
+                                childrenPadding: const EdgeInsets.only(
+                                  bottom: 8,
                                 ),
-                              ],
+                                leading: Icon(
+                                  CupertinoIcons.doc_text,
+                                  color: identity.mutedInk,
+                                ),
+                                title: const Text('문장 완성 빈칸 표현 (선택)'),
+                                children: [
+                                  TextFormField(
+                                    key: const Key('sentence_blank_answer'),
+                                    controller: _sentenceBlankAnswerController,
+                                    decoration: const InputDecoration(
+                                      labelText: '예문에 나온 표현',
+                                      helperText: '자동 인식이 안 될 때만 입력하세요.',
+                                    ),
+                                    onChanged: (_) => setState(() {}),
+                                    validator: (value) {
+                                      final answer = value?.trim() ?? '';
+                                      if (answer.isEmpty) return null;
+                                      if (SentenceCompletionMatcher.findLiteral(
+                                            answer,
+                                            _exampleController.text,
+                                          ) ==
+                                          null) {
+                                        return '예문에 있는 표현을 입력해주세요.';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                           Builder(

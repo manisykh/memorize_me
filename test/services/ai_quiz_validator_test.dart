@@ -67,6 +67,92 @@ void main() {
     );
   });
 
+  test('한국어 출제 설정은 모든 문제 문장에 한글을 요구한다', () {
+    final koreanQuestion = question('알맞은 답을 고르세요.');
+    expect(
+      AiQuizValidator.sanitize(
+        AiQuizResponse(questions: [koreanQuestion]),
+        requireKoreanQuestions: true,
+      ).answerableQuestionCount,
+      1,
+    );
+
+    expect(
+      () => AiQuizValidator.sanitize(
+        AiQuizResponse(questions: [question('Choose the correct answer.')]),
+        requireKoreanQuestions: true,
+      ),
+      throwsA(
+        isA<CustomApiException>().having(
+          (error) => error.code,
+          'code',
+          'model_response_invalid',
+        ),
+      ),
+    );
+  });
+
+  test('한국어 출제 설정에서 선택지와 정답은 영어로 유지한다', () {
+    final translatedChoices = question(
+      '알맞은 답을 고르세요.',
+      options: const ['수확하다', '빌리다', '떠오르다', '속삭이다'],
+      answer: '수확하다',
+    );
+
+    expect(
+      () => AiQuizValidator.sanitize(
+        AiQuizResponse(questions: [translatedChoices]),
+        requireKoreanQuestions: true,
+      ),
+      throwsA(
+        isA<CustomApiException>().having(
+          (error) => error.code,
+          'code',
+          'model_response_invalid',
+        ),
+      ),
+    );
+
+    expect(
+      AiQuizValidator.sanitize(
+        AiQuizResponse(
+          questions: [
+            question(
+              '수확하다와 가장 가까운 단어를 고르세요.',
+              options: const ['harvest', 'borrow', 'float', 'whisper'],
+              answer: 'harvest',
+            ),
+          ],
+        ),
+        requireKoreanQuestions: true,
+      ).answerableQuestionCount,
+      1,
+    );
+  });
+
+  test('한국어 출제 설정은 독해 하위 문항에도 적용된다', () {
+    final response = AiQuizResponse(
+      questions: [
+        AiQuestion(
+          type: 'reading_section',
+          passage: 'The passage stays in English.',
+          questions: [
+            AiReadingSubQuestion(
+              question: 'What is the main idea?',
+              options: ['A', 'B', 'C', 'D'],
+              answer: 'A',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    expect(
+      () => AiQuizValidator.sanitize(response, requireKoreanQuestions: true),
+      throwsA(isA<CustomApiException>()),
+    );
+  });
+
   test('모든 문항이 허용된 단어장 단어를 실제로 사용해야 한다', () {
     final valid = AiQuestion(
       type: 'vocabulary',

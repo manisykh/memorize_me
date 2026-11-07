@@ -59,6 +59,7 @@ dependencies:
   google_sign_in: ^6.2.1
   googleapis: ^13.1.0
   http: ^1.2.1
+  url_launcher: ^6.3.2
   googleapis_auth: ^1.6.0
   flutter_svg: ^2.0.10+1
   flutter_tts: ^4.0.2
@@ -102,7 +103,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
-    - assets/onboarding/generated/
     - assets/fonts/ # 폰트 폴더 등록
     - assets/icons/
     - assets/sounds/
@@ -119,7 +119,7 @@ flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
   image_path: "assets/icons/icon_1.png"
-  adaptive_icon_background: "#FBF7EF"
+  adaptive_icon_background: "#061D4F"
   adaptive_icon_foreground: "assets/icons/icon_adaptive_foreground.png"
       
 

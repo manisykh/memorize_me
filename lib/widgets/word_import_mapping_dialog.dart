@@ -281,36 +281,40 @@ class _WordImportMappingDialogState extends State<_WordImportMappingDialog> {
                   ),
                 ],
               ),
-              Container(
-                margin: const EdgeInsets.only(top: 10),
-                decoration: BoxDecoration(
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Material(
                   color: identity.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: identity.border),
-                ),
-                child: CheckboxListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  value: _skipHeader,
-                  title: Text(
-                    '첫 행을 제목으로 제외',
-                    style: TextStyle(
-                      color: identity.ink,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: identity.border),
                   ),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  onChanged:
-                      (value) => setState(() => _skipHeader = value ?? false),
+                  clipBehavior: Clip.antiAlias,
+                  child: CheckboxListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    value: _skipHeader,
+                    title: Text(
+                      '첫 행을 제목으로 제외',
+                      style: TextStyle(
+                        color: identity.ink,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged:
+                        (value) => setState(() => _skipHeader = value ?? false),
+                  ),
                 ),
               ),
               if (_columnCount > 2) ...[
                 const SizedBox(height: 20),
-                Container(
-                  decoration: BoxDecoration(
-                    color: identity.surface,
+                Material(
+                  color: identity.surface,
+                  shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: identity.border),
+                    side: BorderSide(color: identity.border),
                   ),
+                  clipBehavior: Clip.antiAlias,
                   child: SwitchListTile.adaptive(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                     value: _showAdditionalMeanings,

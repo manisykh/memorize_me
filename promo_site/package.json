@@ -8,14 +8,18 @@
   "scripts": {
     "dev": "vinext dev",
     "build": "vinext build",
+    "export:infographics": "node scripts/export-infographics.mjs",
+    "export:standalone": "node scripts/build-standalone-homepage.mjs",
+    "build:netlify": "node scripts/build-netlify.mjs",
     "start": "vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@netlify/blobs": "^11.1.8",
     "drizzle-orm": "0.45.2",
-    "next": "16.2.6",
+    "next": "16.4.2",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },

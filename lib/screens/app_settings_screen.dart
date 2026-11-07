@@ -14,12 +14,15 @@ import '../widgets/ai_settings_card.dart';
 import '../widgets/google_account_avatar.dart';
 import '../widgets/study_guide.dart';
 import 'onboarding_screen.dart';
+import 'legal_information_screen.dart';
 import 'select_spreadsheet_screen.dart';
 import 'tts_settings_screen.dart';
 import 'wordbook_management_screen.dart';
 
 class AppSettingsScreen extends StatefulWidget {
-  const AppSettingsScreen({super.key});
+  final ScrollController? scrollController;
+
+  const AppSettingsScreen({super.key, this.scrollController});
 
   @override
   State<AppSettingsScreen> createState() => _AppSettingsScreenState();
@@ -64,6 +67,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
       appBar: canPop ? AppBar(automaticallyImplyLeading: true) : null,
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: widget.scrollController,
           key: const PageStorageKey<String>('memorize-settings-identity-v1'),
           padding: const EdgeInsets.fromLTRB(
             MemorizeIdentity.pagePadding,
@@ -76,7 +80,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             children: [
               Text(
                 '앱 설정',
-                style: theme.textTheme.headlineMedium?.copyWith(
+                style: theme.textTheme.displaySmall?.copyWith(
+                  height: 1.12,
                   fontWeight: FontWeight.w900,
                   color: identity.ink,
                 ),
@@ -679,6 +684,20 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
           const Divider(height: 1),
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+            leading: const Icon(CupertinoIcons.shield_lefthalf_fill),
+            title: const Text('개인정보 및 계정 삭제'),
+            subtitle: const Text('데이터 처리와 삭제 방법을 확인합니다.'),
+            trailing: const Icon(CupertinoIcons.right_chevron),
+            onTap:
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const LegalInformationScreen(),
+                  ),
+                ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
             leading: const Icon(CupertinoIcons.book_fill),
             title: const Text('온보딩 다시 보기'),
             subtitle: const Text('앱의 주요 기능 소개를 다시 봅니다.'),
@@ -784,44 +803,56 @@ class _SettingsIdentityRow extends StatelessWidget {
             onTap: onTap,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
-              child: Row(
+              child: Stack(
+                alignment: Alignment.centerRight,
                 children: [
-                  SizedBox(
-                    width: 48,
-                    height: 48,
-                    child: Center(child: leading),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  Padding(
+                    padding: const EdgeInsets.only(right: 28),
+                    child: Row(
                       children: [
-                        Text(
-                          title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: identity.ink,
-                            fontWeight: FontWeight.w900,
+                        SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Center(child: leading),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: identity.ink,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                subtitle,
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: identity.mutedInk,
+                                  height: 1.3,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          subtitle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: identity.mutedInk,
-                            height: 1.38,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        if (trailing != null) ...[
+                          const SizedBox(width: 8),
+                          trailing!,
+                        ],
                       ],
                     ),
                   ),
-                  if (trailing != null) ...[
-                    const SizedBox(width: 8),
-                    Flexible(child: trailing!),
-                  ],
-                  const SizedBox(width: 6),
                   AnimatedRotation(
                     turns: expanded ? 0.25 : 0,
                     duration: const Duration(milliseconds: 180),

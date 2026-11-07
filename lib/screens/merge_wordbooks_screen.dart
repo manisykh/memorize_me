@@ -15,7 +15,15 @@ class MergeWordbooksScreen extends StatefulWidget {
 
 class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
   final Set<int> _selectedWordbookIds = {};
+  final Map<String, Future<int>> _wordCountFutures = {};
   bool _isMerging = false;
+
+  Future<int> _wordCountFor(WordbookManager manager, Wordbook wordbook) {
+    return _wordCountFutures.putIfAbsent(
+      wordbook.dbFileName,
+      () => manager.getAllWordsFrom(wordbook).then((words) => words.length),
+    );
+  }
 
   Future<void> _onMerge() async {
     final manager = context.read<WordbookManager>();
@@ -273,9 +281,7 @@ class _MergeWordbooksScreenState extends State<MergeWordbooksScreen> {
                                     id != null &&
                                     _selectedWordbookIds.contains(id);
                                 return FutureBuilder<int>(
-                                  future: manager
-                                      .getAllWordsFrom(wordbook)
-                                      .then((words) => words.length),
+                                  future: _wordCountFor(manager, wordbook),
                                   builder: (context, snapshot) {
                                     final count = snapshot.data;
                                     return Material(

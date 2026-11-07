@@ -222,7 +222,10 @@ Input: ${jsonEncode(input)}
     } on CustomApiException {
       rethrow;
     } catch (_) {
-      throw CustomApiException('model_response_invalid', 'AI 뜻 검토 응답을 읽지 못했습니다.');
+      throw CustomApiException(
+        'model_response_invalid',
+        'AI 뜻 검토 응답을 읽지 못했습니다.',
+      );
     }
   }
 
@@ -233,39 +236,56 @@ Input: ${jsonEncode(input)}
     try {
       final decoded = jsonDecode(_cleanModelText(response));
       if (decoded is! Map<String, dynamic> || decoded['items'] is! List) {
-        throw CustomApiException('model_response_invalid', 'AI 뜻 검토 응답 형식이 올바르지 않습니다.');
+        throw CustomApiException(
+          'model_response_invalid',
+          'AI 뜻 검토 응답 형식이 올바르지 않습니다.',
+        );
       }
       final suggestions = <AiWordReviewSuggestion>[];
       final seen = <int>{};
       for (final item in decoded['items'] as List) {
         if (item is! Map<String, dynamic>) continue;
         final index = item['index'];
-        if (index is! int || index < 0 || index >= words.length || seen.contains(index)) continue;
+        if (index is! int ||
+            index < 0 ||
+            index >= words.length ||
+            seen.contains(index)) {
+          continue;
+        }
         final word = item['word']?.toString().trim() ?? '';
         final meaning = item['meaning']?.toString().trim() ?? '';
         final sentence = item['sentence']?.toString().trim() ?? '';
         final translation = item['translation']?.toString().trim() ?? '';
         if (word.isEmpty || meaning.isEmpty) continue;
-        final hadSentence = words[index].exampleSentence?.trim().isNotEmpty ?? false;
+        final hadSentence =
+            words[index].exampleSentence?.trim().isNotEmpty ?? false;
         if (hadSentence != sentence.isNotEmpty) continue;
         if (sentence.isNotEmpty && translation.isEmpty) continue;
         seen.add(index);
-        suggestions.add(AiWordReviewSuggestion(
-          index: index,
-          word: word,
-          meaning: meaning,
-          sentence: sentence,
-          translation: translation,
-        ));
+        suggestions.add(
+          AiWordReviewSuggestion(
+            index: index,
+            word: word,
+            meaning: meaning,
+            sentence: sentence,
+            translation: translation,
+          ),
+        );
       }
       if (suggestions.isEmpty) {
-        throw CustomApiException('model_response_invalid', '검토할 수 있는 AI 응답이 없습니다.');
+        throw CustomApiException(
+          'model_response_invalid',
+          '검토할 수 있는 AI 응답이 없습니다.',
+        );
       }
       return suggestions;
     } on CustomApiException {
       rethrow;
     } catch (_) {
-      throw CustomApiException('model_response_invalid', 'AI 뜻 검토 응답을 읽지 못했습니다.');
+      throw CustomApiException(
+        'model_response_invalid',
+        'AI 뜻 검토 응답을 읽지 못했습니다.',
+      );
     }
   }
 
@@ -349,11 +369,13 @@ Input: ${jsonEncode(input)}
           expectedAnswerableCount: questionCount,
           allowedTargetWords: selectedWords.map((word) => word.word),
           allowedGrammarChapterIds: {
-            for (var index = 0; index < chapters.length; index++) 'ch${index + 1}',
+            for (var index = 0; index < chapters.length; index++)
+              'ch${index + 1}',
           },
           expectedTypes: const {'grammar'},
           difficultyProfile: AiDifficultyProfiles.fromLabel(difficulty),
           requireFormatDiversity: true,
+          requireKoreanQuestions: _isKoreanLanguage(questionLanguage),
         );
       }
       return null;
@@ -439,6 +461,7 @@ Input: ${jsonEncode(input)}
           difficultyProfile: AiDifficultyProfiles.fromLabel(difficulty),
           requireFormatDiversity: true,
           requireTypeDiversity: _canonicalQuizType(quizType) == 'mixed',
+          requireKoreanQuestions: _isKoreanLanguage(questionLanguage),
         );
       }
       return null;
@@ -590,6 +613,11 @@ Input: ${jsonEncode(input)}
       case AiProvider.fireworks:
       case AiProvider.customOpenAI:
       case AiProvider.zAi:
+      case AiProvider.nvidiaNim:
+      case AiProvider.huggingFace:
+      case AiProvider.cerebras:
+      case AiProvider.siliconFlow:
+      case AiProvider.cohere:
         return _sendOpenAiCompatiblePrompt(
           provider: provider,
           modelName: modelName,
@@ -761,6 +789,7 @@ Input: ${jsonEncode(input)}
     AiDifficultyProfile? difficultyProfile,
     bool requireFormatDiversity = false,
     bool requireTypeDiversity = false,
+    bool requireKoreanQuestions = false,
   }) {
     try {
       final response = AiQuizResponse.parse(_cleanModelText(responseText));
@@ -773,6 +802,7 @@ Input: ${jsonEncode(input)}
         difficultyProfile: difficultyProfile,
         requireFormatDiversity: requireFormatDiversity,
         requireTypeDiversity: requireTypeDiversity,
+        requireKoreanQuestions: requireKoreanQuestions,
       );
     } on CustomApiException {
       rethrow;
@@ -793,6 +823,7 @@ Input: ${jsonEncode(input)}
     AiDifficultyProfile? difficultyProfile,
     bool requireFormatDiversity = false,
     bool requireTypeDiversity = false,
+    bool requireKoreanQuestions = false,
   }) {
     return AiQuizValidator.sanitize(
       response,
@@ -803,6 +834,7 @@ Input: ${jsonEncode(input)}
       difficultyProfile: difficultyProfile,
       requireFormatDiversity: requireFormatDiversity,
       requireTypeDiversity: requireTypeDiversity,
+      requireKoreanQuestions: requireKoreanQuestions,
     );
   }
 
@@ -843,13 +875,18 @@ Input: ${jsonEncode(input)}
   }
 
   String _questionLanguageGuide(String questionLanguage) {
-    final isKorean = questionLanguage.toLowerCase().contains('korean');
+    final isKorean = _isKoreanLanguage(questionLanguage);
     if (isKorean) {
       return """
-    - User-facing question instructions may be written in Korean.
-    - English learning material MUST stay in English: passages, sentence-completion sentences, target words, and English sentence options.
-    - Korean meanings may be used when a vocabulary question asks about meaning.
+    - The language setting applies ONLY to the user-facing `question` field. Every `question` field MUST be written in Korean. This is mandatory, not optional.
+    - Never use an English instruction such as "Choose the correct answer" when a natural Korean instruction can be used.
+    - In reading sections, every sub-question MUST be Korean, but the passage, all `options`, and `answer` MUST stay in English.
+    - In vocabulary and grammar questions, keep quoted English words, blanks, and English example sentences in English, but write the instruction around them in Korean.
+    - Every string in `options` and the `answer` value MUST stay in English and MUST NOT contain Korean. Do not translate answer choices merely because the question instruction is Korean.
+    - English learning material MUST stay in English: passages, sentence-completion sentences, target words, definitions, and sentence options.
+    - When testing a Korean meaning, put that Korean meaning in the `question` field and provide English word choices. Never put translated Korean meanings in `options` or `answer`.
     - The explanation field, when present, MUST be in Korean.
+    - Before returning JSON, verify both conditions: every `question` contains natural Korean instructional text, and no `options` or `answer` contains Korean characters.
     """;
     }
     return """
@@ -858,6 +895,11 @@ Input: ${jsonEncode(input)}
     - Korean meanings may be used only when the question explicitly asks for Korean meaning.
     - The explanation field, when present, MUST be in Korean.
     """;
+  }
+
+  bool _isKoreanLanguage(String questionLanguage) {
+    final normalized = questionLanguage.trim().toLowerCase();
+    return normalized.contains('korean') || normalized.contains('한국어');
   }
 
   String _canonicalQuizType(String quizType) {
@@ -893,13 +935,16 @@ Input: ${jsonEncode(input)}
           .toList(),
     );
     final chaptersJson = jsonEncode(
-      chapters.asMap().entries
+      chapters
+          .asMap()
+          .entries
           .map(
             (entry) => {
               'id': 'ch${entry.key + 1}',
               'group': entry.value.description,
               'chapter': entry.value.title,
-              if (entry.value.details.isNotEmpty) 'details': entry.value.details,
+              if (entry.value.details.isNotEmpty)
+                'details': entry.value.details,
             },
           )
           .toList(),

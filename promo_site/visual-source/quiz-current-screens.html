@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Memorize Me current quiz screens</title>
+  <style>
+    :root {
+      --canvas:#f8fafd; --surface:#fff; --ink:#09255a; --muted:#5f6f8d;
+      --blue:#1e73f7; --green:#00b875; --red:#ff5b55; --border:#d9e2f0;
+      --soft-blue:#eaf2ff; --soft-green:#e8f8f0; --soft-red:#ffeeec;
+    }
+    *{box-sizing:border-box}
+    html,body{width:610px;height:1280px;margin:0;overflow:hidden;background:var(--canvas)}
+    body{font-family:"Malgun Gothic","Apple SD Gothic Neo",Arial,sans-serif;color:var(--ink)}
+    .device{position:relative;width:610px;height:1280px;background:var(--canvas);overflow:hidden}
+    body:not(.spelling) #spelling{display:none} body.spelling #mcq{display:none}
+    .status{height:42px;padding:13px 28px 0;display:flex;align-items:flex-start;justify-content:space-between;color:#5d6671;font-size:17px;font-weight:700;background:#fff}
+    .status-icons{display:flex;gap:9px;align-items:center}.status-icons span{display:inline-block}.battery{width:18px;height:10px;border:2px solid #656d76;border-radius:3px;position:relative}.battery:after{content:"";position:absolute;right:-5px;top:2px;width:3px;height:4px;background:#656d76}.battery:before{content:"";position:absolute;inset:2px;background:#656d76}
+    .appbar{height:84px;padding:0 25px;display:grid;grid-template-columns:52px 1fr 52px;align-items:center;background:var(--surface);border-bottom:1px solid #edf2f8}
+    .close{font-size:35px;font-weight:300;line-height:1;color:var(--ink)}
+    .appbar h1{margin:0;text-align:center;font-size:25px;font-weight:900;letter-spacing:-.7px}
+    .content{height:calc(100% - 126px);display:flex;flex-direction:column}
+    .scroll{padding:17px 34px 26px;flex:1;min-height:0}
+    .session{padding:21px 22px 18px;background:var(--surface);border:2px solid var(--border);border-radius:24px}
+    .session-top{display:flex;align-items:center;justify-content:space-between;gap:12px}.book{color:var(--muted);font-size:18px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.count{font-size:22px;font-weight:900}
+    .progress{height:11px;margin:17px 0;background:#e7effc;border-radius:99px;overflow:hidden}.progress span{display:block;width:5%;height:100%;background:var(--blue);border-radius:99px}
+    .rule{height:1px;background:var(--border)}
+    .scores{display:grid;grid-template-columns:1fr 1px 1fr;align-items:center;margin-top:15px}.scores .divider{width:1px;height:42px;background:var(--border)}
+    .score{display:flex;justify-content:center;align-items:center;gap:9px;font-size:18px;font-weight:900}.score small{font-size:14px}.score.good{color:var(--green)}.score.bad{color:var(--red)}.score-icon{width:29px;height:29px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:17px}.good .score-icon{background:var(--green)}.bad .score-icon{background:var(--red)}
+    .prompt{margin:33px 0 0;color:var(--muted);font-size:17px;font-weight:800;line-height:1.5}
+    .word{margin:28px 0 34px;text-align:center;font-size:58px;font-weight:900;line-height:1.05;letter-spacing:-1px}
+    .options{display:grid;gap:14px}.option{min-height:81px;padding:13px 18px;display:flex;align-items:center;gap:17px;background:rgba(255,255,255,.82);border:2px solid var(--border);border-radius:24px;color:var(--ink);font-size:21px;font-weight:800;line-height:1.25}.option.selected{background:#eaf2ff;border-color:var(--blue)}.letter{width:40px;height:40px;flex:none;display:grid;place-items:center;color:var(--blue);background:var(--soft-blue);border-radius:50%;font-size:18px;font-weight:900}.selected .letter{color:#fff;background:var(--blue)}
+    .bottom{padding:15px 34px 28px;background:rgba(255,255,255,.98);box-shadow:0 -8px 28px rgba(9,37,90,.07)}
+    .primary{height:70px;display:grid;place-items:center;color:#fff;background:var(--blue);border-radius:35px;font-size:22px;font-weight:900}.primary.disabled{color:#9cacc3;background:#e9eef5}
+    .meaning{margin:25px 0 31px;font-size:31px;font-weight:900;line-height:1.35;letter-spacing:-.5px}
+    .answer-wrap{height:84px;padding:0 20px;display:flex;align-items:center;color:#a1afc2;background:#fff;border:2px solid var(--border);border-radius:22px;font-size:20px;font-weight:700}
+    .hint-row{display:grid;grid-template-columns:1fr 2fr;gap:14px}.outline,.confirm{height:68px;display:flex;align-items:center;justify-content:center;gap:9px;border-radius:34px;font-size:20px;font-weight:900}.outline{color:var(--blue);background:#fff;border:2px solid var(--blue)}.confirm{color:#fff;background:var(--blue)}
+    .keyboard{height:420px;margin-top:auto;padding:20px 13px 28px;background:#e7ebf1;border-top:1px solid #d1d7df;display:flex;flex-direction:column;gap:10px}.keys{display:flex;justify-content:center;gap:7px}.key{width:49px;height:68px;display:grid;place-items:center;color:#26313e;background:#fff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.15);font-size:22px;font-weight:700}.keys.mid{padding:0 24px}.keys.bottom{padding:0 52px}.keys.bottom .key{width:56px}.space{width:235px!important}.enter{color:#067e73;background:#c8e8e3}.keyboard-bar{height:5px;width:180px;margin:12px auto 0;background:#1f252b;border-radius:99px}
+    #spelling .scroll{padding-bottom:10px}#spelling .session{padding-top:17px;padding-bottom:15px}#spelling .prompt{margin-top:25px}#spelling .meaning{margin-top:17px;margin-bottom:24px}#spelling .bottom{padding-bottom:18px}
+  </style>
+</head>
+<body>
+  <section class="device" id="mcq">
+    <div class="status"><span>10:14</span><div class="status-icons"><span>●</span><span>▴</span><span class="battery"></span></div></div>
+    <div class="appbar"><span class="close">×</span><h1>객관식 퀴즈</h1><span></span></div>
+    <div class="content">
+      <div class="scroll">
+        <div class="session">
+          <div class="session-top"><span class="book">필수 영어단어 4단계</span><span class="count">1 / 20</span></div>
+          <div class="progress"><span></span></div><div class="rule"></div>
+          <div class="scores"><div class="score good"><span class="score-icon">✓</span><span>맞음 0개 <small>· 0%</small></span></div><div class="divider"></div><div class="score bad"><span class="score-icon">×</span><span>틀림 0개 <small>· 0%</small></span></div></div>
+        </div>
+        <p class="prompt">다음 단어의 뜻으로 알맞은 것을 선택하세요.</p>
+        <div class="word">attention</div>
+        <div class="options">
+          <div class="option"><span class="letter">A</span><span>뼈대, 골격, 해골</span></div>
+          <div class="option selected"><span class="letter">B</span><span>주의, 주목, 관심</span></div>
+          <div class="option"><span class="letter">C</span><span>공유하다, 함께 쓰다</span></div>
+          <div class="option"><span class="letter">D</span><span>실제로, 정말로, 사실은</span></div>
+        </div>
+      </div>
+      <div class="bottom"><div class="primary">정답 확인</div></div>
+    </div>
+  </section>
+
+  <section class="device" id="spelling">
+    <div class="status"><span>10:15</span><div class="status-icons"><span>●</span><span>▴</span><span class="battery"></span></div></div>
+    <div class="appbar"><span class="close">×</span><h1>스펠링 퀴즈</h1><span></span></div>
+    <div class="content">
+      <div class="scroll">
+        <div class="session">
+          <div class="session-top"><span class="book">필수 영어단어 4단계</span><span class="count">1 / 20</span></div>
+          <div class="progress"><span></span></div><div class="rule"></div>
+          <div class="scores"><div class="score good"><span class="score-icon">✓</span><span>맞음 0개 <small>· 0%</small></span></div><div class="divider"></div><div class="score bad"><span class="score-icon">×</span><span>틀림 0개 <small>· 0%</small></span></div></div>
+        </div>
+        <p class="prompt">주어진 뜻에 해당하는 단어를 입력하세요.</p>
+        <div class="meaning">보호하다, 지키다</div>
+        <div class="answer-wrap">단어를 입력하세요</div>
+      </div>
+      <div class="bottom"><div class="hint-row"><div class="outline"><span>💡</span><span>힌트 보기</span></div><div class="confirm"><span>✓</span><span>정답 확인</span></div></div></div>
+      <div class="keyboard">
+        <div class="keys"> <span class="key">q</span><span class="key">w</span><span class="key">e</span><span class="key">r</span><span class="key">t</span><span class="key">y</span><span class="key">u</span><span class="key">i</span><span class="key">o</span><span class="key">p</span></div>
+        <div class="keys mid"> <span class="key">a</span><span class="key">s</span><span class="key">d</span><span class="key">f</span><span class="key">g</span><span class="key">h</span><span class="key">j</span><span class="key">k</span><span class="key">l</span></div>
+        <div class="keys bottom"> <span class="key">⇧</span><span class="key">z</span><span class="key">x</span><span class="key">c</span><span class="key">v</span><span class="key">b</span><span class="key">n</span><span class="key">m</span><span class="key">⌫</span></div>
+        <div class="keys"><span class="key">?123</span><span class="key">,</span><span class="key space"></span><span class="key">.</span><span class="key enter">완료</span></div>
+        <div class="keyboard-bar"></div>
+      </div>
+    </div>
+  </section>
+  <script>if(location.hash.includes('spelling'))document.body.classList.add('spelling');</script>
+</body>
+</html>

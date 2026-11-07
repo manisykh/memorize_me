@@ -16,18 +16,30 @@ import '../services/ai_difficulty_profile.dart';
 import '../services/analytics_service.dart';
 import '../services/api_key_service.dart';
 import '../services/mode_state_service.dart';
+import '../services/srs_service.dart';
+import '../themes/memorize_identity.dart';
 import '../utils/ai_error_utils.dart';
+import '../widgets/ai_setup_widgets.dart';
 import '../widgets/ai_settings_card.dart';
 import '../widgets/glassmorphic_card.dart';
-import '../widgets/wordbook_selection_button.dart';
+import '../widgets/wordbook_selection_dialog.dart';
 import 'ai_quiz_player_screen.dart';
 
 enum AiQuizSetupFocus { quiz, sentences }
 
+enum _AiQuizWordScope { today, due, mistakes, custom }
+
+enum _AiEnrichmentTask { missingExamples, reviewMeanings, refineExamples }
+
+enum _AiEnrichmentScope { needed, today, custom }
+
 class AiQuizSetupScreen extends StatefulWidget {
   final AiQuizSetupFocus initialFocus;
 
-  const AiQuizSetupScreen({super.key, this.initialFocus = AiQuizSetupFocus.quiz});
+  const AiQuizSetupScreen({
+    super.key,
+    this.initialFocus = AiQuizSetupFocus.quiz,
+  });
 
   @override
   State<AiQuizSetupScreen> createState() => _AiQuizSetupScreenState();
@@ -52,6 +64,11 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   bool _isGeneratingSentences = false;
   bool _isReviewingMeanings = false;
   String _questionLanguage = 'English';
+  _AiQuizWordScope _quizScope = _AiQuizWordScope.today;
+  _AiEnrichmentTask _enrichmentTask = _AiEnrichmentTask.missingExamples;
+  _AiEnrichmentScope _enrichmentScope = _AiEnrichmentScope.needed;
+  bool _showAdvancedQuizSettings = false;
+  bool _showDataNotice = false;
 
   @override
   void initState() {
@@ -82,9 +99,18 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
 
     final allWords = await wordbookManager.getAllWordsFrom(wordbook);
     final studyPlan = wordbookManager.planFor(wordbook);
-    final words = wordbookManager.wordsAvailableForPlan(allWords, plan: studyPlan);
-    final reviewedIds = await _reviewProgress.reviewedWordIds(wordbook.dbFileName, words);
-    final lockedNewWordCount = wordbookManager.lockedNewWordCount(allWords, plan: studyPlan);
+    final words = wordbookManager.wordsAvailableForPlan(
+      allWords,
+      plan: studyPlan,
+    );
+    final reviewedIds = await _reviewProgress.reviewedWordIds(
+      wordbook.dbFileName,
+      words,
+    );
+    final lockedNewWordCount = wordbookManager.lockedNewWordCount(
+      allWords,
+      plan: studyPlan,
+    );
     if (mounted) {
       setState(() {
         _studyPlan = studyPlan;
@@ -92,26 +118,102 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         _lockedNewWordCount = lockedNewWordCount;
         _words = words;
         _reviewedWordIds = reviewedIds;
-        final selected = widget.initialFocus == AiQuizSetupFocus.sentences
-            ? _reviewPriorityWords(words).take(20)
-            : words.where((word) => word.id != null);
-        _selectedWordIds.addAll(selected.map((word) => word.id!));
+        _syncAutomaticSelection(words);
         _isLoading = false;
       });
     }
 
-    await modeStateService.setLastUsedWordbookId(LearningMode.aiQuiz, wordbook.id!);
+    await modeStateService.setLastUsedWordbookId(
+      LearningMode.aiQuiz,
+      wordbook.id!,
+    );
+  }
+
+  List<Word> _dueWords([List<Word>? source]) =>
+      SrsService().dueWords(source ?? _words);
+
+  List<Word> _mistakeWords([List<Word>? source]) {
+    final allowed =
+        (source ?? _words).map((word) => word.id).whereType<int>().toSet();
+    return context
+        .read<WordbookManager>()
+        .quizReviewEntries()
+        .map((entry) => entry.word)
+        .where((word) => word.id != null && allowed.contains(word.id))
+        .toList();
+  }
+
+  List<Word> _todayWords([List<Word>? source]) {
+    final words = source ?? _words;
+    final manager = context.read<WordbookManager>();
+    final daily = SrsService().buildDailyPlan(words);
+    final newTarget = manager.plannedNewWordSessionCount(
+      words,
+      plan: _studyPlan,
+    );
+    final ordered = <Word>[
+      ...daily.dueWords,
+      ..._mistakeWords(words),
+      ...daily.learningWords,
+      ...daily.newWords.take(newTarget),
+    ];
+    final seen = <int>{};
+    final unique =
+        ordered.where((word) => word.id != null && seen.add(word.id!)).toList();
+    return unique.isEmpty ? words.take(20).toList() : unique;
+  }
+
+  List<Word> _neededEnrichmentWords([List<Word>? source]) {
+    final words = source ?? _words;
+    switch (_enrichmentTask) {
+      case _AiEnrichmentTask.missingExamples:
+        return words
+            .where((word) => word.exampleSentence?.trim().isEmpty ?? true)
+            .toList();
+      case _AiEnrichmentTask.reviewMeanings:
+      case _AiEnrichmentTask.refineExamples:
+        return _reviewPriorityWords(words).toList();
+    }
+  }
+
+  void _syncAutomaticSelection([List<Word>? source]) {
+    final words = source ?? _words;
+    Iterable<Word> selected;
+    if (widget.initialFocus == AiQuizSetupFocus.sentences) {
+      selected = switch (_enrichmentScope) {
+        _AiEnrichmentScope.needed => _neededEnrichmentWords(words).take(20),
+        _AiEnrichmentScope.today => _todayWords(words).take(20),
+        _AiEnrichmentScope.custom => const <Word>[],
+      };
+    } else {
+      selected = switch (_quizScope) {
+        _AiQuizWordScope.today => _todayWords(words),
+        _AiQuizWordScope.due => _dueWords(words),
+        _AiQuizWordScope.mistakes => _mistakeWords(words),
+        _AiQuizWordScope.custom => const <Word>[],
+      };
+    }
+    _selectedWordIds
+      ..clear()
+      ..addAll(
+        selected.where((word) => word.id != null).map((word) => word.id!),
+      );
   }
 
   Iterable<Word> _reviewPriorityWords(List<Word> words) sync* {
-    final available = words.where((word) =>
-        word.id != null && !_reviewedWordIds.contains(word.id));
-    yield* available.where((word) =>
-        (word.exampleSentence?.trim().isNotEmpty ?? false) &&
-        (word.exampleSentenceTranslation?.trim().isEmpty ?? true));
-    yield* available.where((word) =>
-        !(word.exampleSentence?.trim().isNotEmpty ?? false) ||
-        !(word.exampleSentenceTranslation?.trim().isEmpty ?? true));
+    final available = words.where(
+      (word) => word.id != null && !_reviewedWordIds.contains(word.id),
+    );
+    yield* available.where(
+      (word) =>
+          (word.exampleSentence?.trim().isNotEmpty ?? false) &&
+          (word.exampleSentenceTranslation?.trim().isEmpty ?? true),
+    );
+    yield* available.where(
+      (word) =>
+          !(word.exampleSentence?.trim().isNotEmpty ?? false) ||
+          !(word.exampleSentenceTranslation?.trim().isEmpty ?? true),
+    );
   }
 
   void _onSelectAll() => setState(() {
@@ -119,15 +221,17 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     if (widget.initialFocus == AiQuizSetupFocus.sentences) {
       _selectedWordIds
         ..clear()
-        ..addAll(_reviewPriorityWords(_words).take(20).map((word) => word.id!));
+        ..addAll(
+          _neededEnrichmentWords(_words).take(20).map((word) => word.id!),
+        );
     } else {
       _selectedWordIds.addAll(available.map((word) => word.id!));
     }
   });
   void _onDeselectAll() => setState(() => _selectedWordIds.clear());
 
-  void _showAiSettingsSheet() {
-    showModalBottomSheet<void>(
+  Future<void> _showAiSettingsSheet() async {
+    await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -180,7 +284,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
             ),
       );
       if (openSettings == true && mounted) {
-        _showAiSettingsSheet();
+        await _showAiSettingsSheet();
       }
       return;
     }
@@ -239,17 +343,21 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       );
       aiSettings.recordUsedOption(fallbackResult.usedOption);
       final quizResponse = fallbackResult.value;
-      if (quizResponse != null && quizResponse.questions.isNotEmpty && mounted) {
+      if (quizResponse != null &&
+          quizResponse.questions.isNotEmpty &&
+          mounted) {
         context.read<AnalyticsService>().logAiGenerationCompleted(
           generationType: 'word_quiz',
           generatedCount: quizResponse.answerableQuestionCount,
-          usedFallback: fallbackResult.usedOption.provider != aiSettings.selectedProvider,
+          usedFallback:
+              fallbackResult.usedOption.provider != aiSettings.selectedProvider,
         );
       }
 
       if (mounted) {
         if (quizResponse != null && quizResponse.questions.isNotEmpty) {
-          if (fallbackResult.usedOption.provider != aiSettings.selectedProvider) {
+          if (fallbackResult.usedOption.provider !=
+              aiSettings.selectedProvider) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
@@ -259,9 +367,11 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
             );
           }
           _showPartialGenerationNotice(quizResponse);
-          Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => AiQuizPlayerScreen(quizResponse: quizResponse)));
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AiQuizPlayerScreen(quizResponse: quizResponse),
+            ),
+          );
         } else {
           setState(() => _errorMessage = 'AI가 문제를 생성하지 못했습니다. 다시 시도해주세요.');
         }
@@ -280,8 +390,13 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     final wordbookManager = context.read<WordbookManager>();
     if (_selectedWordbook == null) return;
 
+    final allowedIds = _selectedWordIds;
     final wordsToUpdate =
-        _words.where((w) => w.exampleSentence == null || w.exampleSentence!.isEmpty).toList();
+        _words
+            .where((word) => allowedIds.contains(word.id))
+            .where((word) => word.exampleSentence?.trim().isEmpty ?? true)
+            .take(20)
+            .toList();
 
     if (wordsToUpdate.isEmpty) {
       ScaffoldMessenger.of(
@@ -301,40 +416,74 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       final aiService = context.read<AiService>();
       final aiSettings = context.read<AiSettingsProvider>();
 
-      final fallbackResult = await aiService.generateSentencesForWordsWithFallback(
-        wordsToUpdate,
-        aiSettings.requestOptions(
-          fallbackEnabled: aiSettings.autoFallbackEnabled,
-        ),
-      );
+      final fallbackResult = await aiService
+          .generateSentencesForWordsWithFallback(
+            wordsToUpdate,
+            aiSettings.requestOptions(
+              fallbackEnabled: aiSettings.autoFallbackEnabled,
+            ),
+          );
       aiSettings.recordUsedOption(fallbackResult.usedOption);
       final sentenceMap = fallbackResult.value;
 
-      final updatedWords = <Word>[];
-      for (final word in wordsToUpdate) {
+      final suggestions = <AiWordReviewSuggestion>[];
+      for (var index = 0; index < wordsToUpdate.length; index++) {
+        final word = wordsToUpdate[index];
         if (sentenceMap.containsKey(word.word)) {
           final sentenceData = sentenceMap[word.word]!;
-          updatedWords.add(
-            word.copyWith(
-              exampleSentence: sentenceData['sentence'],
-              exampleSentenceTranslation: sentenceData['translation'],
+          suggestions.add(
+            AiWordReviewSuggestion(
+              index: index,
+              word: word.word,
+              meaning: word.meaning,
+              sentence: sentenceData['sentence'] ?? '',
+              translation: sentenceData['translation'] ?? '',
             ),
           );
         }
       }
 
-      await wordbookManager.updateWordsInWordbook(_selectedWordbook!, updatedWords);
+      if (!mounted) return;
+      final approved = await _showMeaningReview(suggestions, wordsToUpdate);
+      if (!mounted || approved == null) return;
+      final updatedWords = <Word>[
+        for (final suggestion in suggestions)
+          if (approved.contains(suggestion.index))
+            wordsToUpdate[suggestion.index].copyWith(
+              exampleSentence: suggestion.sentence,
+              exampleSentenceTranslation: suggestion.translation,
+            ),
+      ];
+
+      if (updatedWords.isEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('적용할 AI 제안을 선택하지 않았습니다.')));
+        return;
+      }
+
+      await wordbookManager.updateWordsInWordbook(
+        _selectedWordbook!,
+        updatedWords,
+      );
       if (mounted) {
         context.read<AnalyticsService>().logAiGenerationCompleted(
           generationType: 'example_sentences',
           generatedCount: updatedWords.length,
-          usedFallback: fallbackResult.usedOption.provider != aiSettings.selectedProvider,
+          usedFallback:
+              fallbackResult.usedOption.provider != aiSettings.selectedProvider,
         );
       }
-      final allWords = await wordbookManager.getAllWordsFrom(_selectedWordbook!);
-      final newWords = wordbookManager.wordsAvailableForPlan(allWords, plan: _studyPlan);
+      final allWords = await wordbookManager.getAllWordsFrom(
+        _selectedWordbook!,
+      );
+      final newWords = wordbookManager.wordsAvailableForPlan(
+        allWords,
+        plan: _studyPlan,
+      );
       final reviewedIds = await _reviewProgress.reviewedWordIds(
-        _selectedWordbook!.dbFileName, newWords,
+        _selectedWordbook!.dbFileName,
+        newWords,
       );
 
       if (mounted) {
@@ -343,12 +492,11 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           _reviewedWordIds = reviewedIds;
           _selectedWordIds
             ..clear()
-            ..addAll(_reviewPriorityWords(newWords).take(20)
-                .map((word) => word.id!));
+            ..addAll(
+              _reviewPriorityWords(newWords).take(20).map((word) => word.id!),
+            );
         });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               fallbackResult.usedOption.provider == aiSettings.selectedProvider
@@ -370,9 +518,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   Future<void> _reviewMeanings() async {
     final book = _selectedWordbook;
     if (book == null) return;
-    final selectedWords = _words
-        .where((word) => _selectedWordIds.contains(word.id))
-        .toList();
+    final wordbookManager = context.read<WordbookManager>();
+    final selectedWords =
+        _words.where((word) => _selectedWordIds.contains(word.id)).toList();
     if (selectedWords.isEmpty || selectedWords.length > 20) {
       setState(() => _errorMessage = '뜻 검토할 단어를 1~20개 선택해주세요.');
       return;
@@ -384,10 +532,14 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     });
     try {
       final aiSettings = context.read<AiSettingsProvider>();
-      final result = await context.read<AiService>().reviewWordMeaningsWithFallback(
-        selectedWords,
-        aiSettings.requestOptions(fallbackEnabled: aiSettings.autoFallbackEnabled),
-      );
+      final result = await context
+          .read<AiService>()
+          .reviewWordMeaningsWithFallback(
+            selectedWords,
+            aiSettings.requestOptions(
+              fallbackEnabled: aiSettings.autoFallbackEnabled,
+            ),
+          );
       aiSettings.recordUsedOption(result.usedOption);
       if (!mounted) return;
       if (result.value.isEmpty) {
@@ -395,13 +547,15 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         return;
       }
 
-      final changed = result.value.where((suggestion) {
-        final original = selectedWords[suggestion.index];
-        return suggestion.word != original.word ||
-            suggestion.meaning != original.meaning ||
-            suggestion.sentence != (original.exampleSentence ?? '') ||
-            suggestion.translation != (original.exampleSentenceTranslation ?? '');
-      }).toList();
+      final changed =
+          result.value.where((suggestion) {
+            final original = selectedWords[suggestion.index];
+            return suggestion.word != original.word ||
+                suggestion.meaning != original.meaning ||
+                suggestion.sentence != (original.exampleSentence ?? '') ||
+                suggestion.translation !=
+                    (original.exampleSentenceTranslation ?? '');
+          }).toList();
       if (changed.isEmpty) {
         await _reviewProgress.markReviewed(
           book.dbFileName,
@@ -429,13 +583,14 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
             ),
       ];
       if (updates.isNotEmpty) {
-        await context.read<WordbookManager>().updateWordsInWordbook(book, updates);
+        await wordbookManager.updateWordsInWordbook(book, updates);
       }
-      final currentWords = await context.read<WordbookManager>().getAllWordsFrom(book);
-      final reviewedIds = result.value
-          .map((item) => selectedWords[item.index].id)
-          .whereType<int>()
-          .toSet();
+      final currentWords = await wordbookManager.getAllWordsFrom(book);
+      final reviewedIds =
+          result.value
+              .map((item) => selectedWords[item.index].id)
+              .whereType<int>()
+              .toSet();
       await _reviewProgress.markReviewed(
         book.dbFileName,
         currentWords.where((word) => reviewedIds.contains(word.id)).toList(),
@@ -444,7 +599,11 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       await _onWordbookSelected(book);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${reviewedIds.length}개 검토 완료 · ${updates.length}개 수정 반영')),
+          SnackBar(
+            content: Text(
+              '${reviewedIds.length}개 검토 완료 · ${updates.length}개 수정 반영',
+            ),
+          ),
         );
       }
     } catch (error) {
@@ -461,77 +620,114 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     final selected = suggestions.map((item) => item.index).toSet();
     return showDialog<Set<int>>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, refresh) => AlertDialog(
-          title: const Text('AI 제안 확인'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: MediaQuery.sizeOf(context).height * 0.55,
-            child: ListView.builder(
-              itemCount: suggestions.length,
-              itemBuilder: (context, index) {
-                final suggestion = suggestions[index];
-                final original = originals[suggestion.index];
-                final changes = <Widget>[
-                  if (suggestion.word != original.word)
-                    _buildReviewChange(context, '단어', original.word, suggestion.word),
-                  if (suggestion.meaning != original.meaning)
-                    _buildReviewChange(context, '뜻', original.meaning, suggestion.meaning),
-                  if (suggestion.sentence != (original.exampleSentence ?? ''))
-                    _buildReviewChange(context, '예문', original.exampleSentence ?? '',
-                        suggestion.sentence),
-                  if (suggestion.translation != (original.exampleSentenceTranslation ?? ''))
-                    _buildReviewChange(context, '예문 해석',
-                        original.exampleSentenceTranslation ?? '', suggestion.translation),
-                ];
-                return CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(original.word),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (final change in changes) ...[
-                          change,
-                          const SizedBox(height: 6),
-                        ],
-                      ],
+      builder:
+          (dialogContext) => StatefulBuilder(
+            builder:
+                (context, refresh) => AlertDialog(
+                  title: const Text('AI 제안 확인'),
+                  content: SizedBox(
+                    width: double.maxFinite,
+                    height: MediaQuery.sizeOf(context).height * 0.55,
+                    child: ListView.builder(
+                      itemCount: suggestions.length,
+                      itemBuilder: (context, index) {
+                        final suggestion = suggestions[index];
+                        final original = originals[suggestion.index];
+                        final changes = <Widget>[
+                          if (suggestion.word != original.word)
+                            _buildReviewChange(
+                              context,
+                              '단어',
+                              original.word,
+                              suggestion.word,
+                            ),
+                          if (suggestion.meaning != original.meaning)
+                            _buildReviewChange(
+                              context,
+                              '뜻',
+                              original.meaning,
+                              suggestion.meaning,
+                            ),
+                          if (suggestion.sentence !=
+                              (original.exampleSentence ?? ''))
+                            _buildReviewChange(
+                              context,
+                              '예문',
+                              original.exampleSentence ?? '',
+                              suggestion.sentence,
+                            ),
+                          if (suggestion.translation !=
+                              (original.exampleSentenceTranslation ?? ''))
+                            _buildReviewChange(
+                              context,
+                              '예문 해석',
+                              original.exampleSentenceTranslation ?? '',
+                              suggestion.translation,
+                            ),
+                        ];
+                        return CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(original.word),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                for (final change in changes) ...[
+                                  change,
+                                  const SizedBox(height: 6),
+                                ],
+                              ],
+                            ),
+                          ),
+                          value: selected.contains(suggestion.index),
+                          onChanged:
+                              (value) => refresh(() {
+                                if (value == true) {
+                                  selected.add(suggestion.index);
+                                } else {
+                                  selected.remove(suggestion.index);
+                                }
+                              }),
+                        );
+                      },
                     ),
                   ),
-                  value: selected.contains(suggestion.index),
-                  onChanged: (value) => refresh(() {
-                    if (value == true) {
-                      selected.add(suggestion.index);
-                    } else {
-                      selected.remove(suggestion.index);
-                    }
-                  }),
-                );
-              },
-            ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('취소'),
+                    ),
+                    FilledButton(
+                      onPressed:
+                          () => Navigator.pop(
+                            dialogContext,
+                            Set<int>.from(selected),
+                          ),
+                      child: Text(
+                        selected.isEmpty
+                            ? '변경 없이 완료'
+                            : '${selected.length}개 반영',
+                      ),
+                    ),
+                  ],
+                ),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('취소')),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, Set<int>.from(selected)),
-              child: Text(selected.isEmpty ? '변경 없이 완료' : '${selected.length}개 반영'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
   Widget _buildReviewChange(
-    BuildContext context, String label, String before, String after,
+    BuildContext context,
+    String label,
+    String before,
+    String after,
   ) {
     final theme = Theme.of(context);
     final beforeRunes = before.runes.toList();
     final afterRunes = after.runes.toList();
     var prefix = 0;
-    while (prefix < beforeRunes.length && prefix < afterRunes.length &&
+    while (prefix < beforeRunes.length &&
+        prefix < afterRunes.length &&
         beforeRunes[prefix] == afterRunes[prefix]) {
       prefix++;
     }
@@ -547,41 +743,59 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     final oldPart = segment(beforeRunes, prefix, beforeRunes.length - suffix);
     final newPart = segment(afterRunes, prefix, afterRunes.length - suffix);
     final leading = segment(beforeRunes, 0, prefix);
-    final trailing = segment(beforeRunes, beforeRunes.length - suffix, beforeRunes.length);
+    final trailing = segment(
+      beforeRunes,
+      beforeRunes.length - suffix,
+      beforeRunes.length,
+    );
     final errorColor = theme.colorScheme.error;
     final correctedColor = theme.colorScheme.primary;
     final style = theme.textTheme.bodySmall;
 
-    return Text.rich(TextSpan(
-      style: style,
-      children: [
-        TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w700)),
-        if (before.isEmpty)
-          const TextSpan(text: '미입력')
-        else ...[
+    return Text.rich(
+      TextSpan(
+        style: style,
+        children: [
+          TextSpan(
+            text: '$label: ',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          if (before.isEmpty)
+            const TextSpan(text: '미입력')
+          else ...[
+            TextSpan(text: leading),
+            TextSpan(
+              text: oldPart,
+              style: TextStyle(
+                color: errorColor,
+                fontWeight: FontWeight.w800,
+                decoration: TextDecoration.lineThrough,
+                decorationColor: errorColor,
+              ),
+            ),
+            TextSpan(text: trailing),
+          ],
+          const TextSpan(text: '  →  '),
           TextSpan(text: leading),
-          TextSpan(text: oldPart, style: TextStyle(
-            color: errorColor,
-            fontWeight: FontWeight.w800,
-            decoration: TextDecoration.lineThrough,
-            decorationColor: errorColor,
-          )),
+          TextSpan(
+            text: newPart,
+            style: TextStyle(
+              color: correctedColor,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           TextSpan(text: trailing),
+          if (after.isEmpty) const TextSpan(text: '없음'),
         ],
-        const TextSpan(text: '  →  '),
-        TextSpan(text: leading),
-        TextSpan(text: newPart,
-            style: TextStyle(color: correctedColor, fontWeight: FontWeight.w800)),
-        TextSpan(text: trailing),
-        if (after.isEmpty) const TextSpan(text: '없음'),
-      ],
-    ));
+      ),
+    );
   }
 
   Widget _buildLearningScopeNotice(ThemeData theme) {
     final plan = _studyPlan;
     if (plan == null) return const SizedBox.shrink();
-    final taskLabel = widget.initialFocus == AiQuizSetupFocus.sentences ? '예문 생성' : 'AI 퀴즈';
+    final taskLabel =
+        widget.initialFocus == AiQuizSetupFocus.sentences ? '예문 생성' : 'AI 퀴즈';
 
     return GlassmorphicCard(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -595,7 +809,11 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
               color: theme.colorScheme.tertiary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(CupertinoIcons.calendar, color: theme.colorScheme.tertiary, size: 18),
+            child: Icon(
+              CupertinoIcons.calendar,
+              color: theme.colorScheme.tertiary,
+              size: 18,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -606,7 +824,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                   plan.scopeLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -629,94 +849,176 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final identity = MemorizeIdentity.of(theme);
     final isSentenceMode = widget.initialFocus == AiQuizSetupFocus.sentences;
+    final busy = _isLoading || _isGeneratingSentences || _isReviewingMeanings;
+    final actionEnabled =
+        !busy && _selectedWordbook != null && _selectedWordIds.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: identity.canvas,
       appBar: AppBar(
         title: Text(isSentenceMode ? 'AI 예문·뜻 보강' : 'AI 퀴즈 생성'),
         automaticallyImplyLeading: true,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSetupIntroCard(theme),
+              AiConnectionBar(onChange: _showAiSettingsSheet),
               const SizedBox(height: 12),
-              _buildAiBetaNotice(theme),
-              const SizedBox(height: 14),
-              WordbookSelectionButton(
-                selectedWordbook: _selectedWordbook,
-                onWordbookSelected: _onWordbookSelected,
-                wordCount: _words.length,
-              ),
+              _buildCompactWordbookPicker(theme),
               if (_studyPlan != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _buildLearningScopeNotice(theme),
               ],
               if (isSentenceMode) ...[
+                const SizedBox(height: 22),
+                _buildEnrichmentSummary(theme),
+                const SizedBox(height: 20),
+                _buildEnrichmentTaskSection(theme),
                 const SizedBox(height: 18),
-                _buildSentenceGenerationCard(theme),
-                const SizedBox(height: 18),
-                _buildWordSelectionSection(theme),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _isReviewingMeanings || _selectedWordbook == null ||
-                            _selectedWordIds.isEmpty
-                        ? null : _reviewMeanings,
-                    icon: _isReviewingMeanings
-                        ? _AiSparkleIcon(color: theme.colorScheme.onPrimary, size: 20)
-                        : const Icon(CupertinoIcons.sparkles),
-                    label: Text(_isReviewingMeanings
-                        ? '뜻·오타 검토 중...' : '선택한 단어 뜻·오타 검토'),
-                  ),
-                ),
+                _buildEnrichmentScopeSection(theme),
+                if (_enrichmentScope == _AiEnrichmentScope.custom) ...[
+                  const SizedBox(height: 18),
+                  _buildWordSelectionSection(theme),
+                ],
               ] else ...[
-                const SizedBox(height: 18),
-                _buildWordSelectionSection(theme),
-                const SizedBox(height: 16),
-                _buildSectionTitle(
-                  theme: theme,
-                  icon: CupertinoIcons.slider_horizontal_3,
-                  title: '퀴즈 옵션',
-                  subtitle: '언어, 유형, 난이도와 문제 수를 정합니다.',
-                ),
-                const SizedBox(height: 10),
-                GlassmorphicCard(
-                  borderRadius: 26,
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      _buildLanguageSelector(),
-                      const Divider(height: 24),
-                      _buildQuizTypeSelector(),
-                      const Divider(height: 24),
-                      _buildDifficultyAndCountSection(),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                if (_errorMessage != null)
-                  _buildErrorBox(theme),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    icon:
-                        _isLoading
-                            ? _AiSparkleIcon(color: theme.colorScheme.onPrimary, size: 24)
-                            : const Icon(CupertinoIcons.sparkles),
-                    label: Text(_isLoading ? '문제 생성 중...' : 'AI 퀴즈 생성하기'),
-                    onPressed: _isLoading || _selectedWordbook == null ? null : _generateQuiz,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                ),
+                const SizedBox(height: 22),
+                _buildQuizScopeSection(theme),
+                if (_quizScope == _AiQuizWordScope.custom) ...[
+                  const SizedBox(height: 18),
+                  _buildWordSelectionSection(theme),
+                ],
+                const SizedBox(height: 20),
+                _buildCompactQuizSettings(theme),
               ],
+              const SizedBox(height: 16),
+              AiDisclosureRow(
+                summary:
+                    isSentenceMode
+                        ? '선택한 단어 정보가 ${context.watch<AiSettingsProvider>().selectedProvider.shortLabel}로 전송됩니다.'
+                        : '선택한 단어와 설정이 ${context.watch<AiSettingsProvider>().selectedProvider.shortLabel}로 전송됩니다.',
+                detail:
+                    'API 키는 기기의 보안 저장소에 보관됩니다. 생성 요청에는 현재 선택한 단어와 설정만 전달되며 사용자의 API 사용량이 소모될 수 있습니다.',
+                expanded: _showDataNotice,
+                onTap: () => setState(() => _showDataNotice = !_showDataNotice),
+              ),
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 14),
+                _buildErrorBox(theme),
+              ],
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        child: FilledButton.icon(
+          onPressed:
+              busy
+                  ? null
+                  : actionEnabled
+                  ? () {
+                    if (!isSentenceMode) {
+                      _generateQuiz();
+                    } else if (_enrichmentTask ==
+                        _AiEnrichmentTask.missingExamples) {
+                      _generateAllSentences();
+                    } else {
+                      _reviewMeanings();
+                    }
+                  }
+                  : null,
+          icon:
+              busy
+                  ? const _AiSparkleIcon(color: Colors.white, size: 22)
+                  : const Icon(CupertinoIcons.sparkles),
+          label: Text(_primaryActionLabel(isSentenceMode, busy)),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(56),
+            disabledBackgroundColor: theme.colorScheme.primary,
+            disabledForegroundColor: Colors.white,
+            shape: const StadiumBorder(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _primaryActionLabel(bool sentenceMode, bool busy) {
+    if (busy) return sentenceMode ? 'AI 제안 생성 중...' : '문제 생성 중...';
+    if (!sentenceMode) return 'AI 퀴즈 만들기';
+    return switch (_enrichmentTask) {
+      _AiEnrichmentTask.missingExamples => '${_selectedWordIds.length}개 제안 만들기',
+      _AiEnrichmentTask.reviewMeanings => '${_selectedWordIds.length}개 뜻·오타 검토',
+      _AiEnrichmentTask.refineExamples =>
+        '${_selectedWordIds.length}개 예문·해석 검토',
+    };
+  }
+
+  Widget _buildCompactWordbookPicker(ThemeData theme) {
+    final identity = MemorizeIdentity.of(theme);
+    return Material(
+      color: identity.softContext,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+        side: BorderSide(color: identity.border),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+        onTap: () async {
+          final selected = await showWordbookSelectionDialog(context);
+          if (selected != null) await _onWordbookSelected(selected);
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  CupertinoIcons.book_fill,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _selectedWordbook?.name ?? '단어장을 선택해주세요',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _selectedWordbook == null
+                          ? 'AI 학습에 사용할 단어장'
+                          : '학습 가능 ${_words.length}개',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                CupertinoIcons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),
@@ -724,13 +1026,621 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     );
   }
 
+  Widget _buildEnrichmentSummary(ThemeData theme) {
+    final missingExamples =
+        _words
+            .where((word) => word.exampleSentence?.trim().isEmpty ?? true)
+            .length;
+    final missingTranslations =
+        _words
+            .where(
+              (word) =>
+                  (word.exampleSentence?.trim().isNotEmpty ?? false) &&
+                  (word.exampleSentenceTranslation?.trim().isEmpty ?? true),
+            )
+            .length;
+    final needsReview =
+        _words
+            .where(
+              (word) => word.id != null && !_reviewedWordIds.contains(word.id),
+            )
+            .length;
+    final total =
+        <int>{
+          ..._words
+              .where(
+                (word) =>
+                    (word.exampleSentence?.trim().isEmpty ?? true) ||
+                    (word.exampleSentenceTranslation?.trim().isEmpty ?? true) ||
+                    (word.id != null && !_reviewedWordIds.contains(word.id)),
+              )
+              .map((word) => word.id ?? -1),
+        }.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text.rich(
+          TextSpan(
+            children: [
+              const TextSpan(text: '보강이 필요한 단어 '),
+              TextSpan(
+                text: '$total개',
+                style: TextStyle(color: theme.colorScheme.primary),
+              ),
+            ],
+          ),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: _buildMetric(
+                theme,
+                CupertinoIcons.doc_text_fill,
+                '빈 예문',
+                missingExamples,
+                theme.colorScheme.primary,
+              ),
+            ),
+            Expanded(
+              child: _buildMetric(
+                theme,
+                CupertinoIcons.exclamationmark_triangle_fill,
+                '해석 없음',
+                missingTranslations,
+                theme.colorScheme.error,
+              ),
+            ),
+            Expanded(
+              child: _buildMetric(
+                theme,
+                CupertinoIcons.pencil,
+                '검토 필요',
+                needsReview,
+                theme.colorScheme.tertiary,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetric(
+    ThemeData theme,
+    IconData icon,
+    String label,
+    int value,
+    Color color,
+  ) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 17, color: color),
+        ),
+        const SizedBox(width: 7),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Text(
+                '$value',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEnrichmentTaskSection(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '무엇을 보강할까요?',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _buildGroupedChoices<_AiEnrichmentTask>(
+          theme: theme,
+          value: _enrichmentTask,
+          choices: const [
+            (
+              _AiEnrichmentTask.missingExamples,
+              CupertinoIcons.doc_text,
+              '빈 예문 채우기',
+              '예문과 해석이 없는 단어만',
+            ),
+            (
+              _AiEnrichmentTask.reviewMeanings,
+              CupertinoIcons.search,
+              '뜻·오타 검토',
+              '단어와 뜻의 오류를 확인',
+            ),
+            (
+              _AiEnrichmentTask.refineExamples,
+              CupertinoIcons.sparkles,
+              '예문·해석 다듬기',
+              '기존 문장을 더 자연스럽게',
+            ),
+          ],
+          onChanged:
+              (value) => setState(() {
+                _enrichmentTask = value;
+                if (_enrichmentScope != _AiEnrichmentScope.custom) {
+                  _syncAutomaticSelection();
+                }
+              }),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEnrichmentScopeSection(ThemeData theme) {
+    final labels = <_AiEnrichmentScope, String>{
+      _AiEnrichmentScope.needed: '필요한 단어',
+      _AiEnrichmentScope.today: '오늘 학습',
+      _AiEnrichmentScope.custom: '직접 선택',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '대상 범위',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 10),
+        SegmentedButton<_AiEnrichmentScope>(
+          segments:
+              labels.entries
+                  .map(
+                    (entry) => ButtonSegment(
+                      value: entry.key,
+                      label: Text(entry.value),
+                    ),
+                  )
+                  .toList(),
+          selected: {_enrichmentScope},
+          showSelectedIcon: false,
+          onSelectionChanged:
+              (selection) => setState(() {
+                _enrichmentScope = selection.first;
+                _syncAutomaticSelection();
+              }),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '${_selectedWordIds.length}개 단어 · AI 제안 확인 후 적용됩니다.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuizScopeSection(ThemeData theme) {
+    final counts = <_AiQuizWordScope, int>{
+      _AiQuizWordScope.today: _todayWords().length,
+      _AiQuizWordScope.due: _dueWords().length,
+      _AiQuizWordScope.mistakes: _mistakeWords().length,
+      _AiQuizWordScope.custom: _selectedWordIds.length,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '어떤 단어로 만들까요?',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '퀴즈로 만들 단어 범위를 선택하세요.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildGroupedChoices<_AiQuizWordScope>(
+          theme: theme,
+          value: _quizScope,
+          choices: [
+            (
+              _AiQuizWordScope.today,
+              CupertinoIcons.calendar_today,
+              '오늘 학습',
+              '오늘 예정된 학습과 복습 · ${counts[_AiQuizWordScope.today]}개',
+            ),
+            (
+              _AiQuizWordScope.due,
+              CupertinoIcons.arrow_2_circlepath,
+              '복습 필요',
+              '지금 다시 봐야 하는 단어 · ${counts[_AiQuizWordScope.due]}개',
+            ),
+            (
+              _AiQuizWordScope.mistakes,
+              CupertinoIcons.xmark_circle,
+              '최근 오답',
+              '다시 확인할 퀴즈 오답 · ${counts[_AiQuizWordScope.mistakes]}개',
+            ),
+            (
+              _AiQuizWordScope.custom,
+              CupertinoIcons.checkmark_square,
+              '직접 선택',
+              '원하는 단어를 직접 고릅니다.',
+            ),
+          ],
+          onChanged:
+              (value) => setState(() {
+                _quizScope = value;
+                _syncAutomaticSelection();
+              }),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGroupedChoices<T>({
+    required ThemeData theme,
+    required T value,
+    required List<(T, IconData, String, String)> choices,
+    required ValueChanged<T> onChanged,
+  }) {
+    final identity = MemorizeIdentity.of(theme);
+    return Container(
+      decoration: BoxDecoration(
+        color: identity.surface,
+        borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+        border: Border.all(color: identity.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var index = 0; index < choices.length; index++) ...[
+            _buildChoiceRow<T>(
+              theme,
+              choices[index],
+              value == choices[index].$1,
+              onChanged,
+            ),
+            if (index != choices.length - 1)
+              Divider(
+                height: 1,
+                indent: 18,
+                endIndent: 18,
+                color: theme.colorScheme.outline.withValues(alpha: 0.13),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChoiceRow<T>(
+    ThemeData theme,
+    (T, IconData, String, String) choice,
+    bool selected,
+    ValueChanged<T> onChanged,
+  ) {
+    return Material(
+      color:
+          selected
+              ? theme.colorScheme.primary.withValues(alpha: 0.08)
+              : Colors.transparent,
+      child: InkWell(
+        onTap: () => onChanged(choice.$1),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+          child: Row(
+            children: [
+              Icon(
+                selected
+                    ? CupertinoIcons.largecircle_fill_circle
+                    : CupertinoIcons.circle,
+                color:
+                    selected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.outline,
+                size: 24,
+              ),
+              const SizedBox(width: 11),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: (selected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.secondary)
+                      .withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  choice.$2,
+                  size: 19,
+                  color:
+                      selected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      choice.$3,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      choice.$4,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactQuizSettings(ThemeData theme) {
+    final difficultyProfile = AiDifficultyProfiles.forLevel(
+      _difficulty.round(),
+    );
+    final difficulty = difficultyProfile.label;
+    final identity = MemorizeIdentity.of(theme);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '퀴즈 설정',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '문제 유형, 난이도와 문제 수를 설정하세요.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            color: identity.surface,
+            borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+            border: Border.all(color: identity.border),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildQuickMenu<String>(
+                      theme,
+                      '문제 유형',
+                      _selectedQuizType,
+                      const ['종합', '어휘', '문법', '독해'],
+                      (value) => setState(() => _selectedQuizType = value),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildQuickMenu<int>(
+                      theme,
+                      '난이도',
+                      difficulty,
+                      List.generate(7, (index) => index + 1),
+                      (value) => setState(() => _difficulty = value.toDouble()),
+                      itemLabel:
+                          (value) => AiDifficultyProfiles.forLevel(value).label,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildQuickMenu<int>(
+                      theme,
+                      '문제 수',
+                      '${_questionCount.round()}문제',
+                      const [5, 10, 15, 20],
+                      (value) =>
+                          setState(() => _questionCount = value.toDouble()),
+                      itemLabel: (value) => '$value문제',
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 22),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 160),
+                child: Align(
+                  key: ValueKey(_difficulty.round()),
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    difficultyProfile.uiSummary,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      height: 1.4,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(height: 22),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('해설 포함'),
+                subtitle: const Text('문제마다 해설을 함께 생성합니다.'),
+                value: _includeExplanation,
+                onChanged:
+                    (value) => setState(() => _includeExplanation = value),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(CupertinoIcons.slider_horizontal_3),
+                title: const Text('세부 설정'),
+                subtitle: Text(
+                  '출제 언어 ${_questionLanguage == 'English' ? '영어' : '한국어'}',
+                ),
+                trailing: Icon(
+                  _showAdvancedQuizSettings
+                      ? CupertinoIcons.chevron_up
+                      : CupertinoIcons.chevron_down,
+                ),
+                onTap:
+                    () => setState(
+                      () =>
+                          _showAdvancedQuizSettings =
+                              !_showAdvancedQuizSettings,
+                    ),
+              ),
+              if (_showAdvancedQuizSettings) ...[
+                const SizedBox(height: 6),
+                _buildLanguageSelector(),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: '${_selectedWordIds.length}개 단어를 중심으로 ',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                TextSpan(
+                  text: '${_questionCount.round()}문제',
+                  style: TextStyle(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const TextSpan(text: '를 만듭니다.'),
+              ],
+            ),
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickMenu<T>(
+    ThemeData theme,
+    String label,
+    String valueLabel,
+    List<T> values,
+    ValueChanged<T> onSelected, {
+    String Function(T value)? itemLabel,
+  }) {
+    return PopupMenuButton<T>(
+      onSelected: onSelected,
+      itemBuilder:
+          (_) =>
+              values
+                  .map(
+                    (value) => PopupMenuItem<T>(
+                      value: value,
+                      child: Text(itemLabel?.call(value) ?? value.toString()),
+                    ),
+                  )
+                  .toList(),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 9, 8, 9),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.38,
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    valueLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const Icon(CupertinoIcons.chevron_down, size: 14),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Kept temporarily for compatibility while the new setup layout settles.
+  // ignore: unused_element
   Widget _buildSetupIntroCard(ThemeData theme) {
     final isSentenceMode = widget.initialFocus == AiQuizSetupFocus.sentences;
     final title = isSentenceMode ? '예문과 뜻 보강하기' : '단어장 맞춤 퀴즈 만들기';
     final subtitle =
-        isSentenceMode
-            ? '예문을 만들고 뜻·해석·오타를 검토합니다.'
-            : '어휘, 문법, 독해 문제를 만듭니다.';
+        isSentenceMode ? '예문을 만들고 뜻·해석·오타를 검토합니다.' : '어휘, 문법, 독해 문제를 만듭니다.';
     final activeName = _selectedWordbook?.name ?? '단어장 선택 필요';
 
     return GlassmorphicCard(
@@ -746,7 +1656,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
               borderRadius: BorderRadius.circular(19),
             ),
             child: Icon(
-              isSentenceMode ? CupertinoIcons.doc_text : CupertinoIcons.sparkles,
+              isSentenceMode
+                  ? CupertinoIcons.doc_text
+                  : CupertinoIcons.sparkles,
               color: theme.colorScheme.primary,
               size: 25,
             ),
@@ -760,7 +1672,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 5),
                 Text(
@@ -788,9 +1702,15 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildSentenceGenerationCard(ThemeData theme) {
     final missingSentenceCount =
-        _words.where((word) => word.exampleSentence == null || word.exampleSentence!.isEmpty).length;
+        _words
+            .where(
+              (word) =>
+                  word.exampleSentence == null || word.exampleSentence!.isEmpty,
+            )
+            .length;
 
     return GlassmorphicCard(
       borderRadius: 26,
@@ -826,7 +1746,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           const SizedBox(height: 14),
           Text(
             '예문이 비어 있는 단어 $missingSentenceCount개를 채웁니다.',
-            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -845,13 +1767,19 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
             child: FilledButton.icon(
               icon:
                   _isGeneratingSentences
-                      ? _AiSparkleIcon(color: theme.colorScheme.onPrimary, size: 20)
+                      ? const _AiSparkleIcon(color: Colors.white, size: 20)
                       : const Icon(CupertinoIcons.sparkles),
               label: Text(_isGeneratingSentences ? '예문 생성 중...' : '예문 생성 시작'),
               onPressed:
-                  _isGeneratingSentences || _selectedWordbook == null
+                  _isGeneratingSentences
+                      ? null
+                      : _selectedWordbook == null
                       ? null
                       : _generateAllSentences,
+              style: FilledButton.styleFrom(
+                disabledBackgroundColor: theme.colorScheme.primary,
+                disabledForegroundColor: Colors.white,
+              ),
             ),
           ),
         ],
@@ -861,12 +1789,13 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
 
   Widget _buildWordSelectionSection(ThemeData theme) {
     final isReview = widget.initialFocus == AiQuizSetupFocus.sentences;
-    final visibleWords = isReview
-        ? [
-            ..._words.where((word) => !_reviewedWordIds.contains(word.id)),
-            ..._words.where((word) => _reviewedWordIds.contains(word.id)),
-          ]
-        : _words;
+    final visibleWords =
+        isReview
+            ? [
+              ..._words.where((word) => !_reviewedWordIds.contains(word.id)),
+              ..._words.where((word) => _reviewedWordIds.contains(word.id)),
+            ]
+            : _words;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -874,9 +1803,10 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           theme: theme,
           icon: CupertinoIcons.checkmark_square,
           title: isReview ? '뜻·예문 검토할 단어' : '출제 단어 선택',
-          subtitle: isReview
-              ? '${_selectedWordIds.length}개 선택 · 검토 완료 ${_reviewedWordIds.length}/${_words.length}개 · 최대 20개'
-              : '${_selectedWordIds.length}/${_words.length}개 선택됨',
+          subtitle:
+              isReview
+                  ? '${_selectedWordIds.length}개 선택 · 검토 완료 ${_reviewedWordIds.length}/${_words.length}개 · 최대 20개'
+                  : '${_selectedWordIds.length}/${_words.length}개 선택됨',
         ),
         const SizedBox(height: 10),
         GlassmorphicCard(
@@ -897,9 +1827,14 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                       label: '사용 가능 ${_words.length}개',
                       color: theme.colorScheme.primary,
                     ),
-                    TextButton(onPressed: _onSelectAll,
-                      child: Text(isReview ? '다음 미검토 20개' : '전체 선택')),
-                    TextButton(onPressed: _onDeselectAll, child: const Text('해제')),
+                    TextButton(
+                      onPressed: _onSelectAll,
+                      child: Text(isReview ? '다음 미검토 20개' : '전체 선택'),
+                    ),
+                    TextButton(
+                      onPressed: _onDeselectAll,
+                      child: const Text('해제'),
+                    ),
                   ],
                 ),
               ),
@@ -908,12 +1843,20 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                 child:
                     _selectedWordbook == null
                         ? Center(
-                          child: Text("먼저 학습할 단어장을 선택해주세요.", style: theme.textTheme.bodyMedium),
+                          child: Text(
+                            "먼저 학습할 단어장을 선택해주세요.",
+                            style: theme.textTheme.bodyMedium,
+                          ),
                         )
                         : _isLoading
                         ? _buildAiGeneratingWordsEffect(theme)
                         : _words.isEmpty
-                        ? Center(child: Text("단어장에 단어가 없습니다.", style: theme.textTheme.bodyMedium))
+                        ? Center(
+                          child: Text(
+                            "단어장에 단어가 없습니다.",
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        )
                         : ListView.builder(
                           itemCount: visibleWords.length,
                           itemBuilder: (context, index) {
@@ -921,19 +1864,27 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                             return CheckboxListTile(
                               title: Row(
                                 children: [
-                                  Expanded(child: Text(
-                                    word.word,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w800,
+                                  Expanded(
+                                    child: Text(
+                                      word.word,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                          ),
                                     ),
-                                  )),
-                                  if (isReview && _reviewedWordIds.contains(word.id))
-                                    Text('검토 완료', style: theme.textTheme.labelSmall?.copyWith(
-                                      color: theme.colorScheme.primary,
-                                      fontWeight: FontWeight.w700,
-                                    )),
+                                  ),
+                                  if (isReview &&
+                                      _reviewedWordIds.contains(word.id))
+                                    Text(
+                                      '검토 완료',
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: theme.colorScheme.primary,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
                                 ],
                               ),
                               subtitle: Text(
@@ -944,10 +1895,15 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
                               value: _selectedWordIds.contains(word.id),
                               onChanged: (bool? value) {
                                 if (word.id == null) return;
-                                if (isReview && value == true &&
+                                if (isReview &&
+                                    value == true &&
                                     _selectedWordIds.length >= 20) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('한 번에 최대 20개까지 검토할 수 있습니다.')),
+                                    const SnackBar(
+                                      content: Text(
+                                        '한 번에 최대 20개까지 검토할 수 있습니다.',
+                                      ),
+                                    ),
                                   );
                                   return;
                                 }
@@ -981,7 +1937,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           decoration: BoxDecoration(
             color: theme.colorScheme.primary.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.18)),
+            border: Border.all(
+              color: theme.colorScheme.primary.withValues(alpha: 0.18),
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1027,8 +1985,14 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
           child: CupertinoSlidingSegmentedControl<String>(
             groupValue: _questionLanguage,
             children: const {
-              'English': Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('영어')),
-              'Korean': Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('한국어')),
+              'English': Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('영어'),
+              ),
+              'Korean': Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('한국어'),
+              ),
             },
             onValueChanged: (value) {
               if (value != null) {
@@ -1041,6 +2005,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildQuizTypeSelector() {
     // ... (기존과 동일)
     return Column(
@@ -1066,6 +2031,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildAiBetaNotice(ThemeData theme) {
     final aiSettings = context.watch<AiSettingsProvider>();
     final fallbackText =
@@ -1098,12 +2064,14 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'AI 생성 기능은 베타입니다',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  'AI 생성은 개인 API를 사용하는 베타 기능입니다',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '선택한 단어, 뜻, 예문 정보가 외부 AI 제공자에게 전송됩니다. 생성된 문제와 해설은 틀릴 수 있으니 학습 전 확인하세요. $fallbackText',
+                  '개인 API 키 등록이 필요하며 선택한 단어와 설정은 해당 제공업체로 전송됩니다. 무료 API·모델은 응답 지연, 시간 초과, 토큰·요청 한도가 있을 수 있으니 생성 결과를 학습 전에 확인해 주세요. $fallbackText',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     height: 1.35,
@@ -1141,7 +2109,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
             children: [
               Text(
                 title,
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
               ),
               Text(
                 subtitle,
@@ -1202,7 +2172,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.error.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.24)),
+        border: Border.all(
+          color: theme.colorScheme.error.withValues(alpha: 0.24),
+        ),
       ),
       child: Text(
         _errorMessage ?? '',
@@ -1215,10 +2187,13 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildDifficultyAndCountSection() {
     // ... (기존과 동일)
     final difficultyIndex = (_difficulty.round() - 1).clamp(0, 6);
-    final difficultyProfile = AiDifficultyProfiles.forLevel(_difficulty.round());
+    final difficultyProfile = AiDifficultyProfiles.forLevel(
+      _difficulty.round(),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1273,7 +2248,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.16)),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.16),
+        ),
       ),
       child: Text(
         '선택 단어 $selectedCount개와 문제 옵션이 외부 AI로 전송되며, 사용자의 API 사용량을 소모합니다. 안정적인 생성을 위해 한 번에 최대 20문제까지 생성합니다.',
@@ -1311,9 +2288,9 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         ),
         Text(
           valueLabel,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyLarge?.copyWith(color: Theme.of(context).primaryColor),
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            color: Theme.of(context).primaryColor,
+          ),
         ),
       ],
     );
@@ -1324,16 +2301,14 @@ class _AiSparkleIcon extends StatefulWidget {
   final Color color;
   final double size;
 
-  const _AiSparkleIcon({
-    required this.color,
-    required this.size,
-  });
+  const _AiSparkleIcon({required this.color, required this.size});
 
   @override
   State<_AiSparkleIcon> createState() => _AiSparkleIconState();
 }
 
-class _AiSparkleIconState extends State<_AiSparkleIcon> with SingleTickerProviderStateMixin {
+class _AiSparkleIconState extends State<_AiSparkleIcon>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -1356,9 +2331,10 @@ class _AiSparkleIconState extends State<_AiSparkleIcon> with SingleTickerProvide
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        final pulse = _controller.value < 0.5
-            ? _controller.value * 2
-            : (1 - _controller.value) * 2;
+        final pulse =
+            _controller.value < 0.5
+                ? _controller.value * 2
+                : (1 - _controller.value) * 2;
         return SizedBox(
           width: widget.size,
           height: widget.size,

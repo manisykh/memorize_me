@@ -49,12 +49,18 @@ try {
         -dname "CN=Memorize Me, OU=Release, O=Memorize Me, L=Seoul, ST=Seoul, C=KR"
 
     $storeFileForGradle = "../$KeystoreFile"
-    @(
+    $keyPropertiesLines = @(
         "storePassword=$storePassword"
         "keyPassword=$keyPassword"
         "keyAlias=$Alias"
         "storeFile=$storeFileForGradle"
-    ) | Set-Content -LiteralPath $keyPropertiesPath -Encoding UTF8
+    )
+    $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllLines(
+        $keyPropertiesPath,
+        $keyPropertiesLines,
+        $utf8WithoutBom
+    )
 
     Write-Host ""
     Write-Host "Release signing files created:"

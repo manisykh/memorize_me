@@ -3,8 +3,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
+
 import 'package:excel/excel.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
@@ -35,7 +36,9 @@ class TestSheetService {
       return SentenceCompletionMatcher.findLiteral(override, sentence);
     }
     final target = word.word.trim();
-    return target.isEmpty ? null : SentenceCompletionMatcher.find(target, sentence);
+    return target.isEmpty
+        ? null
+        : SentenceCompletionMatcher.find(target, sentence);
   }
 
   static bool hasMultipleSentenceForms(Word word) {
@@ -43,23 +46,31 @@ class TestSheetService {
         (word.exampleSentence?.trim().isEmpty ?? true)) {
       return false;
     }
-    final forms = SentenceCompletionMatcher.findAll(
-      word.word, word.exampleSentence!,
-    ).map((match) => match.answer.toLowerCase()).toSet();
+    final forms =
+        SentenceCompletionMatcher.findAll(
+          word.word,
+          word.exampleSentence!,
+        ).map((match) => match.answer.toLowerCase()).toSet();
     return forms.length > 1;
   }
 
-  static String _sentenceKey(Word word) =>
-      (word.exampleSentence ?? '').trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  static String _sentenceKey(Word word) => (word.exampleSentence ?? '')
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), ' ');
 
   static List<Word> sentenceCompletionCandidates(
     List<Word> words, {
     required bool repeatSharedSentences,
   }) {
     final seen = <String>{};
-    return words.where((word) =>
-        canUseSentenceCompletion(word) &&
-        (repeatSharedSentences || seen.add(_sentenceKey(word)))).toList();
+    return words
+        .where(
+          (word) =>
+              canUseSentenceCompletion(word) &&
+              (repeatSharedSentences || seen.add(_sentenceKey(word))),
+        )
+        .toList();
   }
 
   String _getQuestionText(Word word, SelfTestType type) {
@@ -86,11 +97,15 @@ class TestSheetService {
   }
 
   bool _canUseSpellingHint(SelfTestType type) {
-    return type == SelfTestType.meaningToWord || type == SelfTestType.sentenceCompletion;
+    return type == SelfTestType.meaningToWord ||
+        type == SelfTestType.sentenceCompletion;
   }
 
   String _buildSpellingHint(String answer) {
-    final chars = answer.runes.map((codePoint) => String.fromCharCode(codePoint)).toList();
+    final chars =
+        answer.runes
+            .map((codePoint) => String.fromCharCode(codePoint))
+            .toList();
     final letterIndexes = <int>[];
 
     for (var i = 0; i < chars.length; i++) {
@@ -107,13 +122,17 @@ class TestSheetService {
       visible.add(letterIndexes.last);
     }
 
-    return chars.asMap().entries.map((entry) {
-      final index = entry.key;
-      final char = entry.value;
-      if (char.trim().isEmpty) return '   ';
-      if (!RegExp(r'[A-Za-z가-힣0-9]').hasMatch(char)) return char;
-      return visible.contains(index) ? char : '_';
-    }).join(' ');
+    return chars
+        .asMap()
+        .entries
+        .map((entry) {
+          final index = entry.key;
+          final char = entry.value;
+          if (char.trim().isEmpty) return '   ';
+          if (!RegExp(r'[A-Za-z가-힣0-9]').hasMatch(char)) return char;
+          return visible.contains(index) ? char : '_';
+        })
+        .join(' ');
   }
 
   bool _isSameWord(Word a, Word b) {
@@ -141,26 +160,38 @@ class TestSheetService {
     }
 
     final distractors = distractorSet.toList()..shuffle(random);
-    final options = <String>[answer.trim(), ...distractors.take(3)]..shuffle(random);
+    final options = <String>[answer.trim(), ...distractors.take(3)]
+      ..shuffle(random);
     return options.length > 1 ? options : const [];
   }
 
-  List<Map<String, dynamic>> prepareTestData(List<Word> allWords, AppSettings settings) {
+  List<Map<String, dynamic>> prepareTestData(
+    List<Word> allWords,
+    AppSettings settings,
+  ) {
     if (allWords.isEmpty) return [];
     if (settings.testTypes.isEmpty) {
       throw StateError('시험 유형을 하나 이상 선택해주세요.');
     }
 
-    final sentenceOnly = settings.testTypes.length == 1 &&
+    final sentenceOnly =
+        settings.testTypes.length == 1 &&
         settings.testTypes.contains(SelfTestType.sentenceCompletion);
-    final sourceCopy = sentenceOnly
-        ? sentenceCompletionCandidates(
-            allWords,
-            repeatSharedSentences: settings.repeatSharedSentences,
-          )
-        : allWords.where((word) => settings.testTypes.any((type) =>
-              type != SelfTestType.sentenceCompletion ||
-              canUseSentenceCompletion(word))).toList();
+    final sourceCopy =
+        sentenceOnly
+            ? sentenceCompletionCandidates(
+              allWords,
+              repeatSharedSentences: settings.repeatSharedSentences,
+            )
+            : allWords
+                .where(
+                  (word) => settings.testTypes.any(
+                    (type) =>
+                        type != SelfTestType.sentenceCompletion ||
+                        canUseSentenceCompletion(word),
+                  ),
+                )
+                .toList();
     if (sourceCopy.isEmpty) {
       throw StateError('문장 완성 문제를 만들 수 없습니다. 예문에 해당 단어가 포함되어 있는지 확인해주세요.');
     }
@@ -205,7 +236,9 @@ class TestSheetService {
         'type': currentType,
         'questionFormat': TestQuestionFormat.shortAnswer,
         'translation':
-            currentType == SelfTestType.sentenceCompletion ? word.exampleSentenceTranslation : null,
+            currentType == SelfTestType.sentenceCompletion
+                ? word.exampleSentenceTranslation
+                : null,
       };
 
       if (settings.questionFormat == TestQuestionFormat.multipleChoice) {
@@ -247,8 +280,11 @@ class TestSheetService {
   String _answerTextForDisplay(Map<String, dynamic> questionData) {
     final answer = questionData['answer'] as String? ?? '';
     final options = _questionOptions(questionData);
-    final answerIndex = options.indexWhere((option) => option.trim() == answer.trim());
-    final primaryAnswer = answerIndex >= 0 ? '${_optionLabel(answerIndex)} $answer' : answer;
+    final answerIndex = options.indexWhere(
+      (option) => option.trim() == answer.trim(),
+    );
+    final primaryAnswer =
+        answerIndex >= 0 ? '${_optionLabel(answerIndex)} $answer' : answer;
     final additionalMeanings = _additionalMeanings(questionData);
     if (additionalMeanings.isEmpty) return primaryAnswer;
     return '$primaryAnswer\n추가 뜻: ${additionalMeanings.join(' · ')}';
@@ -257,7 +293,10 @@ class TestSheetService {
   List<String> _additionalMeanings(Map<String, dynamic> questionData) {
     final raw = questionData['additionalMeanings'];
     if (raw is! List) return const [];
-    return raw.map((meaning) => meaning.toString().trim()).where((meaning) => meaning.isNotEmpty).toList();
+    return raw
+        .map((meaning) => meaning.toString().trim())
+        .where((meaning) => meaning.isNotEmpty)
+        .toList();
   }
 
   Future<void> exportPdf({
@@ -271,8 +310,12 @@ class TestSheetService {
     final testData = prepareTestData(allWords, settings);
     if (testData.isEmpty) throw Exception("시험지를 생성할 단어가 없습니다.");
 
-    final font = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Regular.ttf"));
-    final boldFont = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Bold.ttf"));
+    final font = pw.Font.ttf(
+      await rootBundle.load("assets/fonts/NotoSansKR-Regular.ttf"),
+    );
+    final boldFont = pw.Font.ttf(
+      await rootBundle.load("assets/fonts/NotoSansKR-Bold.ttf"),
+    );
 
     final baseFileName = title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
 
@@ -303,7 +346,10 @@ class TestSheetService {
           title,
         );
       } else {
-        assert(savePath != null, 'Save path must be provided when not sharing.');
+        assert(
+          savePath != null,
+          'Save path must be provided when not sharing.',
+        );
         await _saveFileToPath('$savePath/$questionFileName', questionsBytes);
         await _saveFileToPath('$savePath/$answerFileName', answersBytes);
         if (openAfterSave) OpenFilex.open('$savePath/$questionFileName');
@@ -324,7 +370,10 @@ class TestSheetService {
       if (share) {
         await _shareFile(fileName, bytes, title);
       } else {
-        assert(savePath != null, 'Save path must be provided when not sharing.');
+        assert(
+          savePath != null,
+          'Save path must be provided when not sharing.',
+        );
         final fullPath = '$savePath/$fileName';
         await _saveFileToPath(fullPath, bytes);
         if (openAfterSave) OpenFilex.open(fullPath);
@@ -346,7 +395,10 @@ class TestSheetService {
       if (share) {
         await _shareFile(fileName, bytes, title);
       } else {
-        assert(savePath != null, 'Save path must be provided when not sharing.');
+        assert(
+          savePath != null,
+          'Save path must be provided when not sharing.',
+        );
         final fullPath = '$savePath/$fileName';
         await _saveFileToPath(fullPath, bytes);
         if (openAfterSave) OpenFilex.open(fullPath);
@@ -404,9 +456,13 @@ class TestSheetService {
                 children: [
                   pw.Text(
                     docTitle,
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: fontSize + 6),
+                    style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: fontSize + 6,
+                    ),
                   ),
-                  if (!isAnswerSheet) pw.Text(date, style: pw.TextStyle(fontSize: fontSize - 2)),
+                  if (!isAnswerSheet)
+                    pw.Text(date, style: pw.TextStyle(fontSize: fontSize - 2)),
                 ],
               ),
             ),
@@ -414,15 +470,26 @@ class TestSheetService {
           if (isAnswerSheet) {
             return [
               pw.TableHelper.fromTextArray(
-                columnWidths: {0: const pw.FixedColumnWidth(45), 1: const pw.FlexColumnWidth()},
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: fontSize),
+                columnWidths: {
+                  0: const pw.FixedColumnWidth(45),
+                  1: const pw.FlexColumnWidth(),
+                },
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: fontSize,
+                ),
                 cellStyle: pw.TextStyle(fontSize: fontSize),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.grey300,
+                ),
                 cellAlignment: pw.Alignment.centerLeft,
                 data: <List<String>>[
                   <String>['번호', '정답'],
                   ...testData.asMap().entries.map(
-                    (entry) => ['${entry.key + 1}', _answerTextForDisplay(entry.value)],
+                    (entry) => [
+                      '${entry.key + 1}',
+                      _answerTextForDisplay(entry.value),
+                    ],
                   ),
                 ],
               ),
@@ -441,35 +508,52 @@ class TestSheetService {
                   final hint = questionData['hint'] as String?;
 
                   final questionContent =
-                      options.isNotEmpty || type == SelfTestType.sentenceCompletion
+                      options.isNotEmpty ||
+                              type == SelfTestType.sentenceCompletion
                           ? questionText
                           : '$questionText  →  _________________________';
 
                   return pw.Table(
-                    columnWidths: {0: const pw.FixedColumnWidth(45), 1: const pw.FlexColumnWidth()},
+                    columnWidths: {
+                      0: const pw.FixedColumnWidth(45),
+                      1: const pw.FlexColumnWidth(),
+                    },
                     children: [
                       pw.TableRow(
                         children: [
-                          pw.Text('${index + 1}.', style: pw.TextStyle(fontSize: fontSize)),
+                          pw.Text(
+                            '${index + 1}.',
+                            style: pw.TextStyle(fontSize: fontSize),
+                          ),
                           pw.Column(
                             crossAxisAlignment: pw.CrossAxisAlignment.start,
                             children: [
-                              pw.Text(questionContent, style: pw.TextStyle(fontSize: fontSize)),
+                              pw.Text(
+                                questionContent,
+                                style: pw.TextStyle(fontSize: fontSize),
+                              ),
                               if (options.isNotEmpty)
                                 pw.Padding(
                                   padding: const pw.EdgeInsets.only(top: 6.0),
                                   child: pw.Column(
-                                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        pw.CrossAxisAlignment.start,
                                     children:
-                                        options.asMap().entries.map((optionEntry) {
+                                        options.asMap().entries.map((
+                                          optionEntry,
+                                        ) {
                                           return pw.Padding(
-                                            padding: const pw.EdgeInsets.only(bottom: 3.0),
+                                            padding: const pw.EdgeInsets.only(
+                                              bottom: 3.0,
+                                            ),
                                             child: pw.Text(
                                               '${_optionLabel(optionEntry.key)} ${optionEntry.value}',
-                                              style: pw.TextStyle(fontSize: fontSize - 1),
+                                              style: pw.TextStyle(
+                                                fontSize: fontSize - 1,
+                                              ),
                                             ),
                                           );
-                                    }).toList(),
+                                        }).toList(),
                                   ),
                                 ),
                               if (hint != null && hint.isNotEmpty)
@@ -540,26 +624,38 @@ class TestSheetService {
         TextCellValue('답란'),
       ]);
       for (var i = 0; i < 6; i++) {
-        testSheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).cellStyle =
-            headerStyle;
+        testSheet
+            .cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0))
+            .cellStyle = headerStyle;
       }
       for (int i = 0; i < testData.length; i++) {
         final questionData = testData[i];
         final type = questionData['type'] as SelfTestType;
         final options = _questionOptions(questionData);
-        final optionText =
-            options.asMap().entries.map((entry) => '${_optionLabel(entry.key)} ${entry.value}').join('\n');
+        final optionText = options
+            .asMap()
+            .entries
+            .map((entry) => '${_optionLabel(entry.key)} ${entry.value}')
+            .join('\n');
         testSheet.appendRow([
           IntCellValue(i + 1),
           TextCellValue(_selfTestTypeLabel(type)),
           TextCellValue(questionData['question']! as String),
           TextCellValue(questionData['hint'] as String? ?? ''),
           TextCellValue(optionText),
-          TextCellValue(options.isEmpty ? '____________________' : '선택지에서 고르세요'),
+          TextCellValue(
+            options.isEmpty ? '____________________' : '선택지에서 고르세요',
+          ),
         ]);
         for (var column = 0; column < 6; column++) {
-          testSheet.cell(CellIndex.indexByColumnRow(columnIndex: column, rowIndex: i + 1)).cellStyle =
-              bodyStyle;
+          testSheet
+              .cell(
+                CellIndex.indexByColumnRow(
+                  columnIndex: column,
+                  rowIndex: i + 1,
+                ),
+              )
+              .cellStyle = bodyStyle;
         }
       }
       testSheet.setColumnWidth(0, 5);
@@ -571,10 +667,15 @@ class TestSheetService {
     }
     if (settings.exportOption != ExportOption.testOnly) {
       Sheet answerSheet = excel['답안지'];
-      answerSheet.appendRow([TextCellValue('번호'), TextCellValue('유형'), TextCellValue('정답')]);
+      answerSheet.appendRow([
+        TextCellValue('번호'),
+        TextCellValue('유형'),
+        TextCellValue('정답'),
+      ]);
       for (var i = 0; i < 3; i++) {
-        answerSheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).cellStyle =
-            headerStyle;
+        answerSheet
+            .cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0))
+            .cellStyle = headerStyle;
       }
       for (int i = 0; i < testData.length; i++) {
         final questionData = testData[i];
@@ -585,8 +686,14 @@ class TestSheetService {
           TextCellValue(_answerTextForDisplay(questionData)),
         ]);
         for (var column = 0; column < 3; column++) {
-          answerSheet.cell(CellIndex.indexByColumnRow(columnIndex: column, rowIndex: i + 1)).cellStyle =
-              bodyStyle;
+          answerSheet
+              .cell(
+                CellIndex.indexByColumnRow(
+                  columnIndex: column,
+                  rowIndex: i + 1,
+                ),
+              )
+              .cellStyle = bodyStyle;
         }
       }
       answerSheet.setColumnWidth(0, 5);
@@ -594,7 +701,9 @@ class TestSheetService {
       answerSheet.setColumnWidth(2, 40);
     }
     excel.delete('Sheet1');
-    if (excel.sheets.keys.isNotEmpty) excel.setDefaultSheet(excel.sheets.keys.first);
+    if (excel.sheets.keys.isNotEmpty) {
+      excel.setDefaultSheet(excel.sheets.keys.first);
+    }
     return excel.save();
   }
 
@@ -604,8 +713,12 @@ class TestSheetService {
     required PdfExportType exportType,
     required bool share,
   }) async {
-    final font = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Regular.ttf"));
-    final boldFont = pw.Font.ttf(await rootBundle.load("assets/fonts/NotoSansKR-Bold.ttf"));
+    final font = pw.Font.ttf(
+      await rootBundle.load("assets/fonts/NotoSansKR-Regular.ttf"),
+    );
+    final boldFont = pw.Font.ttf(
+      await rootBundle.load("assets/fonts/NotoSansKR-Bold.ttf"),
+    );
 
     const int questionsPerPdf = 40;
     final List<List<AiQuestion>> questionChunks = [];
@@ -640,7 +753,8 @@ class TestSheetService {
     for (int i = 0; i < totalParts; i++) {
       final chunk = questionChunks[i];
       final partNumber = i + 1;
-      final docTitle = totalParts > 1 ? '$title ($partNumber/$totalParts)' : title;
+      final docTitle =
+          totalParts > 1 ? '$title ($partNumber/$totalParts)' : title;
       final baseFileName = docTitle.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
 
       if (exportType == PdfExportType.withAnswers) {
@@ -680,7 +794,10 @@ class TestSheetService {
     } else {
       final directory = await getApplicationDocumentsDirectory();
       for (int i = 0; i < fileNames.length; i++) {
-        await _saveFileToPath('${directory.path}/${fileNames[i]}', fileBytes[i]);
+        await _saveFileToPath(
+          '${directory.path}/${fileNames[i]}',
+          fileBytes[i],
+        );
       }
       OpenFilex.open('${directory.path}/${fileNames.first}');
     }
@@ -699,7 +816,8 @@ class TestSheetService {
     if (share) {
       await _shareFile(fileName, bytes, title);
     } else {
-      final directory = savePath ?? (await getApplicationDocumentsDirectory()).path;
+      final directory =
+          savePath ?? (await getApplicationDocumentsDirectory()).path;
       final fullPath = '$directory/$fileName';
       await _saveFileToPath(fullPath, bytes);
       OpenFilex.open(fullPath);
@@ -722,7 +840,10 @@ class TestSheetService {
             (context) => pw.Header(
               child: pw.Text(
                 docTitle,
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 20),
+                style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 20,
+                ),
               ),
             ),
         build: (context) {
@@ -733,7 +854,13 @@ class TestSheetService {
               pw.Table(
                 children: [
                   pw.TableRow(
-                    children: [_buildAiQuizItem(q, questionCounter, isAnswerSheet: isAnswerSheet)],
+                    children: [
+                      _buildAiQuizItem(
+                        q,
+                        questionCounter,
+                        isAnswerSheet: isAnswerSheet,
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -806,12 +933,17 @@ class TestSheetService {
                         );
                       }).toList(),
                 ),
-                if (isAnswerSheet && subQ.explanation != null && subQ.explanation!.isNotEmpty)
+                if (isAnswerSheet &&
+                    subQ.explanation != null &&
+                    subQ.explanation!.isNotEmpty)
                   pw.Padding(
                     padding: const pw.EdgeInsets.only(top: 4, left: 12),
                     child: pw.Text(
                       '└ 해설: ${subQ.explanation}',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey, fontSize: 9),
+                      style: const pw.TextStyle(
+                        color: PdfColors.blueGrey,
+                        fontSize: 9,
+                      ),
                     ),
                   ),
                 if (!isAnswerSheet)
@@ -831,7 +963,10 @@ class TestSheetService {
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           if (q.script != null)
-            pw.Text('듣기 지문: ${q.script!}', style: const pw.TextStyle(color: PdfColors.grey600)),
+            pw.Text(
+              '듣기 지문: ${q.script!}',
+              style: const pw.TextStyle(color: PdfColors.grey600),
+            ),
           if (q.question != null) ...[
             pw.SizedBox(height: 8),
             pw.Text(
@@ -865,12 +1000,17 @@ class TestSheetService {
                   }).toList(),
             ),
           ],
-          if (isAnswerSheet && q.explanation != null && q.explanation!.isNotEmpty)
+          if (isAnswerSheet &&
+              q.explanation != null &&
+              q.explanation!.isNotEmpty)
             pw.Padding(
               padding: const pw.EdgeInsets.only(top: 4, left: 12),
               child: pw.Text(
                 '└ 해설: ${q.explanation}',
-                style: const pw.TextStyle(color: PdfColors.blueGrey, fontSize: 9),
+                style: const pw.TextStyle(
+                  color: PdfColors.blueGrey,
+                  fontSize: 9,
+                ),
               ),
             ),
           if (!isAnswerSheet && q.question != null)
@@ -896,13 +1036,20 @@ class TestSheetService {
           final isMultipleChoice = options.isNotEmpty;
           final question = <String, dynamic>{
             'number': entry.key + 1,
-            'type': _selfTestTypeLabel(type, isMultipleChoice: isMultipleChoice),
+            'type': _selfTestTypeLabel(
+              type,
+              isMultipleChoice: isMultipleChoice,
+            ),
             'question': item['question'] as String? ?? '',
             'answer': item['answer'] as String? ?? '',
             'additionalMeanings': _additionalMeanings(item),
-            'selfGraded': type == SelfTestType.wordToMeaning && !isMultipleChoice,
+            'selfGraded':
+                type == SelfTestType.wordToMeaning && !isMultipleChoice,
             'hint': item['hint'] as String?,
-            'translation': settings.includeTranslation ? item['translation'] as String? : null,
+            'translation':
+                settings.includeTranslation
+                    ? item['translation'] as String?
+                    : null,
           };
           if (options.isNotEmpty) question['options'] = options;
           return question;
@@ -919,12 +1066,18 @@ class TestSheetService {
   String _generateAiQuizHtml(String title, List<AiQuestion> questions) {
     final items = <Map<String, dynamic>>[];
 
+    var readingSectionIndex = 0;
     for (final q in questions) {
       if (q.type == 'reading_section' && q.questions != null) {
-        for (final subQuestion in q.questions!) {
+        final sectionId = 'reading-${readingSectionIndex++}';
+        for (var index = 0; index < q.questions!.length; index++) {
+          final subQuestion = q.questions![index];
           items.add({
             'type': 'choice',
-            'passage': q.passage,
+            'readingSection': sectionId,
+            'readingFirst': index == 0,
+            'readingLast': index == q.questions!.length - 1,
+            'passage': index == 0 ? q.passage : null,
             'script': null,
             'question': subQuestion.question,
             'options': subQuestion.options,
@@ -952,6 +1105,10 @@ class TestSheetService {
       mode: 'ai',
     );
   }
+
+  @visibleForTesting
+  String generateAiQuizHtmlForTest(String title, List<AiQuestion> questions) =>
+      _generateAiQuizHtml(title, questions);
 
   String _interactiveHtmlShell({
     required String title,
@@ -1067,6 +1224,27 @@ class TestSheetService {
     }
     .question.correct { border-color: rgba(79, 143, 101, 0.7); }
     .question.wrong { border-color: rgba(201, 79, 79, 0.65); }
+    .question.reading-first {
+      margin-bottom: 0;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      border-bottom-color: transparent;
+    }
+    .question.reading-middle {
+      margin-top: 0;
+      margin-bottom: 0;
+      border-radius: 0;
+      border-top-color: var(--line);
+      border-bottom-color: transparent;
+      box-shadow: none;
+    }
+    .question.reading-last {
+      margin-top: 0;
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+      box-shadow: 0 20px 45px rgba(31, 107, 95, 0.08);
+    }
+    .question.reading-only { border-radius: 22px; margin: 14px 0; }
     .meta {
       display: flex;
       justify-content: space-between;
@@ -1254,7 +1432,18 @@ class TestSheetService {
             }).join('') + '</div>'
           : '<input data-input="' + index + '" type="text" placeholder="답을 입력하세요" oninput="markDirty(' + index + ')">';
 
-        return '<article class="question" id="q' + index + '">' +
+        const readingClass = q.readingFirst && q.readingLast
+          ? ' reading-only'
+          : q.readingFirst
+          ? ' reading-first'
+          : q.readingSection
+          ? (q.readingLast ? ' reading-last' : ' reading-middle')
+          : '';
+        const readingHeader = q.readingFirst
+          ? '<div class="meta"><span>읽기 지문</span><span>연속 문제</span></div>'
+          : '';
+        return '<article class="question' + readingClass + '" id="q' + index + '">' +
+          readingHeader +
           '<div class="meta"><span>문제 ' + number + '</span><span>' + escapeHtml(type) + '</span></div>' +
           passage + script +
           '<div class="prompt">' + escapeHtml(q.question || '') + '</div>' +
@@ -1431,7 +1620,11 @@ class TestSheetService {
     await SharePlus.instance.share(ShareParams(files: xFiles, text: subject));
   }
 
-  Future<void> _shareFile(String fileName, List<int> bytes, String subject) async {
+  Future<void> _shareFile(
+    String fileName,
+    List<int> bytes,
+    String subject,
+  ) async {
     await _shareFiles([fileName], [Uint8List.fromList(bytes)], subject);
   }
 }

@@ -19,6 +19,7 @@ import 'providers/wordbook_manager.dart';
 import 'screens/app_shell_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/ai_service.dart';
+import 'services/ai_quiz_library_service.dart';
 import 'services/analytics_service.dart';
 import 'services/api_key_service.dart';
 import 'services/app_config_service.dart';
@@ -62,6 +63,10 @@ Future<void> main() async {
         ),
         Provider<DatabaseService>(create: (_) => DatabaseService()),
         Provider<TestSheetService>(create: (_) => TestSheetService()),
+        ChangeNotifierProvider<AiQuizLibraryService>(
+          lazy: false,
+          create: (_) => AiQuizLibraryService()..load(),
+        ),
         Provider<ApiKeyService>(create: (_) => ApiKeyService()),
         Provider<TtsService>(create: (_) => TtsService()),
         ChangeNotifierProvider<StudySoundService>(
@@ -244,6 +249,9 @@ class AppInitializer extends StatefulWidget {
 }
 
 class _AppInitializerState extends State<AppInitializer> {
+  static const Duration _minimumBrandStartupDuration = Duration(
+    milliseconds: 2600,
+  );
   final OnboardingStateService _onboardingState =
       const OnboardingStateService();
   late Future<bool> _onboardingDecisionFuture;
@@ -259,7 +267,10 @@ class _AppInitializerState extends State<AppInitializer> {
   void _startInitialization() {
     unawaited(context.read<AppConfigService>().initialize());
     unawaited(context.read<EntitlementProvider>().initialize());
-    _onboardingDecisionFuture = _onboardingState.shouldShow();
+    _onboardingDecisionFuture = Future.wait<bool>([
+      _onboardingState.shouldShow(),
+      Future<bool>.delayed(_minimumBrandStartupDuration, () => false),
+    ]).then((results) => results.first);
     _metadataInitializationFuture = _loadWordbookMetadata();
     _activeWordbookLoadStarted = false;
     unawaited(
@@ -406,48 +417,185 @@ class _ReadyAppShell extends StatelessWidget {
   }
 }
 
-class _BrandStartupScreen extends StatelessWidget {
+class _BrandStartupScreen extends StatefulWidget {
   const _BrandStartupScreen();
 
   @override
+  State<_BrandStartupScreen> createState() => _BrandStartupScreenState();
+}
+
+class _BrandStartupScreenState extends State<_BrandStartupScreen>
+    with SingleTickerProviderStateMixin {
+  static const AssetImage _startupIcon = AssetImage(
+    'assets/icons/startup_icon.png',
+  );
+
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2300),
+  )..forward();
+  late final Animation<double> _meEntrance = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0.50, 0.76, curve: Curves.easeOutBack),
+  );
+  late final Animation<double> _meTilt = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween<double>(
+        begin: 0,
+        end: 0.105,
+      ).chain(CurveTween(curve: Curves.easeOutCubic)),
+      weight: 36,
+    ),
+    TweenSequenceItem(
+      tween: Tween<double>(
+        begin: 0.105,
+        end: -0.035,
+      ).chain(CurveTween(curve: Curves.easeInOutCubic)),
+      weight: 30,
+    ),
+    TweenSequenceItem(
+      tween: Tween<double>(
+        begin: -0.035,
+        end: 0,
+      ).chain(CurveTween(curve: Curves.easeOutCubic)),
+      weight: 34,
+    ),
+  ]).animate(
+    CurvedAnimation(parent: _controller, curve: const Interval(0.62, 0.96)),
+  );
+
+  double _letterProgress(int index) {
+    final start = 0.06 + (index * 0.052);
+    final end = start + 0.19;
+    final progress = ((_controller.value - start) / (end - start)).clamp(
+      0.0,
+      1.0,
+    );
+    return Curves.easeOutCubic.transform(progress);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final reduceMotion =
+        MediaQuery.disableAnimationsOf(context) ||
+        MediaQuery.accessibleNavigationOf(context);
+    const navy = Color(0xFF071944);
+    const green = Color(0xFF087466);
+    const wordmarkStyle = TextStyle(
+      fontSize: 30,
+      height: 1.1,
+      fontWeight: FontWeight.w900,
+      letterSpacing: -1,
+    );
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Icon(
-                    Icons.layers_rounded,
-                    size: 42,
-                    color: colorScheme.primary,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'Memorize Me',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 24),
-              const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2.5),
-              ),
-            ],
+          child: Semantics(
+            label: 'Memorize Me 시작 중',
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) {
+                final meEntrance = reduceMotion ? 1.0 : _meEntrance.value;
+                final meTilt = reduceMotion ? 0.0 : _meTilt.value;
+                return Stack(
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 132,
+                      height: 132,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(31),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x24042A68),
+                            blurRadius: 28,
+                            offset: Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Image(
+                        image: _startupIcon,
+                        fit: BoxFit.cover,
+                        filterQuality: FilterQuality.high,
+                      ),
+                    ),
+                    Transform.translate(
+                      offset: const Offset(0, 108),
+                      child: ExcludeSemantics(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            for (
+                              var index = 0;
+                              index < 'Memorize'.length;
+                              index++
+                            )
+                              Builder(
+                                builder: (context) {
+                                  final progress =
+                                      reduceMotion
+                                          ? 1.0
+                                          : _letterProgress(index);
+                                  return Opacity(
+                                    opacity: progress,
+                                    child: FractionalTranslation(
+                                      translation: Offset(
+                                        0,
+                                        (1 - progress) * 0.42,
+                                      ),
+                                      child: Text(
+                                        'Memorize'[index],
+                                        style: wordmarkStyle.copyWith(
+                                          color: navy,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            const SizedBox(width: 8),
+                            Opacity(
+                              opacity: meEntrance.clamp(0.0, 1.0),
+                              child: Transform.translate(
+                                offset: Offset(
+                                  (1 - meEntrance) * 52,
+                                  (1 - meEntrance) * -8,
+                                ),
+                                child: Transform.scale(
+                                  scale: 0.88 + (meEntrance * 0.12),
+                                  alignment: Alignment.bottomCenter,
+                                  child: Transform.rotate(
+                                    angle: meTilt,
+                                    alignment: Alignment.bottomCenter,
+                                    child: Text(
+                                      'Me',
+                                      style: wordmarkStyle.copyWith(
+                                        color: green,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),

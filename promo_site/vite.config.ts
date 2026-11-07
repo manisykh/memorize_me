@@ -44,6 +44,9 @@ export default defineConfig(async () => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    // This is an RSC application. Do not let Vite's SPA HTML middleware
+    // intercept `/` with the downloadable legacy index.html file.
+    appType: "custom",
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,

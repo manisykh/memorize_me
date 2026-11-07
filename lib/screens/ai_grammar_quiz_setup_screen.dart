@@ -12,7 +12,9 @@ import '../services/ai_difficulty_profile.dart';
 import '../services/ai_service.dart';
 import '../services/analytics_service.dart';
 import '../services/api_key_service.dart';
+import '../themes/memorize_identity.dart';
 import '../utils/ai_error_utils.dart';
+import '../widgets/ai_setup_widgets.dart';
 import '../widgets/ai_settings_card.dart';
 import '../widgets/glassmorphic_card.dart';
 import '../widgets/wordbook_selection_button.dart';
@@ -22,7 +24,8 @@ class AiGrammarQuizSetupScreen extends StatefulWidget {
   const AiGrammarQuizSetupScreen({super.key});
 
   @override
-  State<AiGrammarQuizSetupScreen> createState() => _AiGrammarQuizSetupScreenState();
+  State<AiGrammarQuizSetupScreen> createState() =>
+      _AiGrammarQuizSetupScreenState();
 }
 
 class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
@@ -31,6 +34,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   bool _isLoadingWords = false;
   int? _selectedCategoryIndex;
   final Set<GrammarChapter> _selectedChapters = {};
+  String? _expandedTopic;
   bool _showDetailedChapters = false;
   double _questionCount = 10.0;
   bool _isLoading = false;
@@ -38,6 +42,8 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   double _difficulty = 3.0;
   bool _includeExplanation = false;
   String _questionLanguage = 'English';
+  bool _showDataNotice = false;
+  int _grammarStep = 0;
 
   @override
   void initState() {
@@ -46,6 +52,679 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       final activeWordbook = context.read<WordbookManager>().activeWordbook;
       if (activeWordbook != null) _onWordbookSelected(activeWordbook);
     });
+  }
+
+  Widget _buildGrammarJourney(ThemeData theme) {
+    const labels = ['과정', '주제', '세부 주제', '문제 설정'];
+    return Row(
+      children: [
+        for (var index = 0; index < labels.length; index++) ...[
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap:
+                  index <= _furthestAvailableGrammarStep()
+                      ? () => setState(() => _grammarStep = index)
+                      : null,
+              child: Column(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 140),
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color:
+                          index <= _grammarStep
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.surfaceContainerHighest,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${index + 1}',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color:
+                            index <= _grammarStep
+                                ? theme.colorScheme.onPrimary
+                                : theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    labels[index],
+                    maxLines: 1,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color:
+                          index <= _grammarStep
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (index != labels.length - 1)
+            Expanded(
+              child: Container(
+                height: 2,
+                margin: const EdgeInsets.only(bottom: 27),
+                color:
+                    index < _grammarStep
+                        ? theme.colorScheme.primary.withValues(alpha: 0.48)
+                        : theme.colorScheme.outline.withValues(alpha: 0.18),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  int _furthestAvailableGrammarStep() {
+    if (_selectedCategoryIndex == null) return 0;
+    if (_expandedTopic == null) return 1;
+    if (_selectedChapters.isEmpty) return 2;
+    return 3;
+  }
+
+  // ignore: unused_element
+  Widget _buildSelectedCurriculum(ThemeData theme, GrammarCategory category) {
+    return Material(
+      color: theme.colorScheme.primary.withValues(alpha: 0.07),
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap:
+            () => setState(() {
+              _selectedCategoryIndex = null;
+              _selectedChapters.clear();
+              _expandedTopic = null;
+            }),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(
+                  CupertinoIcons.book_fill,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  category.title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '과정 변경',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                CupertinoIcons.chevron_right,
+                size: 17,
+                color: theme.colorScheme.primary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ignore: unused_element
+  Widget _buildTopicAccordionSection(
+    ThemeData theme,
+    Map<String, List<GrammarChapter>> groupedTopics,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '주제와 세부 주제를 골라주세요',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '주제를 누르면 세부 항목이 바로 펼쳐집니다.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withValues(alpha: 0.76),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: theme.colorScheme.outline.withValues(alpha: 0.16),
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              for (
+                var index = 0;
+                index < groupedTopics.entries.length;
+                index++
+              ) ...[
+                _buildTopicAccordionItem(
+                  theme,
+                  groupedTopics.entries.elementAt(index),
+                ),
+                if (index != groupedTopics.entries.length - 1)
+                  Divider(
+                    height: 1,
+                    color: theme.colorScheme.outline.withValues(alpha: 0.13),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTopicStep(
+    ThemeData theme,
+    Map<String, List<GrammarChapter>> groupedTopics,
+  ) {
+    final identity = MemorizeIdentity.of(theme);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '문법 주제를 선택하세요',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            color: identity.ink,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          '주제를 선택하면 다음 단계에서 세부 범위를 고를 수 있어요.',
+          style: theme.textTheme.bodyMedium?.copyWith(color: identity.mutedInk),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: identity.surface,
+            borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+            border: Border.all(color: identity.border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children:
+                groupedTopics.entries.map((entry) {
+                  final selected = _expandedTopic == entry.key;
+                  return ListTile(
+                    selected: selected,
+                    selectedTileColor: identity.softContext,
+                    leading: Icon(
+                      selected
+                          ? CupertinoIcons.check_mark_circled_solid
+                          : CupertinoIcons.circle,
+                      color:
+                          selected ? identity.primaryAction : identity.mutedInk,
+                    ),
+                    title: Text(
+                      entry.key,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    subtitle: Text('${entry.value.length}개 세부 주제'),
+                    trailing: const Icon(
+                      CupertinoIcons.chevron_right,
+                      size: 17,
+                    ),
+                    onTap:
+                        () => setState(() {
+                          _expandedTopic = entry.key;
+                          _selectedChapters.removeWhere(
+                            (chapter) => grammarTopicFor(chapter) != entry.key,
+                          );
+                          _grammarStep = 2;
+                        }),
+                  );
+                }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubtopicStep(ThemeData theme, List<GrammarChapter> chapters) {
+    final identity = MemorizeIdentity.of(theme);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _expandedTopic ?? '세부 주제',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            color: identity.ink,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          '출제할 세부 주제를 하나 이상 선택하세요.',
+          style: theme.textTheme.bodyMedium?.copyWith(color: identity.mutedInk),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: identity.surface,
+            borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+            border: Border.all(color: identity.border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children:
+                chapters.map((chapter) {
+                  final selected = _selectedChapters.contains(chapter);
+                  return CheckboxListTile(
+                    value: selected,
+                    activeColor: identity.primaryAction,
+                    title: Text(
+                      chapter.title,
+                      style: TextStyle(
+                        fontWeight:
+                            selected ? FontWeight.w800 : FontWeight.w600,
+                      ),
+                    ),
+                    onChanged:
+                        (_) => setState(() {
+                          selected
+                              ? _selectedChapters.remove(chapter)
+                              : _selectedChapters.add(chapter);
+                        }),
+                  );
+                }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSettingsStep(ThemeData theme) {
+    final profile = AiDifficultyProfiles.forLevel(_difficulty.round());
+    final identity = MemorizeIdentity.of(theme);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: identity.surface,
+        borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+        border: Border.all(color: identity.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '문제 설정',
+            style: theme.textTheme.titleLarge?.copyWith(
+              color: identity.ink,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            '난이도 · ${profile.label}',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          Slider(
+            value: _difficulty,
+            min:
+                grammarCurriculum[_selectedCategoryIndex!].minDifficulty
+                    .toDouble(),
+            max:
+                grammarCurriculum[_selectedCategoryIndex!].maxDifficulty
+                    .toDouble(),
+            divisions:
+                grammarCurriculum[_selectedCategoryIndex!].maxDifficulty -
+                grammarCurriculum[_selectedCategoryIndex!].minDifficulty,
+            label: profile.label,
+            onChanged: (value) => setState(() => _difficulty = value),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 140),
+            child: Text(
+              profile.uiSummary,
+              key: ValueKey(profile.level),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: identity.mutedInk,
+                height: 1.4,
+              ),
+            ),
+          ),
+          const Divider(height: 28),
+          Text(
+            '문제 수 · ${_questionCount.round()}문제',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          Slider(
+            value: _questionCount,
+            min: 5,
+            max: 20,
+            divisions: 3,
+            label: '${_questionCount.round()}문제',
+            onChanged: (value) => setState(() => _questionCount = value),
+          ),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('해설 포함'),
+            subtitle: const Text('정답과 함께 이유를 보여줍니다.'),
+            value: _includeExplanation,
+            onChanged: (value) => setState(() => _includeExplanation = value),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTopicAccordionItem(
+    ThemeData theme,
+    MapEntry<String, List<GrammarChapter>> entry,
+  ) {
+    final expanded = _expandedTopic == entry.key;
+    final selectedCount = entry.value.where(_selectedChapters.contains).length;
+    return Column(
+      children: [
+        Material(
+          color:
+              expanded
+                  ? theme.colorScheme.primary.withValues(alpha: 0.08)
+                  : Colors.transparent,
+          child: InkWell(
+            onTap:
+                () => setState(
+                  () => _expandedTopic = expanded ? null : entry.key,
+                ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(15, 14, 14, 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: (expanded
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.secondary)
+                          .withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      CupertinoIcons.square_stack_3d_up_fill,
+                      size: 18,
+                      color:
+                          expanded
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      entry.key,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    selectedCount == 0
+                        ? '${entry.value.length}개'
+                        : '$selectedCount/${entry.value.length}',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color:
+                          selectedCount > 0
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    expanded
+                        ? CupertinoIcons.chevron_up
+                        : CupertinoIcons.chevron_down,
+                    size: 17,
+                    color:
+                        expanded
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 180),
+          crossFadeState:
+              expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          firstChild: const SizedBox(width: double.infinity),
+          secondChild: Container(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.23,
+            ),
+            padding: const EdgeInsets.fromLTRB(15, 4, 15, 8),
+            child: Column(
+              children:
+                  entry.value.map((chapter) {
+                    final selected = _selectedChapters.contains(chapter);
+                    return CheckboxListTile(
+                      value: selected,
+                      dense: true,
+                      contentPadding: const EdgeInsets.only(left: 30),
+                      title: Text(
+                        chapter.title,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight:
+                              selected ? FontWeight.w800 : FontWeight.w600,
+                        ),
+                      ),
+                      onChanged:
+                          (_) => setState(() {
+                            selected
+                                ? _selectedChapters.remove(chapter)
+                                : _selectedChapters.add(chapter);
+                          }),
+                    );
+                  }).toList(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ignore: unused_element
+  Widget _buildCompactGrammarSettings(ThemeData theme) {
+    final category = grammarCurriculum[_selectedCategoryIndex!];
+    final topics = _selectedChapters.map(grammarTopicFor).toSet();
+    return Material(
+      color: theme.colorScheme.primary.withValues(alpha: 0.07),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => _showGrammarSettingsSheet(theme),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          child: Row(
+            children: [
+              Icon(
+                CupertinoIcons.doc_text_fill,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${category.title} · ${topics.length}개 주제 · ${_selectedChapters.length}개 세부 주제',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${_questionCount.round()}문제 · ${_difficultyLabel()} · ${_includeExplanation ? '해설 포함' : '해설 없음'}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '문제 설정 변경',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(width: 3),
+              Icon(
+                CupertinoIcons.chevron_right,
+                size: 15,
+                color: theme.colorScheme.primary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showGrammarSettingsSheet(ThemeData theme) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder:
+          (sheetContext) => StatefulBuilder(
+            builder: (sheetContext, refresh) {
+              final category = grammarCurriculum[_selectedCategoryIndex!];
+              return SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    18,
+                    0,
+                    18,
+                    16 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '문제 설정',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '출제 언어',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(value: 'English', label: Text('영어')),
+                            ButtonSegment(value: 'Korean', label: Text('한국어')),
+                          ],
+                          selected: {_questionLanguage},
+                          showSelectedIcon: false,
+                          onSelectionChanged:
+                              (selection) => refresh(
+                                () => _questionLanguage = selection.first,
+                              ),
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          '난이도 · ${_difficultyLabel()}',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Slider(
+                          value: _difficulty,
+                          min: category.minDifficulty.toDouble(),
+                          max: category.maxDifficulty.toDouble(),
+                          divisions:
+                              category.maxDifficulty - category.minDifficulty,
+                          label: _difficultyLabel(),
+                          onChanged:
+                              (value) => refresh(() => _difficulty = value),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '문제 수 · ${_questionCount.round()}문제',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Slider(
+                          value: _questionCount,
+                          min: 5,
+                          max: 20,
+                          divisions: 3,
+                          label: '${_questionCount.round()}문제',
+                          onChanged:
+                              (value) => refresh(() => _questionCount = value),
+                        ),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('해설 포함'),
+                          subtitle: const Text('정답 확인 화면에서 이유를 함께 보여줍니다.'),
+                          value: _includeExplanation,
+                          onChanged:
+                              (value) =>
+                                  refresh(() => _includeExplanation = value),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: () => Navigator.pop(sheetContext),
+                            child: const Text('설정 완료'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _onWordbookSelected(Wordbook wordbook) async {
@@ -59,13 +738,18 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       await manager.setActiveWordbook(wordbook);
       final allWords = await manager.getAllWordsFrom(wordbook);
       final plan = manager.planFor(wordbook);
-      final availableWords = manager.wordsAvailableForPlan(allWords, plan: plan);
+      final availableWords = manager.wordsAvailableForPlan(
+        allWords,
+        plan: plan,
+      );
       if (mounted) setState(() => _words = availableWords);
     } finally {
       if (mounted) setState(() => _isLoadingWords = false);
     }
   }
 
+  // Kept temporarily for compatibility while the new accordion layout settles.
+  // ignore: unused_element
   Map<String, List<GrammarChapter>> _getGroupedChapters() {
     if (_selectedCategoryIndex == null) return {};
     final chapters = grammarCurriculum[_selectedCategoryIndex!].chapters;
@@ -79,23 +763,24 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   Future<void> _selectAllChapters(List<GrammarChapter> chapters) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('전체 문법 범위 선택'),
-        content: Text(
-          '${chapters.length}개 챕터를 범위로 지정하면 ${_questionCount.round()}문제에는 '
-          '그중 일부 챕터만 출제됩니다. 계속할까요?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('취소'),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('전체 문법 범위 선택'),
+            content: Text(
+              '${chapters.length}개 챕터를 범위로 지정하면 ${_questionCount.round()}문제에는 '
+              '그중 일부 챕터만 출제됩니다. 계속할까요?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('취소'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('전체 선택'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('전체 선택'),
-          ),
-        ],
-      ),
     );
     if (!mounted || confirmed != true) return;
     setState(() {
@@ -113,9 +798,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       return;
     }
     if (_selectedCategoryIndex == null || _selectedChapters.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('학습할 레벨과 챕터를 1개 이상 선택해주세요.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('학습할 레벨과 챕터를 1개 이상 선택해주세요.')),
+      );
       return;
     }
 
@@ -150,17 +835,21 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       );
       aiSettings.recordUsedOption(fallbackResult.usedOption);
       final AiQuizResponse? quizResponse = fallbackResult.value;
-      if (quizResponse != null && quizResponse.questions.isNotEmpty && mounted) {
+      if (quizResponse != null &&
+          quizResponse.questions.isNotEmpty &&
+          mounted) {
         context.read<AnalyticsService>().logAiGenerationCompleted(
           generationType: 'grammar_quiz',
           generatedCount: quizResponse.answerableQuestionCount,
-          usedFallback: fallbackResult.usedOption.provider != aiSettings.selectedProvider,
+          usedFallback:
+              fallbackResult.usedOption.provider != aiSettings.selectedProvider,
         );
       }
 
       if (mounted) {
         if (quizResponse != null && quizResponse.questions.isNotEmpty) {
-          if (fallbackResult.usedOption.provider != aiSettings.selectedProvider) {
+          if (fallbackResult.usedOption.provider !=
+              aiSettings.selectedProvider) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
@@ -170,8 +859,10 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
             );
           }
           _showPartialGenerationNotice(quizResponse);
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => AiQuizPlayerScreen(quizResponse: quizResponse)),
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AiQuizPlayerScreen(quizResponse: quizResponse),
+            ),
           );
         } else {
           setState(() => _errorMessage = 'AI가 문제를 생성하지 못했습니다. 다시 시도해주세요.');
@@ -188,8 +879,8 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
     }
   }
 
-  void _showAiSettingsSheet() {
-    showModalBottomSheet<void>(
+  Future<void> _showAiSettingsSheet() async {
+    await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -215,7 +906,10 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
               title: const Text('AI 설정 필요'),
               content: Text(message),
               actions: [
-                TextButton(child: const Text('취소'), onPressed: () => Navigator.pop(dialogContext)),
+                TextButton(
+                  child: const Text('취소'),
+                  onPressed: () => Navigator.pop(dialogContext),
+                ),
                 FilledButton(
                   child: const Text('설정 열기'),
                   onPressed: () => Navigator.pop(dialogContext, true),
@@ -224,7 +918,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
             ),
       );
       if (openSettings == true && mounted) {
-        _showAiSettingsSheet();
+        await _showAiSettingsSheet();
       }
     } else {
       setState(() => _errorMessage = message);
@@ -248,63 +942,137 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final groupedChapters = _getGroupedChapters();
-    final groupKeys = groupedChapters.keys.toList();
+    final identity = MemorizeIdentity.of(theme);
     final selectedCategory =
-        _selectedCategoryIndex == null ? null : grammarCurriculum[_selectedCategoryIndex!];
-    final groupedTopics = selectedCategory == null
-        ? <String, List<GrammarChapter>>{}
-        : groupGrammarTopics(selectedCategory);
+        _selectedCategoryIndex == null
+            ? null
+            : grammarCurriculum[_selectedCategoryIndex!];
+    final groupedTopics =
+        selectedCategory == null
+            ? <String, List<GrammarChapter>>{}
+            : groupGrammarTopics(selectedCategory);
+    final canGenerate =
+        !_isLoading &&
+        !_isLoadingWords &&
+        _selectedWordbook != null &&
+        _selectedChapters.isNotEmpty;
+    final selectedTopicChapters =
+        _expandedTopic == null
+            ? const <GrammarChapter>[]
+            : groupedTopics[_expandedTopic] ?? const <GrammarChapter>[];
+    final canContinue = switch (_grammarStep) {
+      0 => selectedCategory != null,
+      1 => _expandedTopic != null,
+      2 => _selectedChapters.isNotEmpty,
+      _ => canGenerate,
+    };
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(title: const Text('AI 문법 퀴즈 설정')),
+      backgroundColor: identity.canvas,
+      appBar: AppBar(
+        title: const Text('문법 문제 생성'),
+        leading: CloseButton(onPressed: () => Navigator.maybePop(context)),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildIntroCard(theme),
-              const SizedBox(height: 12),
-              _buildAiBetaNotice(theme),
+              AiConnectionBar(onChange: _showAiSettingsSheet),
               const SizedBox(height: 12),
               WordbookSelectionButton(
                 selectedWordbook: _selectedWordbook,
                 onWordbookSelected: _onWordbookSelected,
                 wordCount: _words.length,
               ),
-              const SizedBox(height: 16),
-              _buildGrammarLevelSection(theme, selectedCategory),
-              if (_selectedCategoryIndex != null) ...[
-                const SizedBox(height: 18),
-                _buildChapterSection(theme, groupedTopics, groupedChapters, groupKeys),
-                const SizedBox(height: 18),
-                _buildQuizOptionsSection(theme),
-                const SizedBox(height: 24),
-                if (_errorMessage != null) _buildErrorBox(theme),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    icon:
-                        _isLoading
-                            ? _AiSparkleIcon(color: theme.colorScheme.onPrimary, size: 24)
-                            : const Icon(CupertinoIcons.sparkles),
-                    label: Text(_isLoading ? '문제 생성 중...' : 'AI 문법 퀴즈 생성하기'),
-                    onPressed: _isLoading || _isLoadingWords ? null : _generateQuiz,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                ),
+              const SizedBox(height: 20),
+              _buildGrammarJourney(theme),
+              const SizedBox(height: 20),
+              if (_grammarStep == 0)
+                _buildGrammarLevelSection(theme, selectedCategory)
+              else if (_grammarStep == 1)
+                _buildTopicStep(theme, groupedTopics)
+              else if (_grammarStep == 2)
+                _buildSubtopicStep(theme, selectedTopicChapters)
+              else
+                _buildSettingsStep(theme),
+              const SizedBox(height: 14),
+              AiDisclosureRow(
+                summary:
+                    '문법 범위와 학습 단어가 ${context.watch<AiSettingsProvider>().selectedProvider.shortLabel}로 전송됩니다.',
+                detail:
+                    '선택한 문법 과정·주제·세부 주제와 현재 단어장의 학습 가능 단어만 전송합니다. API 키는 기기의 보안 저장소에 보관되며 사용자 API 사용량이 소모될 수 있습니다.',
+                expanded: _showDataNotice,
+                onTap: () => setState(() => _showDataNotice = !_showDataNotice),
+              ),
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 14),
+                _buildErrorBox(theme),
               ],
             ],
           ),
         ),
       ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        child: Row(
+          children: [
+            if (_grammarStep > 0) ...[
+              OutlinedButton.icon(
+                onPressed:
+                    _isLoading ? null : () => setState(() => _grammarStep--),
+                icon: const Icon(CupertinoIcons.chevron_left, size: 18),
+                label: const Text('이전'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(104, 56),
+                  foregroundColor: identity.ink,
+                  side: BorderSide(color: identity.border),
+                  shape: const StadiumBorder(),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: FilledButton.icon(
+                onPressed:
+                    _isLoading
+                        ? null
+                        : canContinue
+                        ? () {
+                          if (_grammarStep < 3) {
+                            setState(() => _grammarStep++);
+                          } else {
+                            _generateQuiz();
+                          }
+                        }
+                        : null,
+                icon:
+                    _isLoading
+                        ? const _AiSparkleIcon(color: Colors.white, size: 22)
+                        : const Icon(CupertinoIcons.sparkles),
+                label: Text(
+                  _isLoading
+                      ? '문제 생성 중...'
+                      : _grammarStep < 3
+                      ? '다음 단계'
+                      : '문법 문제 만들기',
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                  disabledBackgroundColor: theme.colorScheme.primary,
+                  disabledForegroundColor: Colors.white,
+                  shape: const StadiumBorder(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
+  // ignore: unused_element
   Widget _buildAiBetaNotice(ThemeData theme) {
     final aiSettings = context.watch<AiSettingsProvider>();
     final fallbackText =
@@ -337,12 +1105,14 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'AI 생성 기능은 베타입니다',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  'AI 생성은 개인 API를 사용하는 베타 기능입니다',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '선택한 문법 범위와 생성 옵션이 외부 AI 제공자에게 전송됩니다. 생성된 문제와 해설은 틀릴 수 있으니 학습 전 확인하세요. $fallbackText',
+                  '개인 API 키 등록이 필요하며 선택한 문법 범위와 설정은 해당 제공업체로 전송됩니다. 무료 API·모델은 응답 지연, 시간 초과, 토큰·요청 한도가 있을 수 있으니 생성 결과를 학습 전에 확인해 주세요. $fallbackText',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     height: 1.35,
@@ -356,24 +1126,35 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
     );
   }
 
-  Widget _buildGrammarLevelSection(ThemeData theme, GrammarCategory? selectedCategory) {
-    return GlassmorphicCard(
-      borderRadius: 28,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+  Widget _buildGrammarLevelSection(
+    ThemeData theme,
+    GrammarCategory? selectedCategory,
+  ) {
+    final identity = MemorizeIdentity.of(theme);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: identity.surface,
+        borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
+        border: Border.all(color: identity.border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionTitle(
             theme: theme,
             icon: CupertinoIcons.square_grid_2x2_fill,
-            title: '문법 레벨',
-            subtitle: selectedCategory?.description ?? '학습 범위에 맞는 레벨을 먼저 선택하세요.',
+            title: '문법 과정',
+            subtitle:
+                selectedCategory?.description ?? '중학교·고등학교·토익 과정 중 하나를 선택하세요.',
           ),
           const SizedBox(height: 14),
           ...List.generate(grammarCurriculum.length, (index) {
             final category = grammarCurriculum[index];
             return Padding(
-              padding: EdgeInsets.only(bottom: index == grammarCurriculum.length - 1 ? 0 : 10),
+              padding: EdgeInsets.only(
+                bottom: index == grammarCurriculum.length - 1 ? 0 : 10,
+              ),
               child: _buildLevelTile(
                 theme: theme,
                 category: category,
@@ -393,18 +1174,22 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
     required int index,
     required bool selected,
   }) {
-    final accent = selected ? theme.colorScheme.primary : theme.colorScheme.outline;
+    final accent =
+        selected ? theme.colorScheme.primary : theme.colorScheme.outline;
     return InkWell(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
       onTap: () {
         setState(() {
           _selectedCategoryIndex = index;
           _selectedChapters.clear();
-          _showDetailedChapters = false;
-          _difficulty = _difficulty.clamp(
-            category.minDifficulty.toDouble(),
-            category.maxDifficulty.toDouble(),
-          ).toDouble();
+          _expandedTopic = null;
+          _difficulty =
+              _difficulty
+                  .clamp(
+                    category.minDifficulty.toDouble(),
+                    category.maxDifficulty.toDouble(),
+                  )
+                  .toDouble();
         });
       },
       child: AnimatedContainer(
@@ -417,8 +1202,10 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                     theme.colorScheme.primary.withValues(alpha: 0.11),
                     theme.colorScheme.surface,
                   )
-                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.34),
-          borderRadius: BorderRadius.circular(22),
+                  : theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.34,
+                  ),
+          borderRadius: BorderRadius.circular(MemorizeIdentity.cardRadius),
           border: Border.all(
             color:
                 selected
@@ -428,7 +1215,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: theme.shadowColor.withValues(alpha: selected ? 0.10 : 0.05),
+              color: theme.shadowColor.withValues(
+                alpha: selected ? 0.10 : 0.05,
+              ),
               blurRadius: selected ? 18 : 10,
               offset: const Offset(0, 7),
             ),
@@ -445,7 +1234,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(
-                selected ? CupertinoIcons.checkmark_seal_fill : CupertinoIcons.book,
+                selected
+                    ? CupertinoIcons.checkmark_seal_fill
+                    : CupertinoIcons.book,
                 color: accent,
                 size: 22,
               ),
@@ -471,7 +1262,10 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                       _buildSmallBadge(
                         theme: theme,
                         label: '${category.chapters.length}개',
-                        color: selected ? theme.colorScheme.primary : theme.colorScheme.secondary,
+                        color:
+                            selected
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.secondary,
                       ),
                     ],
                   ),
@@ -495,13 +1289,17 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildChapterSection(
     ThemeData theme,
     Map<String, List<GrammarChapter>> groupedTopics,
     Map<String, List<GrammarChapter>> groupedChapters,
     List<String> groupKeys,
   ) {
-    final totalChapters = groupedChapters.values.fold<int>(0, (sum, chapters) => sum + chapters.length);
+    final totalChapters = groupedChapters.values.fold<int>(
+      0,
+      (sum, chapters) => sum + chapters.length,
+    );
     return GlassmorphicCard(
       borderRadius: 28,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -519,10 +1317,16 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _selectAllChapters(
-                    groupedChapters.values.expand((chapters) => chapters).toList(),
+                  onPressed:
+                      () => _selectAllChapters(
+                        groupedChapters.values
+                            .expand((chapters) => chapters)
+                            .toList(),
+                      ),
+                  icon: const Icon(
+                    CupertinoIcons.checkmark_alt_circle,
+                    size: 18,
                   ),
-                  icon: const Icon(CupertinoIcons.checkmark_alt_circle, size: 18),
                   label: const Text('전체 선택'),
                 ),
               ),
@@ -542,7 +1346,8 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
           const SizedBox(height: 12),
           ...groupedTopics.entries.map((entry) {
             final chapters = entry.value;
-            final selectedCount = chapters.where(_selectedChapters.contains).length;
+            final selectedCount =
+                chapters.where(_selectedChapters.contains).length;
             final allSelected = selectedCount == chapters.length;
             return Column(
               children: [
@@ -551,11 +1356,17 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                   title: Text(entry.key),
                   subtitle: Text('$selectedCount / ${chapters.length}개 세부 챕터'),
                   tristate: true,
-                  value: allSelected ? true : selectedCount == 0 ? false : null,
-                  onChanged: (_) => _toggleChapterGroup(
-                    chapters,
-                    selectAll: !allSelected,
-                  ),
+                  value:
+                      allSelected
+                          ? true
+                          : selectedCount == 0
+                          ? false
+                          : null,
+                  onChanged:
+                      (_) => _toggleChapterGroup(
+                        chapters,
+                        selectAll: !allSelected,
+                      ),
                 ),
                 const Divider(height: 1),
               ],
@@ -572,9 +1383,15 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
           ],
           const SizedBox(height: 8),
           TextButton.icon(
-            onPressed: () => setState(() => _showDetailedChapters = !_showDetailedChapters),
-            icon: Icon(_showDetailedChapters
-                ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down),
+            onPressed:
+                () => setState(
+                  () => _showDetailedChapters = !_showDetailedChapters,
+                ),
+            icon: Icon(
+              _showDetailedChapters
+                  ? CupertinoIcons.chevron_up
+                  : CupertinoIcons.chevron_down,
+            ),
             label: Text(_showDetailedChapters ? '세부 선택 접기' : '세부 챕터 선택'),
           ),
           if (_showDetailedChapters) ...[
@@ -604,16 +1421,21 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
         allSelected
             ? theme.colorScheme.primary
             : hasSelection
-                ? theme.colorScheme.secondary
-                : theme.colorScheme.outline;
+            ? theme.colorScheme.secondary
+            : theme.colorScheme.outline;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       decoration: BoxDecoration(
         color:
             hasSelection
-                ? Color.alphaBlend(accent.withValues(alpha: 0.08), theme.colorScheme.surface)
-                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.32),
+                ? Color.alphaBlend(
+                  accent.withValues(alpha: 0.08),
+                  theme.colorScheme.surface,
+                )
+                : theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.32,
+                ),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: accent.withValues(alpha: hasSelection ? 0.36 : 0.18),
@@ -636,7 +1458,11 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                   color: accent.withValues(alpha: hasSelection ? 0.14 : 0.08),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(CupertinoIcons.layers_alt_fill, color: accent, size: 18),
+                child: Icon(
+                  CupertinoIcons.layers_alt_fill,
+                  color: accent,
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -647,7 +1473,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                       groupTitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -663,7 +1491,12 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
               const SizedBox(width: 6),
               _buildSmallBadge(
                 theme: theme,
-                label: allSelected ? '완료' : selectedCount == 0 ? '선택' : '$selectedCount개',
+                label:
+                    allSelected
+                        ? '완료'
+                        : selectedCount == 0
+                        ? '선택'
+                        : '$selectedCount개',
                 color: accent,
               ),
             ],
@@ -672,8 +1505,15 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: () => _toggleChapterGroup(chapters, selectAll: !allSelected),
-                icon: Icon(allSelected ? CupertinoIcons.minus_circle : CupertinoIcons.plus_circle, size: 17),
+                onPressed:
+                    () =>
+                        _toggleChapterGroup(chapters, selectAll: !allSelected),
+                icon: Icon(
+                  allSelected
+                      ? CupertinoIcons.minus_circle
+                      : CupertinoIcons.plus_circle,
+                  size: 17,
+                ),
                 label: Text(allSelected ? '이 그룹 해제' : '이 그룹 선택'),
               ),
             ),
@@ -685,7 +1525,10 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
     );
   }
 
-  void _toggleChapterGroup(List<GrammarChapter> chapters, {required bool selectAll}) {
+  void _toggleChapterGroup(
+    List<GrammarChapter> chapters, {
+    required bool selectAll,
+  }) {
     setState(() {
       if (selectAll) {
         _selectedChapters.addAll(chapters);
@@ -697,7 +1540,8 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
 
   Widget _buildChapterTile(ThemeData theme, GrammarChapter chapter) {
     final selected = _selectedChapters.contains(chapter);
-    final color = selected ? theme.colorScheme.primary : theme.colorScheme.outline;
+    final color =
+        selected ? theme.colorScheme.primary : theme.colorScheme.outline;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -720,12 +1564,16 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                     ? theme.colorScheme.primary.withValues(alpha: 0.10)
                     : theme.colorScheme.surface.withValues(alpha: 0.58),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withValues(alpha: selected ? 0.34 : 0.13)),
+            border: Border.all(
+              color: color.withValues(alpha: selected ? 0.34 : 0.13),
+            ),
           ),
           child: Row(
             children: [
               Icon(
-                selected ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
+                selected
+                    ? CupertinoIcons.checkmark_circle_fill
+                    : CupertinoIcons.circle,
                 color: color,
                 size: 21,
               ),
@@ -748,6 +1596,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildQuizOptionsSection(ThemeData theme) {
     final category = grammarCurriculum[_selectedCategoryIndex!];
     return GlassmorphicCard(
@@ -760,7 +1609,8 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
             theme: theme,
             icon: CupertinoIcons.slider_horizontal_3,
             title: '퀴즈 옵션',
-            subtitle: '${_questionCount.round()}문제 · ${_difficultyLabel()} · ${_questionLanguage == 'English' ? '영어' : '한국어'}',
+            subtitle:
+                '${_questionCount.round()}문제 · ${_difficultyLabel()} · ${_questionLanguage == 'English' ? '영어' : '한국어'}',
           ),
           const SizedBox(height: 14),
           _buildLanguageSelector(),
@@ -820,7 +1670,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.16)),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.16),
+        ),
       ),
       child: Text(
         '학습 중인 단어장 단어와 선택한 문법 범위·옵션이 외부 AI로 전송됩니다. 모든 문제는 해당 단어를 포함하도록 생성·검증하며, 한 번에 최대 20문제까지 생성합니다.',
@@ -843,9 +1695,13 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.34),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.34,
+        ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.14)),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.14),
+        ),
       ),
       child: Column(
         children: [
@@ -856,10 +1712,16 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
               Expanded(
                 child: Text(
                   title,
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
-              _buildSmallBadge(theme: theme, label: valueLabel, color: theme.colorScheme.primary),
+              _buildSmallBadge(
+                theme: theme,
+                label: valueLabel,
+                color: theme.colorScheme.primary,
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -880,7 +1742,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
           color:
               _includeExplanation
                   ? theme.colorScheme.primary.withValues(alpha: 0.11)
-                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.34),
+                  : theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.34,
+                  ),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color:
@@ -892,8 +1756,13 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
         child: Row(
           children: [
             Icon(
-              _includeExplanation ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.lightbulb,
-              color: _includeExplanation ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+              _includeExplanation
+                  ? CupertinoIcons.checkmark_circle_fill
+                  : CupertinoIcons.lightbulb,
+              color:
+                  _includeExplanation
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
               size: 22,
             ),
             const SizedBox(width: 10),
@@ -903,7 +1772,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                 children: [
                   Text(
                     '해설 포함',
-                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
@@ -954,6 +1825,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildIntroCard(ThemeData theme) {
     return GlassmorphicCard(
       borderRadius: 28,
@@ -982,7 +1854,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                   '문법 범위로 AI 퀴즈 생성',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 5),
                 Text(
@@ -1027,7 +1901,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
             children: [
               Text(
                 title,
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
               ),
               Text(
                 subtitle,
@@ -1053,7 +1929,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.error.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.24)),
+        border: Border.all(
+          color: theme.colorScheme.error.withValues(alpha: 0.24),
+        ),
       ),
       child: Text(
         _errorMessage ?? '',
@@ -1073,12 +1951,18 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
       children: [
         Row(
           children: [
-            Icon(CupertinoIcons.globe, color: theme.colorScheme.primary, size: 19),
+            Icon(
+              CupertinoIcons.globe,
+              color: theme.colorScheme.primary,
+              size: 19,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 '문제 출제 언어',
-                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
             _buildSmallBadge(
@@ -1105,7 +1989,7 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                 theme: theme,
                 value: 'Korean',
                 label: '한국어',
-                detail: '설명을 한국어로 더 쉽게',
+                detail: '질문만 한국어로 표시',
               ),
             ),
           ],
@@ -1121,7 +2005,8 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
     required String detail,
   }) {
     final selected = _questionLanguage == value;
-    final color = selected ? theme.colorScheme.primary : theme.colorScheme.outline;
+    final color =
+        selected ? theme.colorScheme.primary : theme.colorScheme.outline;
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: () => setState(() => _questionLanguage = value),
@@ -1132,14 +2017,20 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
           color:
               selected
                   ? theme.colorScheme.primary.withValues(alpha: 0.10)
-                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.34),
+                  : theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.34,
+                  ),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withValues(alpha: selected ? 0.34 : 0.16)),
+          border: Border.all(
+            color: color.withValues(alpha: selected ? 0.34 : 0.16),
+          ),
         ),
         child: Row(
           children: [
             Icon(
-              selected ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
+              selected
+                  ? CupertinoIcons.checkmark_circle_fill
+                  : CupertinoIcons.circle,
               color: color,
               size: 20,
             ),
@@ -1152,7 +2043,9 @@ class _AiGrammarQuizSetupScreenState extends State<AiGrammarQuizSetupScreen> {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -1228,16 +2121,14 @@ class _AiSparkleIcon extends StatefulWidget {
   final Color color;
   final double size;
 
-  const _AiSparkleIcon({
-    required this.color,
-    required this.size,
-  });
+  const _AiSparkleIcon({required this.color, required this.size});
 
   @override
   State<_AiSparkleIcon> createState() => _AiSparkleIconState();
 }
 
-class _AiSparkleIconState extends State<_AiSparkleIcon> with SingleTickerProviderStateMixin {
+class _AiSparkleIconState extends State<_AiSparkleIcon>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -1260,9 +2151,10 @@ class _AiSparkleIconState extends State<_AiSparkleIcon> with SingleTickerProvide
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        final pulse = _controller.value < 0.5
-            ? _controller.value * 2
-            : (1 - _controller.value) * 2;
+        final pulse =
+            _controller.value < 0.5
+                ? _controller.value * 2
+                : (1 - _controller.value) * 2;
         return SizedBox(
           width: widget.size,
           height: widget.size,

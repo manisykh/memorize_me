@@ -14,9 +14,7 @@ void main() {
     await setPhoneSize(tester);
     var completed = false;
     await tester.pumpWidget(
-      MaterialApp(
-        home: OnboardingScreen(onFinished: () => completed = true),
-      ),
+      MaterialApp(home: OnboardingScreen(onFinished: () => completed = true)),
     );
 
     await tester.tap(find.text('건너뛰기'));
@@ -25,18 +23,27 @@ void main() {
     expect(completed, isTrue);
   });
 
-  testWidgets('다음 버튼으로 마지막 페이지까지 이동하면 시작하기가 보인다', (tester) async {
+  testWidgets('다음 버튼으로 마지막 페이지까지 이동하면 시작 버튼이 보인다', (tester) async {
     await setPhoneSize(tester);
+    var completed = false;
     await tester.pumpWidget(
-      MaterialApp(home: OnboardingScreen(onFinished: () {})),
+      MaterialApp(home: OnboardingScreen(onFinished: () => completed = true)),
     );
 
-    for (var index = 0; index < 5; index++) {
+    for (var index = 0; index < 4; index++) {
       await tester.tap(find.text('다음'));
       await tester.pumpAndSettle();
     }
 
-    expect(find.text('시작하기'), findsOneWidget);
-    expect(find.text('이제 학습을 시작하세요'), findsOneWidget);
+    expect(find.text('단어장 추가하고 시작'), findsOneWidget);
+    expect(find.text('기본 단어장으로 둘러보기'), findsOneWidget);
+    expect(find.text('이제 학습을'), findsOneWidget);
+    expect(find.text('시작하세요'), findsOneWidget);
+    expect(find.text('건너뛰기'), findsNothing);
+
+    await tester.tap(find.text('단어장 추가하고 시작'));
+    await tester.pump();
+
+    expect(completed, isTrue);
   });
 }

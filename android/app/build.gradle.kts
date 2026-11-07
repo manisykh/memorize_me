@@ -72,6 +72,15 @@ android {
 
     buildTypes {
         release {
+            // Keep the Play bundle smaller and make reverse engineering of the
+            // Android wrapper harder. Flutter/Dart code is still compiled AOT;
+            // these settings harden and trim the Android/Java side.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             if (shouldConfigureReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             } else if (isReleaseBuildRequested) {

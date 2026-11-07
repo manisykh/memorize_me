@@ -60,14 +60,15 @@ void main() {
         value: manager,
         child: MaterialApp(
           home: Builder(
-            builder: (context) => Scaffold(
-              body: FilledButton(
-                onPressed: () async {
-                  onSelected(await showWordbookSelectionDialog(context));
-                },
-                child: const Text('Open selector'),
-              ),
-            ),
+            builder:
+                (context) => Scaffold(
+                  body: FilledButton(
+                    onPressed: () async {
+                      onSelected(await showWordbookSelectionDialog(context));
+                    },
+                    child: const Text('Open selector'),
+                  ),
+                ),
           ),
         ),
       ),
@@ -76,22 +77,27 @@ void main() {
     await settle(tester);
   }
 
-  testWidgets('radio selection keeps the active book and returns another book', (tester) async {
-    Wordbook? selected;
-    await openSelector(tester, (book) => selected = book);
+  testWidgets(
+    'radio selection keeps the active book and returns another book',
+    (tester) async {
+      Wordbook? selected;
+      await openSelector(tester, (book) => selected = book);
 
-    expect(tester.widget<RadioGroup<int>>(find.byType(RadioGroup<int>)).groupValue, 1);
-    await tester.tap(find.text('Book 1'));
-    await settle(tester);
-    expect(selected, isNull);
-    expect(find.byType(RadioGroup<int>), findsOneWidget);
+      expect(find.text('현재 학습'), findsOneWidget);
+      expect(find.text('Book 1'), findsOneWidget);
+      expect(find.text('Book 2'), findsOneWidget);
+      await tester.tap(find.text('Book 1'));
+      await settle(tester);
+      expect(selected, isNull);
+      expect(find.text('단어장 선택'), findsOneWidget);
 
-    await tester.tap(find.text('Book 2'));
-    await settle(tester);
-    expect(selected, same(manager.books[1]));
-    expect(find.byType(RadioGroup<int>), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      await tester.tap(find.text('Book 2'));
+      await settle(tester);
+      expect(selected, same(manager.books[1]));
+      expect(find.text('단어장 선택'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('dismissing the selector does not choose a book', (tester) async {
     var completed = false;
@@ -101,7 +107,7 @@ void main() {
       selected = book;
     });
 
-    final context = tester.element(find.byType(RadioGroup<int>));
+    final context = tester.element(find.text('단어장 선택'));
     Navigator.of(context).pop();
     await settle(tester);
 

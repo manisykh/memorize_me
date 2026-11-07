@@ -161,7 +161,7 @@ class _SrsStatusScreenState extends State<SrsStatusScreen> {
       appBar: AppBar(
         centerTitle: true,
         title: Text(
-          '단어별 SRS 상태',
+          '단어별 기억 상태',
           style: theme.textTheme.titleLarge?.copyWith(
             color: identity.ink,
             fontWeight: FontWeight.w900,

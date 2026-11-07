@@ -18,8 +18,15 @@ These files are ignored by Git. Back them up securely. Losing the upload keystor
 After signing is configured, build the release bundle:
 
 ```powershell
-flutter build appbundle --release
+Copy-Item .\env\release.example.json .\env\release.json
+# Replace the example URLs in env/release.json with the deployed public URLs.
+flutter build appbundle --release --dart-define-from-file=.\env\release.json
 ```
+
+`env/release.json` is ignored by Git. Both URLs must use HTTPS and be publicly
+reachable before the bundle is uploaded to Google Play. The app falls back to
+its in-app privacy and deletion summary when these values are omitted, but the
+Play Console still requires public policy and account-deletion URLs.
 
 Google Picker uses the native Android authorization flow, so no Picker URL or
 Picker-related `--dart-define` value is required for release builds.

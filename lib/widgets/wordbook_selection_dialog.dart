@@ -101,8 +101,14 @@ Future<Wordbook?> showWordbookSelectionDialog(BuildContext context) {
                               identity: identity,
                               manager: manager,
                               onTap:
-                                  () =>
-                                      Navigator.of(sheetContext).pop(wordbook),
+                                  _sameWordbook(
+                                        wordbook,
+                                        manager.activeWordbook,
+                                      )
+                                      ? () {}
+                                      : () => Navigator.of(
+                                        sheetContext,
+                                      ).pop(wordbook),
                             );
                           },
                         ),

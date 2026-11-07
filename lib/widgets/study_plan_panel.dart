@@ -183,7 +183,7 @@ class StudyPlanPanel extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              '선택한 묶음 ${available.length}개 · 다른 묶음으로 이동해도 SRS 기록은 유지됩니다.',
+              '선택한 묶음 ${available.length}개 · 다른 묶음으로 이동해도 기억 단계와 복습 기록은 유지됩니다.',
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
@@ -639,13 +639,16 @@ class _PlanEditorState extends State<_PlanEditor> {
         bundleCount: (bundles ?? 10).clamp(1, widget.words.length).toInt(),
         resetSchedule: _resetSchedule,
       );
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _saving = false;
           _error = '플랜을 저장하지 못했습니다. 다시 시도해주세요.';
         });
+      }
     }
   }
 
@@ -718,7 +721,7 @@ class _PlanEditorState extends State<_PlanEditor> {
                   '묶음당 약 ${(widget.words.length / max(1, int.tryParse(_bundle.text) ?? 10)).ceil()}개 · 다음 묶음은 직접 선택합니다.',
                 ),
                 if (_existing != null)
-                  const Text('묶음 수를 바꾸면 구성이 다시 나뉩니다. 기존 학습 결과와 SRS는 유지됩니다.'),
+                  const Text('묶음 수를 바꾸면 구성이 다시 나뉩니다. 기존 학습 결과와 복습 기록은 유지됩니다.'),
               ] else ...[
                 if (_existing?.mode == StudyPlanMode.scheduled &&
                     _mode == StudyPlanMode.scheduled)
@@ -794,7 +797,7 @@ class _PlanEditorState extends State<_PlanEditor> {
                     label: const Text('목표 날짜로 분량 계산'),
                   ),
                   const Text(
-                    '목표일은 새 단어의 1회 학습 기준입니다. 암기 상태와 SRS 복습은 별도로 관리합니다.',
+                    '목표일은 새 단어의 1회 학습 기준입니다. 암기 상태와 맞춤 복습은 별도로 관리합니다.',
                   ),
                   if (_existing?.mode == StudyPlanMode.scheduled)
                     const Text('새로 추가한 단어도 일정에 넣으려면 일정 다시 조정을 켜주세요.'),
@@ -830,7 +833,7 @@ class _PlanEditorState extends State<_PlanEditor> {
                                   (ctx) => AlertDialog(
                                     title: const Text('플랜을 해제할까요?'),
                                     content: const Text(
-                                      '학습 이력과 SRS는 유지되고 단어장 전체를 학습할 수 있습니다.',
+                                      '학습 이력과 복습 기록은 유지되고 단어장 전체를 학습할 수 있습니다.',
                                     ),
                                     actions: [
                                       TextButton(
@@ -850,13 +853,16 @@ class _PlanEditorState extends State<_PlanEditor> {
                             setState(() => _saving = true);
                             try {
                               await widget.manager.deleteStudyPlan(_existing);
-                              if (context.mounted) Navigator.pop(context);
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                              }
                             } catch (_) {
-                              if (mounted)
+                              if (mounted) {
                                 setState(() {
                                   _saving = false;
                                   _error = '해제하지 못했습니다. 다시 시도해주세요.';
                                 });
+                              }
                             }
                           },
                   child: const Text('플랜 해제'),

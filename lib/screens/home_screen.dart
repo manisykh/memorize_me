@@ -90,9 +90,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: IconButton(
                     icon: Icon(CupertinoIcons.settings, color: palette.heading),
                     onPressed:
-                        () => Navigator.of(
-                          context,
-                        ).push(MaterialPageRoute(builder: (_) => const AppSettingsScreen())),
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AppSettingsScreen(),
+                          ),
+                        ),
                     tooltip: '앱 설정',
                   ),
                 ),
@@ -119,7 +121,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       case LearningFocus.review:
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => const QuizScreen(initialMode: QuizMode.reviewSpelling),
+                            builder:
+                                (_) => const QuizScreen(
+                                  initialMode: QuizMode.reviewSpelling,
+                                ),
                           ),
                         );
                         break;
@@ -134,14 +139,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                         break;
                       case LearningFocus.quiz:
-                        Navigator.of(
-                          context,
-                        ).push(MaterialPageRoute(builder: (_) => const QuizScreen()));
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const QuizScreen()),
+                        );
                         break;
                       case LearningFocus.rest:
-                        Navigator.of(
-                          context,
-                        ).push(MaterialPageRoute(builder: (_) => const FlashcardScreen()));
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const FlashcardScreen(),
+                          ),
+                        );
                         break;
                     }
                   },
@@ -180,8 +187,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             ? () => Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder:
-                                    (_) =>
-                                        const QuizScreen(initialMode: QuizMode.reviewSpelling),
+                                    (_) => const QuizScreen(
+                                      initialMode: QuizMode.reviewSpelling,
+                                    ),
                               ),
                             )
                             : null,
@@ -193,10 +201,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     subtitle:
                         dailyPlan.hasNewWords
                             ? '새 단어 ${dailyPlan.newWords.length}개 중 $newWordSessionCount개부터 시작합니다'
-                            : '새로 SRS에 넣을 단어가 없습니다',
+                            : '새로 학습할 단어가 없습니다',
                     icon: CupertinoIcons.plus_circle_fill,
                     color: AppTheme.primaryGreen,
-                    actionLabel: dailyPlan.hasNewWords ? '$newWordSessionCount개 익히기' : '완료',
+                    actionLabel:
+                        dailyPlan.hasNewWords
+                            ? '$newWordSessionCount개 익히기'
+                            : '완료',
                     enabled: dailyPlan.hasNewWords,
                     onTap:
                         dailyPlan.hasNewWords
@@ -224,9 +235,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     enabled: dailyPlan.canTakeQuiz,
                     onTap:
                         dailyPlan.canTakeQuiz
-                            ? () => Navigator.of(
-                              context,
-                            ).push(MaterialPageRoute(builder: (_) => const QuizScreen()))
+                            ? () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const QuizScreen(),
+                              ),
+                            )
                             : null,
                   ),
                 ],
@@ -260,7 +273,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     accentColor: AppTheme.primaryGreen,
                     onTap:
                         () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const FlashcardScreen(),
+                          ),
                         ),
                   ),
                   LearningModeCard(
@@ -270,9 +285,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: CupertinoIcons.pencil_outline,
                     accentColor: AppTheme.brandBrown,
                     onTap:
-                        () => Navigator.of(
-                          context,
-                        ).push(MaterialPageRoute(builder: (_) => const QuizScreen())),
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const QuizScreen()),
+                        ),
                   ),
                   LearningModeCard(
                     heroTag: 'wordbook-hero',
@@ -282,7 +297,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     accentColor: AppTheme.primaryGreen,
                     onTap:
                         () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const WordbookManagementScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const WordbookManagementScreen(),
+                          ),
                         ),
                   ),
                   Opacity(
@@ -298,8 +315,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               ? () => Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder:
-                                      (_) =>
-                                          const QuizScreen(initialMode: QuizMode.reviewSpelling),
+                                      (_) => const QuizScreen(
+                                        initialMode: QuizMode.reviewSpelling,
+                                      ),
                                 ),
                               )
                               : null,
@@ -330,9 +348,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: CupertinoIcons.sparkles,
                     color: AppTheme.primaryGreen,
                     onTap:
-                        () => Navigator.of(
-                          context,
-                        ).push(MaterialPageRoute(builder: (_) => const AiQuizSetupScreen())),
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AiQuizSetupScreen(),
+                          ),
+                        ),
                   ),
                   const SizedBox(height: 12),
                   _AiActionTile(
@@ -342,7 +362,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: AppTheme.accentCoral,
                     onTap:
                         () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const AiGrammarQuizSetupScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const AiGrammarQuizSetupScreen(),
+                          ),
                         ),
                   ),
                 ],
@@ -460,7 +482,8 @@ class _WordbookStatusCarousel extends StatefulWidget {
   });
 
   @override
-  State<_WordbookStatusCarousel> createState() => _WordbookStatusCarouselState();
+  State<_WordbookStatusCarousel> createState() =>
+      _WordbookStatusCarouselState();
 }
 
 class _WordbookStatusCarouselState extends State<_WordbookStatusCarousel> {
@@ -492,7 +515,9 @@ class _WordbookStatusCarouselState extends State<_WordbookStatusCarousel> {
       _wordFutures.clear();
     }
     final visibleWordbook =
-        widget.wordbooks.isEmpty ? null : widget.wordbooks[_visibleIndex % widget.wordbooks.length];
+        widget.wordbooks.isEmpty
+            ? null
+            : widget.wordbooks[_visibleIndex % widget.wordbooks.length];
     final externalActiveChanged =
         oldWidget.activeWordbook?.id != widget.activeWordbook?.id &&
         widget.activeWordbook?.id != visibleWordbook?.id;
@@ -536,9 +561,12 @@ class _WordbookStatusCarouselState extends State<_WordbookStatusCarousel> {
       return;
     }
 
-    final activeIndex = widget.activeWordbook == null
-        ? 0
-        : widget.wordbooks.indexWhere((wordbook) => wordbook.id == widget.activeWordbook!.id);
+    final activeIndex =
+        widget.activeWordbook == null
+            ? 0
+            : widget.wordbooks.indexWhere(
+              (wordbook) => wordbook.id == widget.activeWordbook!.id,
+            );
     _visibleIndex = activeIndex < 0 ? 0 : activeIndex;
     _dragOffset = 0;
     _isDragging = false;
@@ -644,7 +672,12 @@ class _WordbookStatusCarouselState extends State<_WordbookStatusCarousel> {
     );
   }
 
-  Widget _buildBackCard(BuildContext context, Wordbook wordbook, int index, int depth) {
+  Widget _buildBackCard(
+    BuildContext context,
+    Wordbook wordbook,
+    int index,
+    int depth,
+  ) {
     final theme = Theme.of(context);
     final palette = _HomePalette.of(theme);
     final colors = [palette.statusBackPrimary, palette.statusBackSecondary];
@@ -667,7 +700,9 @@ class _WordbookStatusCarouselState extends State<_WordbookStatusCarousel> {
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
-              depth == 1 ? CupertinoIcons.book_fill : CupertinoIcons.layers_alt_fill,
+              depth == 1
+                  ? CupertinoIcons.book_fill
+                  : CupertinoIcons.layers_alt_fill,
               color: depth == 1 ? AppTheme.primaryGreen : AppTheme.accentCoral,
               size: 20,
             ),
@@ -704,26 +739,45 @@ class _WordbookStatusCarouselState extends State<_WordbookStatusCarousel> {
 
   Widget _buildDeckLayer(BuildContext context, int depth, double width) {
     final direction = _dragOffset > 0 ? -1 : 1;
-    final index = depth == 0 ? _visibleIndex : _wrappedIndex(_visibleIndex + (depth * direction));
+    final index =
+        depth == 0
+            ? _visibleIndex
+            : _wrappedIndex(_visibleIndex + (depth * direction));
     final wordbook = widget.wordbooks[index];
     final isFront = depth == 0;
     final isPreviewStatus = depth == 1;
     final leftInset = depth * 10.0;
-    final rightInset = depth == 0 ? 24.0 : (14.0 - ((depth - 1) * 2.0)).clamp(6.0, 14.0).toDouble();
+    final rightInset =
+        depth == 0
+            ? 24.0
+            : (14.0 - ((depth - 1) * 2.0)).clamp(6.0, 14.0).toDouble();
     final topInset = 10.0 + ((4 - depth) * 14.0);
-    final height = isFront
-        ? 320.0
-        : (isPreviewStatus ? 286.0 : (272.0 - ((depth - 2) * 18.0)).clamp(220.0, 272.0).toDouble());
-    final opacity = isFront ? 1.0 : (1.0 - (depth * 0.07)).clamp(0.58, 0.94).toDouble();
+    final height =
+        isFront
+            ? 320.0
+            : (isPreviewStatus
+                ? 286.0
+                : (272.0 - ((depth - 2) * 18.0))
+                    .clamp(220.0, 272.0)
+                    .toDouble());
+    final opacity =
+        isFront ? 1.0 : (1.0 - (depth * 0.07)).clamp(0.58, 0.94).toDouble();
     final scale = isFront ? 1.0 : (isPreviewStatus ? 0.985 : 1.0);
-    final rotation = isFront ? (_dragOffset / width).clamp(-0.045, 0.045).toDouble() : 0.0;
+    final rotation =
+        isFront ? (_dragOffset / width).clamp(-0.045, 0.045).toDouble() : 0.0;
     final slideOffset = isFront ? Offset(_dragOffset / width, 0) : Offset.zero;
     final motionDuration =
         _isDragging ? Duration.zero : const Duration(milliseconds: 280);
 
-    Widget card = (isFront || isPreviewStatus)
-        ? _buildStatusPanel(context, wordbook, index, compact: isPreviewStatus)
-        : _buildBackCard(context, wordbook, index, depth);
+    Widget card =
+        (isFront || isPreviewStatus)
+            ? _buildStatusPanel(
+              context,
+              wordbook,
+              index,
+              compact: isPreviewStatus,
+            )
+            : _buildBackCard(context, wordbook, index, depth);
     if (!isFront) {
       card = IgnorePointer(child: card);
     }
@@ -776,7 +830,8 @@ class _WordbookStatusCarouselState extends State<_WordbookStatusCarousel> {
       );
     }
 
-    final visibleCardCount = widget.wordbooks.length < 5 ? widget.wordbooks.length : 5;
+    final visibleCardCount =
+        widget.wordbooks.length < 5 ? widget.wordbooks.length : 5;
 
     return Column(
       children: [
@@ -792,16 +847,20 @@ class _WordbookStatusCarouselState extends State<_WordbookStatusCarousel> {
                           if (_isAnimatingAway) return;
                           setState(() {
                             _isDragging = true;
-                            _dragOffset = (_dragOffset + details.delta.dx).clamp(
-                              -constraints.maxWidth * 0.42,
-                              constraints.maxWidth * 0.42,
-                            ).toDouble();
+                            _dragOffset =
+                                (_dragOffset + details.delta.dx)
+                                    .clamp(
+                                      -constraints.maxWidth * 0.42,
+                                      constraints.maxWidth * 0.42,
+                                    )
+                                    .toDouble();
                           });
                         }
                         : null,
                 onHorizontalDragEnd:
                     widget.wordbooks.length > 1
-                        ? (details) => _handleDragEnd(details, constraints.maxWidth)
+                        ? (details) =>
+                            _handleDragEnd(details, constraints.maxWidth)
                         : null,
                 onHorizontalDragCancel:
                     () => setState(() {
@@ -862,7 +921,9 @@ class _RoutineFocusCard extends StatelessWidget {
           border: Border.all(color: palette.outline),
           boxShadow: [
             BoxShadow(
-              color: palette.shadow.withValues(alpha: theme.brightness == Brightness.dark ? 0.22 : 0.06),
+              color: palette.shadow.withValues(
+                alpha: theme.brightness == Brightness.dark ? 0.22 : 0.06,
+              ),
               blurRadius: 18,
               offset: const Offset(0, 10),
             ),
@@ -911,7 +972,11 @@ class _RoutineFocusCard extends StatelessWidget {
               ),
               child: Text(
                 recommendation.actionLabel,
-                style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],
@@ -948,9 +1013,10 @@ class _TodayPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = _HomePalette.of(theme);
-    final title = canStartReviewQuiz
-        ? '오늘 기억을 붙잡을 시간이에요'
-        : newWordCount > 0
+    final title =
+        canStartReviewQuiz
+            ? '오늘 기억을 붙잡을 시간이에요'
+            : newWordCount > 0
             ? '복습은 완료, 새 단어를 열어볼까요?'
             : '오늘 복습은 깨끗하게 비었어요';
     final actionHeight = compact ? 40.0 : 46.0;
@@ -963,7 +1029,9 @@ class _TodayPanel extends StatelessWidget {
         border: Border.all(color: palette.outline, width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: palette.shadow.withValues(alpha: theme.brightness == Brightness.dark ? 0.30 : 0.12),
+            color: palette.shadow.withValues(
+              alpha: theme.brightness == Brightness.dark ? 0.30 : 0.12,
+            ),
             blurRadius: 24,
             offset: const Offset(0, 14),
           ),
@@ -987,7 +1055,10 @@ class _TodayPanel extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: palette.statusChip,
                   borderRadius: BorderRadius.circular(999),
@@ -1017,11 +1088,14 @@ class _TodayPanel extends StatelessWidget {
             title,
             maxLines: compact ? 1 : 2,
             overflow: TextOverflow.ellipsis,
-            style: (compact ? theme.textTheme.titleMedium : theme.textTheme.titleLarge)?.copyWith(
-              color: palette.heading,
-              fontWeight: FontWeight.w900,
-              height: compact ? 1.18 : 1.2,
-            ),
+            style: (compact
+                    ? theme.textTheme.titleMedium
+                    : theme.textTheme.titleLarge)
+                ?.copyWith(
+                  color: palette.heading,
+                  fontWeight: FontWeight.w900,
+                  height: compact ? 1.18 : 1.2,
+                ),
           ),
           SizedBox(height: compact ? 10 : 14),
           Row(
@@ -1047,9 +1121,13 @@ class _TodayPanel extends StatelessWidget {
               ),
               style: FilledButton.styleFrom(
                 backgroundColor:
-                    canStartReviewQuiz ? theme.colorScheme.secondary : palette.disabledButton,
+                    canStartReviewQuiz
+                        ? theme.colorScheme.secondary
+                        : palette.disabledButton,
                 foregroundColor:
-                    canStartReviewQuiz ? theme.colorScheme.onSecondary : palette.muted,
+                    canStartReviewQuiz
+                        ? theme.colorScheme.onSecondary
+                        : palette.muted,
                 minimumSize: Size.fromHeight(actionHeight),
                 padding: const EdgeInsets.symmetric(horizontal: 10),
               ),
@@ -1085,7 +1163,9 @@ class _TodayPanel extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed:
                         () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const FlashcardScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const FlashcardScreen(),
+                          ),
                         ),
                     icon: const Icon(CupertinoIcons.layers_alt_fill, size: 18),
                     label: const Text(
@@ -1183,7 +1263,9 @@ class _RoutineStepCard extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = _HomePalette.of(theme);
     final baseColor =
-        theme.brightness == Brightness.dark ? Color.lerp(color, Colors.white, 0.26)! : color;
+        theme.brightness == Brightness.dark
+            ? Color.lerp(color, Colors.white, 0.26)!
+            : color;
     final effectiveColor = enabled ? baseColor : palette.muted;
 
     return InkWell(
@@ -1192,14 +1274,19 @@ class _RoutineStepCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: enabled ? palette.surface : palette.surfaceVariant.withValues(alpha: 0.72),
+          color:
+              enabled
+                  ? palette.surface
+                  : palette.surfaceVariant.withValues(alpha: 0.72),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: palette.outline),
           boxShadow: [
             BoxShadow(
               color: palette.shadow.withValues(
                 alpha:
-                  enabled ? (theme.brightness == Brightness.dark ? 0.22 : 0.06) : 0.02,
+                    enabled
+                        ? (theme.brightness == Brightness.dark ? 0.22 : 0.06)
+                        : 0.02,
               ),
               blurRadius: 18,
               offset: const Offset(0, 10),
@@ -1218,7 +1305,10 @@ class _RoutineStepCard extends StatelessWidget {
               ),
               child: Text(
                 step,
-                style: TextStyle(color: effectiveColor, fontWeight: FontWeight.w900),
+                style: TextStyle(
+                  color: effectiveColor,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
             const SizedBox(width: 14),
@@ -1265,7 +1355,11 @@ class _RoutineStepCard extends StatelessWidget {
               ),
               child: Text(
                 actionLabel,
-                style: TextStyle(color: effectiveColor, fontSize: 12, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: effectiveColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],
@@ -1295,7 +1389,9 @@ class _AiActionTile extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = _HomePalette.of(theme);
     final effectiveColor =
-        theme.brightness == Brightness.dark ? Color.lerp(color, Colors.white, 0.26)! : color;
+        theme.brightness == Brightness.dark
+            ? Color.lerp(color, Colors.white, 0.26)!
+            : color;
 
     return InkWell(
       onTap: onTap,
@@ -1344,7 +1440,11 @@ class _AiActionTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Icon(CupertinoIcons.chevron_forward, color: palette.muted, size: 18),
+            Icon(
+              CupertinoIcons.chevron_forward,
+              color: palette.muted,
+              size: 18,
+            ),
           ],
         ),
       ),

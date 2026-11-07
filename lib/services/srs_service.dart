@@ -294,7 +294,7 @@ class SrsService {
       final batchSize = plan.suggestedNewWordBatchSize;
       return LearningFocusRecommendation(
         focus: LearningFocus.newWords,
-        title: '새 단어를 SRS에 올릴 타이밍입니다',
+        title: '새 단어 학습을 시작할 때입니다',
         description:
             '${plan.newWords.length}개의 새 단어가 기다리고 있어요. 먼저 $batchSize개부터 시작하면 부담 없이 루틴이 이어집니다.',
         actionLabel: '새 단어 $batchSize개 시작',
