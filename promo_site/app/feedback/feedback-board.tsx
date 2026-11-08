@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-type Reply = { id: string; postId: string; author: string; body: string; createdAt: number };
+type Reply = { id: string; postId: string; author: string; body: string; createdAt: number; isAdmin?: boolean };
 type Post = {
   id: string;
   nickname: string;
@@ -32,6 +32,7 @@ const statusLabels: Record<string, string> = {
 };
 const categoryLabels = Object.fromEntries(categories);
 const emptyForm = { nickname: "", password: "", category: "request", title: "", body: "" };
+const emptyComment = { nickname: "", password: "", body: "" };
 
 function formatDate(timestamp: number) {
   return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(timestamp);
@@ -59,6 +60,7 @@ export function FeedbackBoard() {
   const [form, setForm] = useState(emptyForm);
   const [adminPassword, setAdminPassword] = useState("");
   const [replyText, setReplyText] = useState<Record<string, string>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, typeof emptyComment>>({});
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ ...emptyForm });
   const [loading, setLoading] = useState(true);
@@ -83,7 +85,7 @@ export function FeedbackBoard() {
 
   const counts = useMemo(() => ({
     total: posts.length,
-    answered: posts.filter((post) => post.replies.length > 0).length,
+    answered: posts.filter((post) => post.replies.some((reply) => reply.isAdmin)).length,
     done: posts.filter((post) => post.status === "done").length,
   }), [posts]);
 
@@ -174,6 +176,35 @@ export function FeedbackBoard() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "답글을 등록하지 못했습니다."); }
   }
 
+  async function submitComment(event: FormEvent, postId: string) {
+    event.preventDefault();
+    const draft = commentDrafts[postId] || emptyComment;
+    setBusy(true);
+    try {
+      await api("POST", { action: "reply", postId, ...draft });
+      setCommentDrafts((current) => ({ ...current, [postId]: { ...emptyComment } }));
+      await load();
+      setExpanded(postId);
+      setMessage("댓글이 등록되었습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "댓글을 등록하지 못했습니다.");
+    } finally { setBusy(false); }
+  }
+
+  async function removeReply(postId: string, replyId: string) {
+    const password = isAdmin ? "" : window.prompt("댓글을 삭제하려면 작성할 때 정한 비밀번호를 입력하세요.");
+    if (!isAdmin && password === null) return;
+    if (!window.confirm("이 댓글을 삭제할까요?")) return;
+    try {
+      await api("POST", { action: "reply-delete", postId, replyId, password });
+      await load();
+      setExpanded(postId);
+      setMessage("댓글이 삭제되었습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "댓글을 삭제하지 못했습니다.");
+    }
+  }
+
   return (
     <section className="feedback-board" aria-label="테스터 의견 게시판">
       <div className="feedback-summary">
@@ -226,7 +257,7 @@ export function FeedbackBoard() {
                 <span className={`feedback-category category-${post.category}`}>{categoryLabels[post.category]}</span>
                 <span className="feedback-post-title"><strong>{post.title}</strong><small>{post.nickname} · {formatDate(post.createdAt)}</small></span>
                 <span className={`feedback-status status-${post.status}`}>{statusLabels[post.status]}</span>
-                <span className="feedback-counts">♡ {post.likes}<b>{post.replies.length ? `답변 ${post.replies.length}` : ""}</b></span>
+                <span className="feedback-counts">♡ {post.likes}<b>{post.replies.length ? `댓글 ${post.replies.length}` : ""}</b></span>
                 <span className="feedback-chevron" aria-hidden="true">⌄</span>
               </button>
               {open && (
@@ -244,7 +275,23 @@ export function FeedbackBoard() {
                     </form>
                   ) : <p className="feedback-body">{post.body}</p>}
 
-                  {post.replies.map((reply) => <div className="feedback-reply" key={reply.id}><div><strong>{reply.author}</strong><time>{formatDate(reply.createdAt)}</time></div><p>{reply.body}</p></div>)}
+                  {post.replies.map((reply) => <div className={`feedback-reply ${reply.isAdmin ? "admin" : ""}`} key={reply.id}>
+                    <div className="feedback-reply-head"><span><strong>{reply.author}</strong>{reply.isAdmin && <b>운영자</b>}<time>{formatDate(reply.createdAt)}</time></span><button type="button" onClick={() => void removeReply(post.id, reply.id)}>삭제</button></div>
+                    <p>{reply.body}</p>
+                  </div>)}
+
+                  {!isAdmin && (() => {
+                    const draft = commentDrafts[post.id] || emptyComment;
+                    return <form className="feedback-comment-form" onSubmit={(event) => void submitComment(event, post.id)}>
+                      <div className="feedback-comment-heading"><strong>댓글 남기기</strong><span>비밀번호는 댓글 삭제에 사용합니다.</span></div>
+                      <div className="feedback-comment-fields">
+                        <label><span>닉네임</span><input value={draft.nickname} maxLength={20} placeholder="2~20자" onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: { ...draft, nickname: event.target.value } }))} required /></label>
+                        <label><span>비밀번호</span><input type="password" value={draft.password} maxLength={64} placeholder="4자 이상" onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: { ...draft, password: event.target.value } }))} required /></label>
+                        <label className="comment-body"><span>댓글</span><textarea value={draft.body} maxLength={1000} placeholder="의견에 대한 생각이나 사용 경험을 남겨 주세요." onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: { ...draft, body: event.target.value } }))} required /></label>
+                        <button type="submit" disabled={busy}>{busy ? "등록 중…" : "댓글 등록"}</button>
+                      </div>
+                    </form>;
+                  })()}
 
                   {isAdmin && (
                     <div className="feedback-admin-tools">

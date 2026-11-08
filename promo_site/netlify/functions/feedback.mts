@@ -6,6 +6,9 @@ type Reply = {
   author: string;
   body: string;
   createdAt: number;
+  isAdmin?: boolean;
+  passwordSalt?: string;
+  passwordHash?: string;
 };
 
 type StoredPost = {
@@ -45,6 +48,11 @@ function json(data: unknown, status = 200, headers?: HeadersInit) {
 
 function text(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function publicReply(reply: Reply) {
+  const { passwordHash: _hash, passwordSalt: _salt, ...visibleReply } = reply;
+  return { ...visibleReply, isAdmin: reply.isAdmin ?? !reply.passwordHash };
 }
 
 async function bodyOf(request: Request) {
@@ -186,7 +194,10 @@ async function handleGet(request: Request) {
   const category = text(new URL(request.url).searchParams.get("category"), 20);
   const posts = await listPosts(category);
   return json({
-    posts: posts.map(({ passwordHash: _hash, passwordSalt: _salt, reactions: _reactions, ...post }) => post),
+    posts: posts.map(({ passwordHash: _hash, passwordSalt: _salt, reactions: _reactions, replies, ...post }) => ({
+      ...post,
+      replies: replies.map(publicReply),
+    })),
     isAdmin: await isAdminRequest(request),
   });
 }
@@ -208,6 +219,53 @@ async function handlePost(request: Request) {
 
   if (action === "admin-logout") {
     return json({ ok: true }, 200, { "Set-Cookie": clearAdminCookie() });
+  }
+
+  if (action === "reply") {
+    if (!(await checkWriteRate(request, "reply", 12, 10 * 60 * 1000))) {
+      return json({ error: "짧은 시간에 너무 많은 댓글이 등록되었습니다. 잠시 후 다시 시도해 주세요." }, 429);
+    }
+    const postId = text(input.postId, 80);
+    const nickname = text(input.nickname, 20);
+    const password = text(input.password, 64);
+    const replyBody = text(input.body, 1000);
+    const post = await getPost(postId);
+    if (!post) return json({ error: "게시물을 찾을 수 없습니다." }, 404);
+    if (nickname.length < 2) return json({ error: "닉네임은 두 글자 이상 입력해 주세요." }, 400);
+    if (password.length < 4) return json({ error: "댓글 비밀번호는 네 글자 이상 입력해 주세요." }, 400);
+    if (replyBody.length < 2) return json({ error: "댓글을 두 글자 이상 입력해 주세요." }, 400);
+    const passwordData = await hashPostPassword(password);
+    const reply: Reply = {
+      id: crypto.randomUUID(),
+      postId,
+      author: nickname,
+      body: replyBody,
+      createdAt: Date.now(),
+      isAdmin: false,
+      passwordSalt: passwordData.salt,
+      passwordHash: passwordData.hash,
+    };
+    post.replies.push(reply);
+    post.updatedAt = Date.now();
+    await savePost(post);
+    return json({ ok: true, reply: publicReply(reply) }, 201);
+  }
+
+  if (action === "reply-delete") {
+    const postId = text(input.postId, 80);
+    const replyId = text(input.replyId, 80);
+    const post = await getPost(postId);
+    if (!post) return json({ error: "게시물을 찾을 수 없습니다." }, 404);
+    const reply = post.replies.find((candidate) => candidate.id === replyId);
+    if (!reply) return json({ error: "댓글을 찾을 수 없습니다." }, 404);
+    const admin = await isAdminRequest(request);
+    const passwordMatches = Boolean(reply.passwordSalt && reply.passwordHash) &&
+      await verifyPostPassword(text(input.password, 64), reply.passwordSalt || "", reply.passwordHash || "");
+    if (!admin && !passwordMatches) return json({ error: "댓글 비밀번호가 올바르지 않습니다." }, 401);
+    post.replies = post.replies.filter((candidate) => candidate.id !== replyId);
+    post.updatedAt = Date.now();
+    await savePost(post);
+    return json({ ok: true });
   }
 
   if (action === "react") {
@@ -233,7 +291,7 @@ async function handlePost(request: Request) {
     if (action === "admin-reply") {
       const replyBody = text(input.body, 1000);
       if (replyBody.length < 2) return json({ error: "답글을 두 글자 이상 입력해 주세요." }, 400);
-      post.replies.push({ id: crypto.randomUUID(), postId, author: "Memorize Me 운영자", body: replyBody, createdAt: Date.now() });
+      post.replies.push({ id: crypto.randomUUID(), postId, author: "Memorize Me 운영자", body: replyBody, createdAt: Date.now(), isAdmin: true });
       post.updatedAt = Date.now();
       await savePost(post);
       return json({ ok: true });
