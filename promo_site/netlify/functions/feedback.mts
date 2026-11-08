@@ -31,7 +31,10 @@ const categories = new Set(["praise", "bug", "request", "idea", "other"]);
 const statuses = new Set(["new", "reviewing", "planned", "done"]);
 const ADMIN_COOKIE = "memorize_feedback_admin";
 const SESSION_SECONDS = 60 * 60 * 8;
-const store = () => getStore("memorize-feedback");
+// Feedback is interactive data: a write must be visible to the list request
+// that immediately follows it. Using strong consistency at store level also
+// makes `list()` bypass an edge-cached, previously empty listing.
+const store = () => getStore("memorize-feedback", { consistency: "strong" });
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
   return Response.json(data, {
@@ -272,8 +275,9 @@ async function handlePost(request: Request) {
     id: crypto.randomUUID(), nickname, passwordSalt: passwordData.salt, passwordHash: passwordData.hash,
     category, title, body: postBody, status: "new", likes: 0, reactions: [], replies: [], createdAt: now, updatedAt: now,
   };
-  await savePost(post, true);
-  return json({ ok: true }, 201);
+  const result = await savePost(post, true);
+  if (!result.modified) return json({ error: "의견을 저장하지 못했습니다. 다시 시도해 주세요." }, 409);
+  return json({ ok: true, postId: post.id }, 201);
 }
 
 async function handlePatch(request: Request) {

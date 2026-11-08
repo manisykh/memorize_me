@@ -94,8 +94,8 @@ export function FeedbackBoard() {
       await api("POST", { action: "create", ...form });
       setForm(emptyForm);
       setShowWrite(false);
-      setMessage("의견이 등록되었습니다. 확인 후 답변드릴게요.");
       await load();
+      setMessage("의견이 등록되었습니다. 확인 후 답변드릴게요.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "등록하지 못했습니다.");
     } finally { setBusy(false); }
