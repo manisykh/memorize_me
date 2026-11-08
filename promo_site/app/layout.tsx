@@ -12,7 +12,7 @@ const siteUrl =
   process.env.URL?.trim() ||
   "https://memorize-me-guide.donmelchor2006.chatgpt.site";
 const metadataBase = new URL(siteUrl);
-const socialImage = new URL("/og.png", metadataBase).toString();
+const socialImage = new URL("/og-20261108.png", metadataBase).toString();
 
 export const metadata: Metadata = {
   metadataBase,

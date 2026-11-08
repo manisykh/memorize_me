@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1200, initial-scale=1" />
+    <style>
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        margin: 0;
+        overflow: hidden;
+        font-family: "Noto Sans KR", "Malgun Gothic", Arial, sans-serif;
+        color: #08265c;
+        background: #f4f8ff;
+      }
+
+      .card {
+        position: relative;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 86% 16%, rgba(37, 117, 255, 0.17), transparent 28%),
+          radial-gradient(circle at 10% 90%, rgba(0, 190, 145, 0.13), transparent 28%),
+          linear-gradient(135deg, #ffffff 0%, #f4f8ff 58%, #edf6ff 100%);
+      }
+
+      .card::before,
+      .card::after {
+        content: "";
+        position: absolute;
+        border-radius: 999px;
+        border: 1px solid rgba(37, 117, 255, 0.12);
+      }
+
+      .card::before {
+        width: 460px;
+        height: 460px;
+        right: -182px;
+        top: -220px;
+      }
+
+      .card::after {
+        width: 350px;
+        height: 350px;
+        left: -170px;
+        bottom: -238px;
+      }
+
+      .copy {
+        position: absolute;
+        left: 72px;
+        top: 62px;
+        width: 650px;
+        z-index: 2;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin-bottom: 48px;
+        font-size: 27px;
+        font-weight: 800;
+        letter-spacing: -0.6px;
+      }
+
+      .brand img {
+        width: 72px;
+        height: 72px;
+        border-radius: 20px;
+        box-shadow: 0 14px 28px rgba(0, 45, 125, 0.18);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 62px;
+        line-height: 1.13;
+        letter-spacing: -2.3px;
+        font-weight: 850;
+      }
+
+      h1 strong {
+        color: #008a72;
+      }
+
+      .lead {
+        margin: 25px 0 0;
+        color: #526b93;
+        font-size: 25px;
+        line-height: 1.55;
+        letter-spacing: -0.5px;
+        font-weight: 600;
+      }
+
+      .chips {
+        display: flex;
+        gap: 11px;
+        margin-top: 34px;
+      }
+
+      .chip {
+        padding: 12px 18px;
+        border-radius: 999px;
+        color: #176df3;
+        background: #e8f1ff;
+        font-size: 16px;
+        font-weight: 750;
+      }
+
+      .chip.green {
+        color: #007c66;
+        background: #e5f8f2;
+      }
+
+      .device {
+        position: absolute;
+        z-index: 1;
+        right: 62px;
+        top: 42px;
+        width: 392px;
+        height: 548px;
+        overflow: hidden;
+        border: 10px solid rgba(255, 255, 255, 0.96);
+        border-radius: 42px;
+        background: #f7f9fd;
+        box-shadow:
+          0 30px 70px rgba(27, 76, 158, 0.24),
+          0 5px 16px rgba(16, 44, 98, 0.08);
+        transform: rotate(1.5deg);
+      }
+
+      .device img {
+        display: block;
+        width: 100%;
+        height: auto;
+        transform: translateY(-1px);
+      }
+
+      .device::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 31px;
+        box-shadow: inset 0 0 0 1px rgba(8, 38, 92, 0.09);
+        pointer-events: none;
+      }
+
+      .proof {
+        position: absolute;
+        z-index: 3;
+        right: 344px;
+        bottom: 48px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 12px 17px;
+        border: 1px solid rgba(0, 138, 114, 0.16);
+        border-radius: 999px;
+        color: #007c66;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 12px 28px rgba(8, 38, 92, 0.12);
+        font-size: 15px;
+        font-weight: 750;
+      }
+
+      .proof span {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #00b78f;
+        box-shadow: 0 0 0 5px rgba(0, 183, 143, 0.13);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <section class="copy">
+        <div class="brand">
+          <img src="../public/app-icon.png" alt="" />
+          <span>Memorize Me</span>
+        </div>
+        <h1>이미 만든 단어장,<br /><strong>그대로 외우세요.</strong></h1>
+        <p class="lead">가져오고, 익히고, 필요한 때 다시 보는<br />나만의 단어 학습 흐름</p>
+        <div class="chips">
+          <span class="chip">Google Sheets · CSV · XLSX</span>
+          <span class="chip green">카드 · 퀴즈 · 맞춤 복습</span>
+        </div>
+      </section>
+
+      <div class="device">
+        <img src="../public/media/latest/home-progress.png" alt="" />
+      </div>
+
+      <div class="proof"><span></span>실제 최신 앱 화면</div>
+    </main>
+  </body>
+</html>
