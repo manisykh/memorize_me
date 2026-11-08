@@ -10,7 +10,7 @@ const description =
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
   process.env.URL?.trim() ||
-  "https://memorize-me-guide.donmelchor2006.chatgpt.site";
+  "https://memorizeme-app.netlify.app";
 const metadataBase = new URL(siteUrl);
 const socialImage = new URL("/og-20261108.png", metadataBase).toString();
 
@@ -39,11 +39,16 @@ export const metadata: Metadata = {
     description,
     images: [socialImage],
   },
+  icons: {
+    icon: "/app-icon-192.png",
+    apple: "/app-icon-192.png",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
