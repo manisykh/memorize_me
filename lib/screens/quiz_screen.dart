@@ -19,6 +19,7 @@ import '../services/srs_service.dart';
 import '../services/analytics_service.dart';
 import '../services/test_sheet_service.dart';
 import '../services/study_sound_service.dart';
+import '../services/study_haptic_service.dart';
 import '../services/study_history_service.dart';
 import '../services/study_schedule_service.dart';
 import '../themes/app_theme.dart';
@@ -113,6 +114,9 @@ class _QuizScreenState extends State<QuizScreen> {
   bool _isLoading = false;
   bool _isScreenLoading = true;
   late QuizMode _currentMode;
+  StudySessionRecord? _resumeSession;
+  List<Word>? _resumeWords;
+  QuizMode? _resumeMode;
   String _selectedExportType = 'pdf';
 
   bool get _isDirectLaunch => widget.initialMode != QuizMode.none;
@@ -141,6 +145,9 @@ class _QuizScreenState extends State<QuizScreen> {
     initialWordbook ??= wordbookManager.wordbooks.firstOrNull;
     if (initialWordbook != null) {
       await _onWordbookSelected(initialWordbook);
+      if (_isResumableQuizMode(_currentMode)) {
+        await _prepareResumeForMode(_currentMode);
+      }
     }
     if (mounted) {
       setState(() {
@@ -209,7 +216,7 @@ class _QuizScreenState extends State<QuizScreen> {
     );
   }
 
-  void _changeMode(QuizMode newMode) {
+  Future<void> _changeMode(QuizMode newMode) async {
     if (_selectedWordbook == null) {
       ScaffoldMessenger.of(
         context,
@@ -235,8 +242,151 @@ class _QuizScreenState extends State<QuizScreen> {
       ).showSnackBar(const SnackBar(content: Text('다시 확인할 객관식 오답이 없습니다.')));
       return;
     }
+    if (_isResumableQuizMode(newMode)) {
+      await _prepareResumeForMode(newMode);
+      if (!mounted) return;
+    } else {
+      _clearPreparedResume();
+    }
     setState(() => _currentMode = newMode);
   }
+
+  bool _isResumableQuizMode(QuizMode mode) =>
+      mode == QuizMode.multipleChoice || mode == QuizMode.spelling;
+
+  StudyHistoryMode _historyModeFor(QuizMode mode) =>
+      mode == QuizMode.multipleChoice
+          ? StudyHistoryMode.multipleChoice
+          : StudyHistoryMode.spelling;
+
+  String _quizModeLabel(QuizMode mode) =>
+      mode == QuizMode.multipleChoice ? '객관식 퀴즈' : '스펠링 퀴즈';
+
+  void _clearPreparedResume() {
+    _resumeSession = null;
+    _resumeWords = null;
+    _resumeMode = null;
+  }
+
+  List<Word> _remainingWordsFor(StudySessionRecord session) {
+    final answeredKeys =
+        session.answers.map((answer) => answer.wordKey).toSet();
+    final currentByKey = <String, Word>{
+      for (final word in _allWordbookWords)
+        StudyScheduleService.wordKey(word): word,
+    };
+    return [
+      for (final key in session.wordKeys)
+        if (!answeredKeys.contains(key) && currentByKey[key] != null)
+          currentByKey[key]!,
+    ];
+  }
+
+  Future<void> _prepareResumeForMode(QuizMode mode) async {
+    final book = _selectedWordbook;
+    if (book == null || !_isResumableQuizMode(mode)) {
+      _clearPreparedResume();
+      return;
+    }
+    final historyMode = _historyModeFor(mode);
+    final history = StudyHistoryService.instance;
+    await history.ensureLoaded();
+    if (!mounted || _selectedWordbook?.dbFileName != book.dbFileName) return;
+
+    final pending = history.latestResumableSession(
+      book.dbFileName,
+      historyMode,
+    );
+    if (pending == null) {
+      _clearPreparedResume();
+      return;
+    }
+    final remaining = _remainingWordsFor(pending);
+    if (remaining.isEmpty) {
+      await history.abandonResumableSessions(book.dbFileName, historyMode);
+      _clearPreparedResume();
+      return;
+    }
+
+    final continueSession = await _showQuizResumeDialog(
+      modeLabel: _quizModeLabel(mode),
+      completedCount: pending.answers.length,
+      totalCount: pending.expectedCount,
+      remainingCount: remaining.length,
+    );
+    if (!mounted) return;
+    if (!continueSession) {
+      await history.abandonResumableSessions(book.dbFileName, historyMode);
+      _clearPreparedResume();
+      return;
+    }
+
+    final normalized = pending.copyWith(
+      expectedCount: pending.answers.length + remaining.length,
+      wordKeys: [
+        ...pending.answers.map((answer) => answer.wordKey),
+        ...remaining.map(StudyScheduleService.wordKey),
+      ],
+    );
+    await history.persist(normalized);
+    if (!mounted) return;
+    _resumeSession = normalized;
+    _resumeWords = remaining;
+    _resumeMode = mode;
+  }
+
+  Future<bool> _showQuizResumeDialog({
+    required String modeLabel,
+    required int completedCount,
+    required int totalCount,
+    required int remainingCount,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        final identity = MemorizeIdentity.of(theme);
+        return PopScope<void>(
+          canPop: false,
+          child: AlertDialog(
+            icon: Icon(
+              CupertinoIcons.play_circle_fill,
+              color: identity.primaryAction,
+              size: 34,
+            ),
+            title: Text('진행 중인 $modeLabel가 있어요'),
+            content: Text(
+              '전체 $totalCount개 중 $completedCount개를 완료했어요. '
+              '남은 $remainingCount개부터 이어서 학습할까요?',
+              textAlign: TextAlign.center,
+            ),
+            actions: [
+              OutlinedButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('새로 시작'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text('$remainingCount개 이어서 학습'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    return result ?? true;
+  }
+
+  List<Word> _wordsForMode(QuizMode mode, List<Word> fallback) {
+    if (_resumeMode == mode && _resumeSession != null && _resumeWords != null) {
+      return _resumeWords!;
+    }
+    return fallback;
+  }
+
+  StudySessionRecord? _resumeForMode(QuizMode mode) =>
+      _resumeMode == mode ? _resumeSession : null;
 
   Future<void> _showSentenceCompletionIssues(List<Word> words) async {
     final wordbook = _selectedWordbook;
@@ -551,9 +701,11 @@ class _QuizScreenState extends State<QuizScreen> {
           QuizMode.exportSheet => _buildExportSheetView(),
           QuizMode.multipleChoice => _MultipleChoiceQuizView(
             key: ValueKey('mcq_${_selectedWordbook?.id}'),
-            words: _words,
+            words: _wordsForMode(QuizMode.multipleChoice, _words),
             optionPool: _optionPool,
             selectedWordbook: _selectedWordbook!,
+            resumeSession: _resumeForMode(QuizMode.multipleChoice),
+            resumeEnabled: true,
             sessionLabel: '뜻 고르기',
             sessionHint: '의미를 빠르게 구분하며 오늘 기억을 점검하는 단계입니다.',
             origin: widget.origin,
@@ -577,8 +729,10 @@ class _QuizScreenState extends State<QuizScreen> {
                 ? const Center(child: Text("단어장을 먼저 선택해주세요."))
                 : _SpellingQuizView(
                   key: ValueKey('spelling_${_selectedWordbook!.id}'),
-                  words: _words,
+                  words: _wordsForMode(QuizMode.spelling, _words),
                   selectedWordbook: _selectedWordbook!,
+                  resumeSession: _resumeForMode(QuizMode.spelling),
+                  resumeEnabled: true,
                   sessionLabel: '전체 스펠링',
                   sessionHint: '단어 철자를 직접 꺼내며 기억을 더 단단하게 고정합니다.',
                   origin: widget.origin,
@@ -611,7 +765,7 @@ class _QuizScreenState extends State<QuizScreen> {
       Navigator.of(context).pop();
       return;
     }
-    _changeMode(QuizMode.none);
+    unawaited(_changeMode(QuizMode.none));
   }
 
   String _getAppBarTitle() {
@@ -1344,30 +1498,49 @@ class _QuizScreenState extends State<QuizScreen> {
               const SizedBox(height: 24),
               _buildExportSectionLabel(theme, identity, '출력 구성'),
               const SizedBox(height: 9),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<ExportOption>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(
-                      value: ExportOption.both,
-                      label: Text('시험지 + 답안지'),
-                    ),
-                    ButtonSegment(
-                      value: ExportOption.testOnly,
-                      label: Text('시험지만'),
-                    ),
-                    ButtonSegment(
-                      value: ExportOption.answersOnly,
-                      label: Text('답안지만'),
-                    ),
-                  ],
-                  selected: {settings.exportOption},
-                  onSelectionChanged:
-                      (selection) =>
-                          settingsNotifier.setExportOption(selection.first),
+              Opacity(
+                opacity: _selectedExportType == 'html' ? 0.45 : 1,
+                child: _buildExportOptionSelector(
+                  theme: theme,
+                  identity: identity,
+                  selectedOption: settings.exportOption,
+                  enabled: _selectedExportType != 'html',
+                  onSelected: settingsNotifier.setExportOption,
                 ),
               ),
+              if (_selectedExportType == 'html') ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: identity.softInfo,
+                    borderRadius: BorderRadius.circular(
+                      MemorizeIdentity.contextRadius,
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        CupertinoIcons.info_circle,
+                        size: 18,
+                        color: identity.primaryAction,
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          'HTML은 화면에서 바로 풀고 정답을 확인하는 형식입니다. 출력 구성은 적용되지 않으며, 글자 크기는 세부 설정에서 조절할 수 있습니다.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: identity.mutedInk,
+                            height: 1.45,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
               _buildExportAdvancedSettings(
                 theme: theme,
@@ -1428,6 +1601,147 @@ class _QuizScreenState extends State<QuizScreen> {
         color: identity.ink,
         fontWeight: FontWeight.w900,
       ),
+    );
+  }
+
+  Widget _buildExportOptionSelector({
+    required ThemeData theme,
+    required MemorizeIdentity identity,
+    required ExportOption selectedOption,
+    required bool enabled,
+    required ValueChanged<ExportOption> onSelected,
+  }) {
+    Widget option({required ExportOption value, required String label}) {
+      final selected = selectedOption == value;
+      return Semantics(
+        button: true,
+        selected: selected,
+        enabled: enabled,
+        label: label,
+        child: InkWell(
+          onTap: enabled ? () => onSelected(value) : null,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: double.infinity,
+            height: double.infinity,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            color: selected ? identity.primaryAction : Colors.transparent,
+            child: Text(
+              label,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.visible,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color:
+                    selected
+                        ? theme.colorScheme.onPrimary
+                        : enabled
+                        ? identity.ink
+                        : identity.mutedInk,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScaler = MediaQuery.textScalerOf(context);
+        final useCompactLayout =
+            constraints.maxWidth < 380 || textScaler.scale(14) > 17;
+
+        return Container(
+          width: double.infinity,
+          height: useCompactLayout ? 108 : 54,
+          decoration: BoxDecoration(
+            border: Border.all(color: identity.border),
+            borderRadius: BorderRadius.circular(MemorizeIdentity.contextRadius),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Material(
+            color: identity.surface,
+            child:
+                useCompactLayout
+                    ? Column(
+                      children: [
+                        Expanded(
+                          child: option(
+                            value: ExportOption.both,
+                            label: '시험지 + 답안지',
+                          ),
+                        ),
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: identity.border,
+                        ),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: option(
+                                  value: ExportOption.testOnly,
+                                  label: '시험지만',
+                                ),
+                              ),
+                              VerticalDivider(
+                                width: 1,
+                                thickness: 1,
+                                color: identity.border,
+                              ),
+                              Expanded(
+                                child: option(
+                                  value: ExportOption.answersOnly,
+                                  label: '답안지만',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                    : Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: option(
+                            value: ExportOption.both,
+                            label: '시험지 + 답안지',
+                          ),
+                        ),
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: identity.border,
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: option(
+                            value: ExportOption.testOnly,
+                            label: '시험지만',
+                          ),
+                        ),
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: identity.border,
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: option(
+                            value: ExportOption.answersOnly,
+                            label: '답안지만',
+                          ),
+                        ),
+                      ],
+                    ),
+          ),
+        );
+      },
     );
   }
 
@@ -2488,6 +2802,8 @@ class _MultipleChoiceQuizView extends StatefulWidget {
   final String sessionHint;
   final bool mistakeReview;
   final LearningRouteOrigin origin;
+  final StudySessionRecord? resumeSession;
+  final bool resumeEnabled;
   final VoidCallback onContinueSpelling;
   final VoidCallback onFinish;
 
@@ -2500,6 +2816,8 @@ class _MultipleChoiceQuizView extends StatefulWidget {
     required this.sessionHint,
     this.mistakeReview = false,
     this.origin = LearningRouteOrigin.standalone,
+    this.resumeSession,
+    this.resumeEnabled = false,
     required this.onContinueSpelling,
     required this.onFinish,
   });
@@ -2524,6 +2842,7 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView>
   _McqScorePulse _scorePulse = _McqScorePulse.none;
   Timer? _autoAdvanceTimer;
   bool _hasRecordedHistory = false;
+  bool _hasRestoredSession = false;
   StudySessionRecorder? _historyRecorder;
 
   void _startHistory() {
@@ -2531,15 +2850,25 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView>
       widget.selectedWordbook.dbFileName,
       _sessionWords,
     );
-    _historyRecorder = StudyHistoryService.instance.start(
-      wordbook: widget.selectedWordbook,
-      mode: StudyHistoryMode.multipleChoice,
-      expectedCount: _sessionWords.length,
-      plan: _wordbookManager.planForSession(
-        widget.selectedWordbook,
-        _sessionWords,
-      ),
-    );
+    final resumeSession = widget.resumeSession;
+    if (resumeSession != null && !_hasRestoredSession) {
+      _hasRestoredSession = true;
+      _historyRecorder = StudyHistoryService.instance.resume(
+        wordbook: widget.selectedWordbook,
+        session: resumeSession,
+      );
+    } else {
+      _historyRecorder = StudyHistoryService.instance.start(
+        wordbook: widget.selectedWordbook,
+        mode: StudyHistoryMode.multipleChoice,
+        expectedCount: _sessionWords.length,
+        plan: _wordbookManager.planForSession(
+          widget.selectedWordbook,
+          _sessionWords,
+        ),
+        sessionWords: widget.resumeEnabled ? _sessionWords : const [],
+      );
+    }
   }
 
   @override
@@ -2563,13 +2892,15 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView>
   void _startSession() {
     _autoAdvanceTimer?.cancel();
     final wordCount = widget.words.length;
+    final restoring = widget.resumeSession != null && !_hasRestoredSession;
     setState(() {
       _results.clear();
       _currentIndex = 0;
       _scorePulse = _McqScorePulse.none;
       _hasRecordedHistory = false;
-      _sessionWords =
-          (List<Word>.from(widget.words)..shuffle()).take(wordCount).toList();
+      _sessionWords = List<Word>.from(widget.words);
+      if (!restoring) _sessionWords.shuffle();
+      _sessionWords = _sessionWords.take(wordCount).toList();
       _prepareQuestion();
     });
     context.read<AnalyticsService>().logStudyStarted(
@@ -2638,6 +2969,13 @@ class _MultipleChoiceQuizViewState extends State<_MultipleChoiceQuizView>
     unawaited(
       context.read<StudySoundService>().play(
         isCorrect ? StudySoundEffect.correct : StudySoundEffect.incorrect,
+      ),
+    );
+    unawaited(
+      context.read<StudyHapticService>().play(
+        isCorrect
+            ? StudyHapticEffect.knownOrCorrect
+            : StudyHapticEffect.unknownOrIncorrect,
       ),
     );
     _playScorePulse(
@@ -4624,6 +4962,8 @@ class _SpellingQuizView extends StatefulWidget {
   final String sessionLabel;
   final String sessionHint;
   final LearningRouteOrigin origin;
+  final StudySessionRecord? resumeSession;
+  final bool resumeEnabled;
   final VoidCallback onFinish;
 
   const _SpellingQuizView({
@@ -4633,6 +4973,8 @@ class _SpellingQuizView extends StatefulWidget {
     required this.sessionLabel,
     required this.sessionHint,
     this.origin = LearningRouteOrigin.standalone,
+    this.resumeSession,
+    this.resumeEnabled = false,
     required this.onFinish,
   });
 
@@ -4655,6 +4997,7 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
   String? _firstAttemptAnswer;
   bool _hasSavedSessionSrs = false;
   bool _hasRecordedHistory = false;
+  bool _hasRestoredSession = false;
   StudySessionRecorder? _historyRecorder;
 
   void _startHistory() {
@@ -4662,15 +5005,25 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
       widget.selectedWordbook.dbFileName,
       _sessionWords,
     );
-    _historyRecorder = StudyHistoryService.instance.start(
-      wordbook: widget.selectedWordbook,
-      mode: StudyHistoryMode.spelling,
-      expectedCount: _sessionWords.length,
-      plan: _wordbookManager.planForSession(
-        widget.selectedWordbook,
-        _sessionWords,
-      ),
-    );
+    final resumeSession = widget.resumeSession;
+    if (resumeSession != null && !_hasRestoredSession) {
+      _hasRestoredSession = true;
+      _historyRecorder = StudyHistoryService.instance.resume(
+        wordbook: widget.selectedWordbook,
+        session: resumeSession,
+      );
+    } else {
+      _historyRecorder = StudyHistoryService.instance.start(
+        wordbook: widget.selectedWordbook,
+        mode: StudyHistoryMode.spelling,
+        expectedCount: _sessionWords.length,
+        plan: _wordbookManager.planForSession(
+          widget.selectedWordbook,
+          _sessionWords,
+        ),
+        sessionWords: widget.resumeEnabled ? _sessionWords : const [],
+      );
+    }
   }
 
   SpellingAnswerState _answerState = SpellingAnswerState.none;
@@ -4731,7 +5084,9 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
   void _initializeSession() {
     _hasSavedSessionSrs = false;
     _hasRecordedHistory = false;
-    _sessionWords = List.from(widget.words)..shuffle();
+    final restoring = widget.resumeSession != null && !_hasRestoredSession;
+    _sessionWords = List.from(widget.words);
+    if (!restoring) _sessionWords.shuffle();
     _startHistory();
     if (_sessionWords.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => widget.onFinish());
@@ -4849,6 +5204,11 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
       unawaited(
         context.read<StudySoundService>().play(StudySoundEffect.correct),
       );
+      unawaited(
+        context.read<StudyHapticService>().play(
+          StudyHapticEffect.knownOrCorrect,
+        ),
+      );
       _playScorePulse(
         wasRetryAttempt
             ? _SpellingScorePulse.correctRetry
@@ -4858,6 +5218,11 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
     } else {
       unawaited(
         context.read<StudySoundService>().play(StudySoundEffect.incorrect),
+      );
+      unawaited(
+        context.read<StudyHapticService>().play(
+          StudyHapticEffect.unknownOrIncorrect,
+        ),
       );
       _playScorePulse(_SpellingScorePulse.wrongAttempt);
     }
@@ -4953,6 +5318,11 @@ class _SpellingQuizPageState extends State<_SpellingQuizView>
     });
     unawaited(
       context.read<StudySoundService>().play(StudySoundEffect.incorrect),
+    );
+    unawaited(
+      context.read<StudyHapticService>().play(
+        StudyHapticEffect.unknownOrIncorrect,
+      ),
     );
     _playScorePulse(_SpellingScorePulse.wrongCommitted);
     _scheduleAutomaticAdvance();

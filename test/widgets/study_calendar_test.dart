@@ -93,9 +93,12 @@ void main() {
         const Duration(seconds: 5),
       );
       expect(find.text('학습 달력'), findsOneWidget);
-      expect(find.text('학습 완료'), findsOneWidget);
+      expect(find.text('플래시카드'), findsOneWidget);
+      expect(find.text('객관식'), findsOneWidget);
+      expect(find.text('스펠링'), findsOneWidget);
       expect(find.text('복습 예정'), findsOneWidget);
-      expect(find.text('학습 계획'), findsOneWidget);
+      expect(find.text('새 단어 계획'), findsNothing);
+      expect(find.textContaining('날짜 아래 선은 완료한 학습 방식'), findsOneWidget);
       expect(find.text('Book 1 · 전체 단어장'), findsOneWidget);
       expect(find.text('복습 1개'), findsOneWidget);
       expect(tester.takeException(), isNull);

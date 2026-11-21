@@ -490,18 +490,23 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         setState(() {
           _words = newWords;
           _reviewedWordIds = reviewedIds;
-          _selectedWordIds
-            ..clear()
-            ..addAll(
-              _reviewPriorityWords(newWords).take(20).map((word) => word.id!),
-            );
+          // Keep the current task/scope and prepare the next batch. In the
+          // default "needed" scope this selects the next missing examples,
+          // so users can immediately generate another batch without toggling
+          // the task choice first.
+          _syncAutomaticSelection(newWords);
         });
+        final nextBatchCount = _selectedWordIds.length;
+        final generatedMessage =
+            fallbackResult.usedOption.provider == aiSettings.selectedProvider
+                ? '${updatedWords.length}개 단어의 예문 생성이 완료되었습니다.'
+                : '${fallbackResult.usedOption.provider.shortLabel} 모델로 대체해 ${updatedWords.length}개 단어의 예문을 생성했습니다.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              fallbackResult.usedOption.provider == aiSettings.selectedProvider
-                  ? '${updatedWords.length}개 단어의 예문 생성이 완료되었습니다.'
-                  : '${fallbackResult.usedOption.provider.shortLabel} 모델로 대체해 ${updatedWords.length}개 단어의 예문을 생성했습니다.',
+              nextBatchCount > 0
+                  ? '$generatedMessage 다음 $nextBatchCount개를 선택했어요.'
+                  : generatedMessage,
             ),
           ),
         );
@@ -1062,7 +1067,7 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
         Text.rich(
           TextSpan(
             children: [
-              const TextSpan(text: '보강이 필요한 단어 '),
+              const TextSpan(text: '보강하거나 확인할 단어 '),
               TextSpan(
                 text: '$total개',
                 style: TextStyle(color: theme.colorScheme.primary),
@@ -1097,10 +1102,10 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
             Expanded(
               child: _buildMetric(
                 theme,
-                CupertinoIcons.pencil,
-                '검토 필요',
+                CupertinoIcons.checkmark_seal,
+                '확인 권장',
                 needsReview,
-                theme.colorScheme.tertiary,
+                const Color(0xFFF0A33A),
               ),
             ),
           ],

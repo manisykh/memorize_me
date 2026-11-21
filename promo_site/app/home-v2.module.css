@@ -13,7 +13,8 @@
   min-height: 100vh;
   color: var(--ink);
   background: #fff;
-  overflow-x: hidden;
+  /* `hidden` creates a scroll container and can break descendants using sticky. */
+  overflow-x: clip;
 }
 .page, .page * { box-sizing: border-box; }
 .page a { color: inherit; text-decoration: none; }
@@ -50,15 +51,20 @@
 .sectionHeading > p:last-child { max-width: 38em; margin: 20px 0 0; color: var(--muted); font-size: 18px; line-height: 1.7; }
 
 .hero { padding: 128px 0 104px; background: radial-gradient(circle at 84% 18%,rgba(11,95,216,.11),transparent 29%), radial-gradient(circle at 12% 90%,rgba(0,122,94,.08),transparent 27%), #fff; }
-.heroInner { width: min(1240px,calc(100% - 48px)); margin: 0 auto; display: grid; grid-template-columns: minmax(460px,.92fr) minmax(500px,1.08fr); gap: 72px; align-items: center; }
-.heroCopy { max-width: 650px; }
+.heroInner { width: min(1120px,calc(100% - 48px)); margin: 0 auto; display: block; }
+.heroCopy { max-width: 900px; margin: 0 auto; text-align: center; }
 .hero h1 { margin: 0; font-size: clamp(40px,6vw,72px); line-height: 1.15; letter-spacing: -.02em; word-break: keep-all; }
 .hero h1 strong { display: block; color: var(--mint); font: inherit; }
-.heroDescription { max-width: 38em; margin: 27px 0 0; color: var(--muted); font-size: 18px; line-height: 1.7; }
-.formatBadges { margin-top: 23px; display: flex; flex-wrap: wrap; gap: 9px; }
-.formatBadges span { min-height: 36px; padding: 0 14px; display: inline-flex; align-items: center; color: #33577c; background: #f0f5fb; border: 1px solid #d5e1ee; border-radius: 999px; font-size: 14px; font-weight: 850; }
-.heroActions { margin-top: 31px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; }
-.releaseNote { margin: 17px 0 0; display: flex; align-items: center; gap: 10px; color: #52627d; font-size: 14px; font-weight: 800; }
+.heroDescription { max-width: 42em; margin: 27px auto 0; color: var(--muted); font-size: 18px; line-height: 1.7; }
+.formatList { width: fit-content; margin: 30px auto 0; padding: 0; display: grid; gap: 12px; list-style: none; text-align: left; }
+.formatList li { min-width: 200px; display: grid; grid-template-columns: 46px auto; align-items: center; gap: 14px; color: #244469; font-size: 15px; font-weight: 850; }
+.formatIconBox { width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 14px; }
+.formatIconBox svg { width: 23px; height: 28px; display: block; filter: drop-shadow(0 4px 6px rgba(6,38,93,.1)); }
+.sheetsIcon { background: #eaf8f0; border-color: #d0ecdc; }
+.csvIcon { background: #eff3f7; border-color: #dce3eb; }
+.xlsxIcon { background: #e9f5ee; border-color: #cee6d8; }
+.heroActions { margin-top: 31px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px 22px; }
+.releaseNote { margin: 17px 0 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: #52627d; font-size: 14px; font-weight: 800; }
 .releaseNote span { width: 8px; height: 8px; background: #f3a321; border-radius: 50%; box-shadow: 0 0 0 5px rgba(243,163,33,.14); }
 .heroShowcase { min-width: 0; }
 .heroPanels { min-height: 560px; display: grid; place-items: center; }
@@ -74,15 +80,24 @@
 
 .benefits { padding: 108px 0; background: var(--surface); }
 .benefitGrid { margin-top: 52px; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border-top: 1px solid #cfdbea; border-bottom: 1px solid #cfdbea; }
-.benefitGrid article { min-height: 270px; padding: 34px 36px; display: flex; flex-direction: column; border-right: 1px solid #cfdbea; }
+.benefitGrid article { min-height: 230px; padding: 34px 36px; display: flex; flex-direction: column; border-right: 1px solid #cfdbea; }
 .benefitGrid article:last-child { border-right: 0; }
 .benefitGrid article > span { color: var(--blue); font-size: 14px; font-weight: 950; }
 .benefitGrid h3 { margin: 28px 0 0; font-size: 22px; line-height: 1.35; letter-spacing: -.015em; word-break: keep-all; }
 .benefitGrid p { margin: 14px 0 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
-.benefitGrid a { width: fit-content; min-height: 44px; margin-top: auto; display: inline-flex; align-items: center; gap: 8px; color: var(--blue); font-size: 14px; font-weight: 900; }
+.benefitGuideLink { width: fit-content; min-height: 48px; margin: 28px auto 0; display: flex; align-items: center; gap: 8px; color: var(--blue); font-size: 15px; font-weight: 900; }
+
+.motionFrame { position: relative; width: 100%; aspect-ratio: 4 / 5; padding: 24px; display: grid; place-items: center; overflow: hidden; background: linear-gradient(145deg,#e9f3ff 0%,#f2f8ff 54%,#edf9f5 100%); border-radius: 30px; box-shadow: 0 20px 54px rgba(6,38,93,.11); }
+.motionFrame > img { width: auto; max-width: 100%; height: 100%; display: block; object-fit: contain; object-position: center; border-radius: 18px; }
+.videoViewport { width: 100%; height: 100%; display: grid; place-items: center; overflow: visible; background: transparent; }
+.videoCrop { position: relative; height: 100%; max-width: 100%; aspect-ratio: var(--video-aspect); overflow: hidden; background: #f8faff; border-radius: 18px; }
+.motionFrame .videoCrop video { position: absolute; left: 0; width: 100%; max-width: none; display: block; object-fit: fill; object-position: initial; }
+
+/* Every product asset sits in a consistent presentation stage and 4:5 media frame. */
+.journeySticky, .modeCarousel, .aiVisual { width: clamp(420px,42vw,540px); max-width: 100%; height: 680px; margin-inline: auto; }
 
 .journey { padding: 120px 0; scroll-margin-top: 80px; }
-.journeyLayout { margin-top: 64px; display: grid; grid-template-columns: minmax(0,.9fr) minmax(420px,1.1fr); gap: 76px; align-items: start; }
+.journeyLayout { margin-top: 64px; display: grid; grid-template-columns: minmax(0,1fr) clamp(420px,42vw,540px); gap: 76px; align-items: start; }
 .journeySteps article { min-height: 600px; padding: 92px 0; border-top: 1px solid var(--line); opacity: .48; transition: opacity .25s ease; }
 .journeySteps article:last-child { border-bottom: 1px solid var(--line); }
 .journeySteps article.activeJourney { opacity: 1; }
@@ -92,9 +107,8 @@
 .journeySteps ul { margin: 24px 0 0; padding: 0; display: grid; gap: 11px; list-style: none; color: #41536f; font-size: 15px; }
 .journeySteps li::before { content: "✓"; margin-right: 10px; color: var(--mint); font-weight: 950; }
 .journeySteps a { min-height: 44px; margin-top: 25px; display: inline-flex; align-items: center; gap: 8px; color: var(--blue); font-size: 15px; font-weight: 900; }
-.journeySticky { position: sticky; top: 108px; min-height: 660px; padding: 30px; display: grid; grid-template-rows: 1fr auto; background: linear-gradient(145deg,#eaf3ff,#effaf7); border-radius: 28px; }
-.journeySticky .device { width: min(430px,100%); height: 580px; margin: auto; }
-.journeySticky img { width: 100%; height: 100%; object-fit: contain; animation: fadeIn .3s ease; }
+.journeySticky { position: sticky; top: 92px; align-self: start; height: 680px; display: grid; grid-template-rows: auto auto; }
+.journeySticky .motionFrame { width: min(440px,100%); margin: auto; animation: fadeIn .3s ease; }
 .journeySticky p { margin: 18px 0 0; text-align: center; color: #3d5577; font-size: 14px; font-weight: 900; }
 .mobileJourneyImage { display: none; }
 
@@ -103,18 +117,29 @@
 .learning .kicker { color: #8cd8ff; }
 .learningHeading { max-width: 800px; }
 .learningHeading > p:last-child { max-width: 38em; margin: 22px 0 0; color: #b5c7de; font-size: 17px; line-height: 1.7; }
-.learningAxis { margin-top: 84px; padding-top: 72px; display: grid; grid-template-columns: minmax(300px,.75fr) minmax(520px,1.25fr); gap: 72px; align-items: center; border-top: 1px solid rgba(255,255,255,.16); }
-.axisLabel { margin: 0; color: #7fd8c2; font-size: 14px; font-weight: 950; }
-.modeCopy h3 { margin: 18px 0 0; font-size: clamp(30px,4vw,44px); line-height: 1.2; }
-.modeCopy > p:not(.axisLabel) { max-width: 34em; margin: 18px 0 0; color: #b5c7de; font-size: 16px; line-height: 1.7; }
-.modeCopy > a { min-height: 44px; margin-top: 18px; display: inline-flex; align-items: center; gap: 8px; color: #8cd8ff; font-size: 15px; font-weight: 900; }
-.modeTabs { margin-top: 34px; display: grid; gap: 8px; }
-.modeTabs button { min-height: 52px; padding: 0 17px; color: #c2d0e3; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.13); border-radius: 16px; text-align: left; font-size: 15px; font-weight: 850; cursor: pointer; }
+.learningAxis { margin-top: 64px; padding: 28px; display: grid; grid-template-columns: minmax(340px,1fr) clamp(420px,42vw,540px); gap: 34px; align-items: center; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.16); border-radius: 30px; box-shadow: 0 28px 70px rgba(1,14,39,.18); }
+.modeCopy { min-width: 0; padding: 10px 4px 10px 8px; }
+.modeTitleRow { display: flex; align-items: center; gap: 13px; }
+.modeTitleRow h3 { margin: 0; font-size: clamp(30px,4vw,42px); line-height: 1.2; }
+.modeCopy > p { max-width: 34em; margin: 18px 0 0; color: #b5c7de; font-size: 16px; line-height: 1.7; }
+.studyModeIcon { width: 34px; height: 34px; flex: 0 0 auto; display: inline-grid; place-items: center; color: currentColor; background: rgba(255,255,255,.09); border-radius: 10px; }
+.studyModeIcon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.modeTitleRow .studyModeIcon { width: 46px; height: 46px; border-radius: 14px; }
+.modeTitleRow .studyModeIcon svg { width: 25px; height: 25px; }
+.flashcardModeIcon { color: #5ce0b4; }
+.choiceModeIcon { color: #78b7ff; }
+.spellingModeIcon { color: #ff9ea5; }
+.mistakesModeIcon { color: #ffbd69; }
+.reviewModeIcon { color: #b5a3ff; }
+.testModeIcon { color: #83d7e8; }
+.modeTabs { margin-top: 28px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.modeTabs button { min-height: 46px; padding: 6px 11px; display: flex; align-items: center; gap: 9px; color: #c2d0e3; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.13); border-radius: 13px; text-align: left; font-size: 14px; font-weight: 850; cursor: pointer; }
+.modeTabs button .studyModeIcon { width: 29px; height: 29px; border-radius: 9px; }
+.modeTabs button .studyModeIcon svg { width: 17px; height: 17px; }
 .modeTabs button[aria-selected="true"] { color: var(--navy); background: #fff; border-color: #fff; }
-.modeCarousel { position: relative; min-height: 610px; padding: 28px 28px 76px; background: linear-gradient(145deg,#eaf3ff,#effaf7); border-radius: 28px; }
-.modePanel { height: 500px; }
-.modePanel .device { width: min(420px,100%); height: 100%; margin: auto; }
-.modePanel img { width: 100%; height: 100%; object-fit: contain; }
+.modeCarousel { position: relative; min-height: 654px; padding: 0 0 76px; touch-action: pan-y; user-select: none; }
+.modePanel { width: min(440px,100%); margin: auto; }
+.modePanel > div { width: 100%; margin: auto; }
 .carouselControls { position: absolute; right: 24px; bottom: 17px; left: 24px; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; }
 .carouselControls > button { width: 44px; height: 44px; color: var(--navy); background: #fff; border: 1px solid #cbd9e8; border-radius: 50%; cursor: pointer; }
 .carouselControls > div { display: flex; justify-content: center; }
@@ -122,13 +147,8 @@
 .carouselControls > div span { width: 8px; height: 8px; background: #aab9cc; border-radius: 50%; }
 .carouselControls > div button[aria-current="true"] span { width: 24px; background: var(--blue); border-radius: 999px; }
 .expandButton { position: absolute; top: 20px; right: 20px; min-height: 44px; padding: 0 14px; color: var(--blue); background: #fff; border: 1px solid #cbd9e8; border-radius: 999px; font-size: 13px; font-weight: 900; cursor: pointer; }
-.reviewAxis { grid-template-columns: minmax(300px,.7fr) minmax(520px,1.3fr); }
-.reviewVisual { position: relative; min-height: 540px; display: grid; grid-template-columns: .85fr 1.15fr; gap: 16px; align-items: center; }
-.reviewVisual img { width: 100%; max-height: 460px; object-fit: contain; border-radius: 16px; box-shadow: 0 24px 55px rgba(0,0,0,.25); }
-.reviewVisual span { position: absolute; right: 18px; bottom: 20px; max-width: 320px; padding: 14px 18px; color: var(--navy); background: #fff; border-radius: 16px; font-size: 14px; line-height: 1.5; font-weight: 900; }
-
 .aiSection { padding: 120px 0; background: var(--surface-mint); scroll-margin-top: 80px; }
-.aiLayout { display: grid; grid-template-columns: minmax(430px,.9fr) minmax(470px,1.1fr); gap: 82px; align-items: center; }
+.aiLayout { display: grid; grid-template-columns: minmax(0,1fr) clamp(420px,42vw,540px); gap: 82px; align-items: center; }
 .aiCopy > p:not(.kicker):not(.aiNotice) { max-width: 38em; margin: 22px 0 0; color: var(--muted); font-size: 17px; line-height: 1.7; }
 .aiCopy ul { margin: 28px 0 0; padding: 0; display: grid; gap: 12px; list-style: none; color: #244d45; font-size: 16px; font-weight: 850; }
 .aiCopy li span { width: 27px; height: 27px; margin-right: 11px; display: inline-grid; place-items: center; color: #fff; background: var(--mint); border-radius: 50%; font-size: 13px; }
@@ -136,9 +156,8 @@
 .aiLinks { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 12px 20px; }
 .aiLinks a { min-height: 48px; display: inline-flex; align-items: center; color: var(--blue); font-size: 15px; font-weight: 900; }
 .aiLinks a:first-child { padding: 0 18px; border: 1px solid #9ab7aa; border-radius: 999px; color: #225f50; }
-.aiVisual { position: relative; min-height: 610px; display: grid; place-items: center; overflow: hidden; }
-.aiVisual .device { width: min(430px,86%); height: 670px; transform: translateY(90px); }
-.aiVisual img { width: 100%; height: 100%; object-fit: contain; }
+.aiVisual { position: relative; min-height: 654px; display: grid; place-items: center; overflow: visible; }
+.aiVisual .motionFrame { width: min(440px,100%); }
 .aiResultCard { position: absolute; right: 0; bottom: 90px; padding: 17px 20px; display: grid; gap: 5px; color: var(--navy); background: #fff; border: 1px solid #d1e5dd; border-radius: 16px; box-shadow: 0 16px 34px rgba(6,38,93,.12); }
 .aiResultCard span { color: var(--muted); font-size: 13px; }
 
@@ -186,10 +205,8 @@
 
 @media (max-width: 1100px) {
   .desktopNav { gap: 14px; font-size: 13px; }
-  .heroInner { grid-template-columns: minmax(390px,.9fr) minmax(430px,1.1fr); gap: 38px; }
-  .heroPanels { min-height: 500px; }
-  .heroPanel { height: 500px; }
-  .journeyLayout, .learningAxis, .reviewAxis, .aiLayout, .faqLayout { gap: 44px; }
+  .heroInner { width: min(960px,calc(100% - 48px)); }
+  .journeyLayout, .learningAxis, .aiLayout, .faqLayout { gap: 44px; }
 }
 
 @media (max-width: 920px) {
@@ -200,55 +217,53 @@
   .desktopNav { display: none; }
   .menuButton { display: grid; place-items: center; }
   .hero { padding: 104px 0 78px; }
-  .heroInner { display: grid; grid-template-columns: 1fr; gap: 54px; }
   .heroCopy { max-width: 720px; }
-  .heroPanels { min-height: 540px; }
-  .heroPanel { height: 540px; }
   .journeyLayout { display: block; }
   .journeySteps article { min-height: 0; padding: 68px 0; opacity: 1; }
   .journeySticky { display: none; }
   .mobileJourneyImage { margin-top: 36px; display: block; }
-  .mobileJourneyImage .device { width: min(460px,100%); height: 560px; margin: 0 auto; }
-  .mobileJourneyImage img { width: 100%; height: 100%; object-fit: contain; }
-  .learningAxis, .reviewAxis { grid-template-columns: 1fr; }
+  .mobileJourneyImage .motionFrame { width: min(440px,100%); margin: 0 auto; }
+  .learningAxis { grid-template-columns: 1fr; padding: 26px; }
   .modeTabs { grid-template-columns: repeat(3,1fr); }
-  .modeTabs button { text-align: center; }
-  .reviewVisual { min-height: 480px; }
+  .modeTabs button { justify-content: center; text-align: center; }
+  .carouselControls { grid-template-columns: 1fr; }
+  .carouselControls > button { display: none; }
   .aiLayout, .faqLayout { grid-template-columns: 1fr; }
-  .aiVisual { min-height: 540px; }
+  .aiVisual { min-height: 0; }
+  .modeCarousel, .aiVisual { width: min(540px,100%); height: auto; min-height: 0; }
   .footerInner { grid-template-columns: repeat(2,1fr); }
   .footerBrand { grid-column: 1 / -1; }
 }
 
 @media (max-width: 620px) {
   .sectionInner, .learningInner, .heroInner, .footerInner, .footerBottom { width: min(100% - 40px,1120px); }
-  .sectionHeading h2, .learningHeading h2, .aiCopy h2, .helpPanel h2, .faq h2, .finalCta h2 { font-size: clamp(30px,9vw,38px); }
-  .hero h1 { font-size: clamp(40px,11vw,52px); }
+  .sectionHeading h2, .learningHeading h2, .aiCopy h2, .helpPanel h2, .faq h2, .finalCta h2 { font-size: clamp(28px,8.5vw,36px); }
+  .hero h1 { font-size: clamp(34px,10vw,46px); }
   .heroDescription, .sectionHeading > p:last-child { font-size: 16px; }
   .heroActions { display: grid; }
   .heroActions .primaryCta { width: 100%; }
-  .heroShowcase { min-width: 0; }
-  .heroPanels { min-height: 430px; }
-  .heroPanel { height: 430px; }
-  .heroTabs { width: 100%; }
-  .heroTabs button { min-width: 0; padding-inline: 8px; }
   .benefits, .journey, .learning, .aiSection, .faqSection { padding-block: 72px; }
   .benefitGrid { grid-template-columns: 1fr; }
   .benefitGrid article { min-height: 230px; padding: 30px 6px; border-right: 0; border-bottom: 1px solid #cfdbea; }
   .benefitGrid article:last-child { border-bottom: 0; }
   .journeyLayout { margin-top: 30px; }
   .journeySteps article { padding: 54px 0; }
-  .mobileJourneyImage .device { height: 430px; }
-  .learningAxis { margin-top: 58px; padding-top: 52px; }
-  .modeTabs { grid-template-columns: 1fr; }
-  .modeCarousel { min-height: 500px; padding: 18px 12px 74px; }
-  .modePanel { height: 400px; }
+  .motionFrame { padding: 16px; border-radius: 24px; }
+  .motionFrame > img, .videoCrop { border-radius: 14px; }
+  .learningAxis { margin-top: 48px; padding: 18px; gap: 22px; border-radius: 24px; }
+  .modeCopy { padding: 4px 0 0; }
+  .modeTitleRow h3 { font-size: 28px; }
+  .modeTitleRow .studyModeIcon { width: 42px; height: 42px; }
+  .modeTabs { margin: 22px -2px 0; display: flex; gap: 7px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none; }
+  .modeTabs::-webkit-scrollbar { display: none; }
+  .modeTabs button { min-height: 42px; padding: 5px 11px 5px 7px; flex: 0 0 auto; justify-content: flex-start; white-space: nowrap; }
+  .modeCarousel { min-height: 0; height: auto; padding: 0 0 68px; }
   .expandButton { top: 12px; right: 12px; }
-  .reviewVisual { min-height: 430px; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; }
-  .reviewVisual img { width: 86%; max-height: 390px; flex: 0 0 86%; scroll-snap-align: center; }
-  .reviewVisual span { right: 10px; bottom: 8px; left: 10px; max-width: none; }
-  .aiVisual { min-height: 480px; }
-  .aiVisual .device { height: 540px; transform: translateY(75px); }
+  .mobileJourneyImage .motionFrame { width: min(440px,calc(100% - 36px)); }
+  .modeCarousel, .aiVisual { width: 100%; min-height: 0; }
+  .aiVisual { height: 540px; padding: 0; }
+  .aiVisual { min-height: 0; }
+  .aiVisual .motionFrame { transform: none; }
   .faqLayout { gap: 66px; }
   .finalCta { padding-block: 72px; }
   .finalActions { display: grid; }

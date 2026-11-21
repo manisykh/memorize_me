@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "../legal.css";
+import { CopyLines } from "../copy-lines";
 
 export const metadata: Metadata = {
   title: "개인정보 처리방침 | Memorize Me",
@@ -19,9 +20,7 @@ export default function PrivacyPage() {
         <p className="legal-updated">시행일: 2026년 10월 18일</p>
 
         <div className="legal-summary">
-          Memorize Me는 단어장과 학습 기록을 기본적으로 사용자의 기기에
-          저장합니다. 외부 서비스 연결은 사용자가 직접 선택한 기능을
-          제공하기 위해서만 사용합니다.
+          <CopyLines lines={["단어장과 학습 기록은 기본적으로", "사용자의 기기에 저장합니다.", "외부 서비스는 사용자가 선택한 기능을", "제공하기 위해서만 연결합니다."]} />
         </div>
 
         <section className="legal-section">

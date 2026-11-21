@@ -60,7 +60,9 @@ class WordbookStudyHistory {
   });
 
   bool get hasAnySessions =>
-      flashcard.hasSessions || multipleChoice.hasSessions || spelling.hasSessions;
+      flashcard.hasSessions ||
+      multipleChoice.hasSessions ||
+      spelling.hasSessions;
 
   StudyModeHistory forMode(StudyHistoryMode mode) {
     return switch (mode) {
@@ -112,8 +114,11 @@ class StudyHistoryService extends ChangeNotifier {
   StudyHistoryService._() : _database = DatabaseService(), _now = DateTime.now;
 
   @visibleForTesting
-  StudyHistoryService.forTesting(DatabaseService database, {DateTime Function()? now})
-      : _database = database, _now = now ?? DateTime.now;
+  StudyHistoryService.forTesting(
+    DatabaseService database, {
+    DateTime Function()? now,
+  }) : _database = database,
+       _now = now ?? DateTime.now;
 
   Future<void> get pendingWrites => _pendingWrite;
 
@@ -125,25 +130,37 @@ class StudyHistoryService extends ChangeNotifier {
       sessions.where((session) => session.completed).toList();
 
   WordbookStudyHistory bundleHistory(StudyPlan plan, int bundle) {
-    final matching = completedSessions.where((s) => s.dbFileName == plan.dbFileName &&
-        s.planRevision == plan.revision && s.bundle == bundle).toList()
-      ..sort((a, b) => a.completedAt!.compareTo(b.completedAt!));
+    final matching =
+        completedSessions
+            .where(
+              (s) =>
+                  s.dbFileName == plan.dbFileName &&
+                  s.planRevision == plan.revision &&
+                  s.bundle == bundle,
+            )
+            .toList()
+          ..sort((a, b) => a.completedAt!.compareTo(b.completedAt!));
     var history = const WordbookStudyHistory();
     for (final session in matching) {
       final old = history.forMode(session.mode);
-      history = history.copyWithMode(session.mode, StudyModeHistory(
-        sessionCount: old.sessionCount + 1, latestTotal: session.answers.length,
-        latestSuccess: session.successCount,
-        latestFailure: session.answers.length - session.successCount,
-      ));
+      history = history.copyWithMode(
+        session.mode,
+        StudyModeHistory(
+          sessionCount: old.sessionCount + 1,
+          latestTotal: session.answers.length,
+          latestSuccess: session.successCount,
+          latestFailure: session.answers.length - session.successCount,
+        ),
+      );
     }
     return history;
   }
 
-  Future<void> ensureLoaded() => _loading ??= _loadSessions().catchError((Object error) {
-    _loading = null;
-    throw error;
-  });
+  Future<void> ensureLoaded() =>
+      _loading ??= _loadSessions().catchError((Object error) {
+        _loading = null;
+        throw error;
+      });
 
   Future<void> _loadSessions() async {
     final rows = await _database.getStudySessions();
@@ -156,7 +173,9 @@ class StudyHistoryService extends ChangeNotifier {
   Future<WordbookStudyHistory> load(String dbFileName) async {
     await ensureLoaded();
     final preferences = await SharedPreferences.getInstance();
-    final stored = preferences.getString('$_keyPrefix${Uri.encodeComponent(dbFileName)}');
+    final stored = preferences.getString(
+      '$_keyPrefix${Uri.encodeComponent(dbFileName)}',
+    );
     var history = const WordbookStudyHistory();
     if (stored != null) {
       try {
@@ -166,17 +185,25 @@ class StudyHistoryService extends ChangeNotifier {
       }
     }
     for (final mode in StudyHistoryMode.values) {
-      final matching = sessions.where((s) =>
-          s.dbFileName == dbFileName && s.mode == mode && s.completed).toList()
-        ..sort((a, b) => a.completedAt!.compareTo(b.completedAt!));
+      final matching =
+          sessions
+              .where(
+                (s) =>
+                    s.dbFileName == dbFileName && s.mode == mode && s.completed,
+              )
+              .toList()
+            ..sort((a, b) => a.completedAt!.compareTo(b.completedAt!));
       if (matching.isEmpty) continue;
       final latest = matching.last;
-      history = history.copyWithMode(mode, StudyModeHistory(
-        sessionCount: history.forMode(mode).sessionCount + matching.length,
-        latestTotal: latest.answers.length,
-        latestSuccess: latest.successCount,
-        latestFailure: latest.answers.length - latest.successCount,
-      ));
+      history = history.copyWithMode(
+        mode,
+        StudyModeHistory(
+          sessionCount: history.forMode(mode).sessionCount + matching.length,
+          latestTotal: latest.answers.length,
+          latestSuccess: latest.successCount,
+          latestFailure: latest.answers.length - latest.successCount,
+        ),
+      );
     }
     return history;
   }
@@ -187,12 +214,13 @@ class StudyHistoryService extends ChangeNotifier {
     int limit = 10,
   }) async {
     await ensureLoaded();
-    final matching = completedSessions.where((session) {
-      if (session.dbFileName != dbFileName) return false;
-      if (session.mode == StudyHistoryMode.flashcard) return false;
-      return mode == null || session.mode == mode;
-    }).toList()
-      ..sort((a, b) => b.completedAt!.compareTo(a.completedAt!));
+    final matching =
+        completedSessions.where((session) {
+            if (session.dbFileName != dbFileName) return false;
+            if (session.mode == StudyHistoryMode.flashcard) return false;
+            return mode == null || session.mode == mode;
+          }).toList()
+          ..sort((a, b) => b.completedAt!.compareTo(a.completedAt!));
     return matching.take(limit).toList(growable: false);
   }
 
@@ -202,34 +230,96 @@ class StudyHistoryService extends ChangeNotifier {
         if (answer.wasNew) answer.wordKey,
   };
 
-  bool wasPreviouslyStudied(String dbFileName, String wordKey, String excludingSession) =>
-      sessions.any((s) => s.id != excludingSession && s.dbFileName == dbFileName &&
-          s.answers.any((a) => a.wordKey == wordKey));
+  bool wasPreviouslyStudied(
+    String dbFileName,
+    String wordKey,
+    String excludingSession,
+  ) => sessions.any(
+    (s) =>
+        s.id != excludingSession &&
+        s.dbFileName == dbFileName &&
+        s.answers.any((a) => a.wordKey == wordKey),
+  );
 
   Set<String> studiedKeysOn(DateTime date, {String? dbFileName}) => {
-    for (final session in sessions.where((s) => dbFileName == null || s.dbFileName == dbFileName))
+    for (final session in sessions.where(
+      (s) => dbFileName == null || s.dbFileName == dbFileName,
+    ))
       for (final answer in session.answersOn(date))
         '${session.dbFileName}:${answer.wordKey}',
   };
 
   StudySessionRecorder start({
-    required Wordbook wordbook, required StudyHistoryMode mode,
-    required int expectedCount, StudyPlan? plan,
-  }) => StudySessionRecorder._(this, wordbook, mode, expectedCount, plan);
+    required Wordbook wordbook,
+    required StudyHistoryMode mode,
+    required int expectedCount,
+    StudyPlan? plan,
+    List<Word> sessionWords = const [],
+  }) => StudySessionRecorder._(
+    this,
+    wordbook,
+    mode,
+    expectedCount,
+    plan,
+    sessionWords,
+  );
+
+  StudySessionRecord? latestResumableSession(
+    String dbFileName,
+    StudyHistoryMode mode,
+  ) {
+    final matching =
+        sessions
+            .where(
+              (session) =>
+                  session.dbFileName == dbFileName &&
+                  session.mode == mode &&
+                  session.resumable,
+            )
+            .toList()
+          ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    return matching.firstOrNull;
+  }
+
+  StudySessionRecorder resume({
+    required Wordbook wordbook,
+    required StudySessionRecord session,
+  }) => StudySessionRecorder.resume(this, wordbook, session);
+
+  Future<void> abandonResumableSessions(
+    String dbFileName,
+    StudyHistoryMode mode,
+  ) async {
+    final now = _now();
+    final matching =
+        sessions
+            .where(
+              (session) =>
+                  session.dbFileName == dbFileName &&
+                  session.mode == mode &&
+                  session.resumable,
+            )
+            .toList();
+    for (final session in matching) {
+      await persist(session.copyWith(abandonedAt: now));
+    }
+  }
 
   Future<void> persist(StudySessionRecord session) {
     _sessions[session.id] = session;
-    final operation = _pendingWrite.then((_) async {
-      await ensureLoaded();
-      await _database.saveStudySession(session.toMap());
-      _failedWrites.remove(session.id);
-      lastError = _failedWrites.values.firstOrNull;
-      notifyListeners();
-    }).catchError((Object error) {
-      _failedWrites[session.id] = error;
-      lastError = error;
-      notifyListeners();
-    });
+    final operation = _pendingWrite
+        .then((_) async {
+          await ensureLoaded();
+          await _database.saveStudySession(session.toMap());
+          _failedWrites.remove(session.id);
+          lastError = _failedWrites.values.firstOrNull;
+          notifyListeners();
+        })
+        .catchError((Object error) {
+          _failedWrites[session.id] = error;
+          lastError = error;
+          notifyListeners();
+        });
     _pendingWrite = operation;
     return operation;
   }
@@ -253,7 +343,8 @@ class StudyHistoryService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<Map<String, dynamic>>> planVersions() => _database.getStudyPlanVersions();
+  Future<List<Map<String, dynamic>>> planVersions() =>
+      _database.getStudyPlanVersions();
 }
 
 class StudySessionRecorder {
@@ -262,37 +353,87 @@ class StudySessionRecorder {
   final Wordbook wordbook;
   final StudyHistoryMode mode;
   final int expectedCount;
-  final StudyPlan? plan;
+  final StudyPlanMode? planMode;
+  final int? planRevision;
+  final int? bundle;
+  final List<String> wordKeys;
   final DateTime startedAt;
-  late final String id = '${startedAt.microsecondsSinceEpoch}-${_sequence++}';
+  final String id;
   final Map<String, StudyAnswerRecord> _answers = {};
   DateTime? _completedAt;
 
-  StudySessionRecorder._(StudyHistoryService service, this.wordbook, this.mode, this.expectedCount, this.plan)
-      : _service = service, startedAt = service._now();
+  StudySessionRecorder._(
+    StudyHistoryService service,
+    this.wordbook,
+    this.mode,
+    this.expectedCount,
+    StudyPlan? plan,
+    List<Word> sessionWords,
+  ) : _service = service,
+      planMode = plan?.mode,
+      planRevision = plan?.revision,
+      bundle = plan?.mode == StudyPlanMode.free ? plan?.currentChunk() : null,
+      wordKeys = List.unmodifiable(
+        sessionWords.map(StudyScheduleService.wordKey),
+      ),
+      startedAt = service._now(),
+      id = '${service._now().microsecondsSinceEpoch}-${_sequence++}';
 
-  void answer(Word word, {required bool success, String? nextReviewDate, bool retry = false,
-      bool skipped = false, String? userAnswer}) {
+  StudySessionRecorder.resume(
+    StudyHistoryService service,
+    this.wordbook,
+    StudySessionRecord session,
+  ) : _service = service,
+      mode = session.mode,
+      expectedCount = session.expectedCount,
+      planMode = session.planMode,
+      planRevision = session.planRevision,
+      bundle = session.bundle,
+      wordKeys = List.unmodifiable(session.wordKeys),
+      startedAt = session.startedAt,
+      id = session.id {
+    for (final answer in session.answers) {
+      _answers[answer.wordKey] = answer;
+    }
+  }
+
+  void answer(
+    Word word, {
+    required bool success,
+    String? nextReviewDate,
+    bool retry = false,
+    bool skipped = false,
+    String? userAnswer,
+  }) {
     if (_completedAt != null) return;
     final key = StudyScheduleService.wordKey(word);
     final previous = _answers[key];
     final attempts = <StudyAttemptRecord>[
       ...?previous?.attemptLog,
-      if (previous == null || retry) StudyAttemptRecord(at: _service._now(), success: success),
+      if (previous == null || retry)
+        StudyAttemptRecord(at: _service._now(), success: success),
     ];
     _answers[key] = StudyAnswerRecord(
-      wordKey: key, word: word.word, success: success,
+      wordKey: key,
+      word: word.word,
+      success: success,
       meaning: word.meaning,
       additionalMeanings: word.additionalMeanings,
       userAnswer: userAnswer ?? previous?.userAnswer,
-      wasNew: previous?.wasNew ?? (SrsService().isNewWord(word) &&
-          !_service.wasPreviouslyStudied(wordbook.dbFileName, key, id)),
+      wasNew:
+          previous?.wasNew ??
+          (SrsService().isNewWord(word) &&
+              !_service.wasPreviouslyStudied(wordbook.dbFileName, key, id)),
       attempts: previous == null ? 1 : previous.attempts + (retry ? 1 : 0),
-      at: _service._now(), attemptLog: attempts,
+      at: _service._now(),
+      attemptLog: attempts,
       nextReviewDate: nextReviewDate ?? previous?.nextReviewDate,
       skipped: skipped,
-      hadPriorQuizMistake: mode == StudyHistoryMode.multipleChoice ? word.pendingMcqReview > 0 :
-          mode == StudyHistoryMode.spelling && word.pendingSpellingReview > 0,
+      hadPriorQuizMistake:
+          mode == StudyHistoryMode.multipleChoice
+              ? word.pendingMcqReview > 0
+              : mode == StudyHistoryMode.spelling &&
+                  word.pendingSpellingReview > 0,
     );
     _save();
   }
@@ -304,18 +445,31 @@ class StudySessionRecorder {
   }
 
   void complete() {
-    if (_completedAt != null || _answers.isEmpty || _answers.length < expectedCount) return;
+    if (_completedAt != null ||
+        _answers.isEmpty ||
+        _answers.length < expectedCount) {
+      return;
+    }
     _completedAt = _service._now();
     _save();
   }
 
   void _save() {
-    _service.persist(StudySessionRecord(
-      id: id, dbFileName: wordbook.dbFileName, wordbookName: wordbook.name,
-      mode: mode, startedAt: startedAt, completedAt: _completedAt,
-      expectedCount: expectedCount, answers: List.unmodifiable(_answers.values),
-      planMode: plan?.mode, planRevision: plan?.revision,
-      bundle: plan?.mode == StudyPlanMode.free ? plan?.currentChunk() : null,
-    ));
+    _service.persist(
+      StudySessionRecord(
+        id: id,
+        dbFileName: wordbook.dbFileName,
+        wordbookName: wordbook.name,
+        mode: mode,
+        startedAt: startedAt,
+        completedAt: _completedAt,
+        expectedCount: expectedCount,
+        answers: List.unmodifiable(_answers.values),
+        planMode: planMode,
+        planRevision: planRevision,
+        bundle: bundle,
+        wordKeys: wordKeys,
+      ),
+    );
   }
 }

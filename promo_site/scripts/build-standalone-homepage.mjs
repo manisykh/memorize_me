@@ -3,9 +3,10 @@ import { dirname, extname, join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const templatePath = join(root, "standalone", "homepage.template.html");
+const legacyOrigin = "https://memorize-me-guide.donmelchor2006.chatgpt.site";
+const publicOrigin = "https://memorizeme-app.netlify.app";
 const outputPaths = [
   join(root, "public", "downloads", "memorize-me-homepage.html"),
-  join(root, "..", "deliverables", "memorize-me-homepage-latest.html"),
 ];
 
 const assets = {
@@ -39,6 +40,7 @@ const mimeByExt = {
   ".svg": "image/svg+xml",
 };
 let html = readFileSync(templatePath, "utf8");
+html = html.replaceAll(legacyOrigin, publicOrigin);
 
 for (const [token, relativePath] of Object.entries(assets)) {
   const absolutePath = join(root, relativePath);

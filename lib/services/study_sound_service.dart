@@ -23,14 +23,17 @@ class StudySoundService extends ChangeNotifier {
   };
 
   final Map<StudySoundEffect, AudioPlayer> _players = {};
+  late final Future<void> _loadFuture;
   late final Future<void> _prepareFuture;
   AudioPlayer? _activePlayer;
-  bool _enabled = true;
+  // Stay silent until the persisted preference has been restored. Starting
+  // with `true` allowed the first few study effects to play during app boot.
+  bool _enabled = false;
 
   bool get enabled => _enabled;
 
   StudySoundService() {
-    unawaited(_load());
+    _loadFuture = _load();
     _prepareFuture = _preparePlayers();
   }
 
@@ -71,19 +74,27 @@ class StudySoundService extends ChangeNotifier {
   }
 
   Future<void> setEnabled(bool value) async {
+    await _loadFuture;
     if (_enabled == value) return;
     _enabled = value;
     notifyListeners();
+    if (!value) {
+      await _activePlayer?.stop();
+      _activePlayer = null;
+    }
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool(_enabledKey, value);
   }
 
   Future<void> play(StudySoundEffect effect) async {
+    await _loadFuture;
     if (!_enabled) return;
     final assetPath = _assetPaths[effect];
     if (assetPath == null) return;
     try {
       await _prepareFuture;
+      // The setting may have changed while audio players were being prepared.
+      if (!_enabled) return;
       final player = _players[effect];
       if (player == null) return;
       if (_activePlayer != null) await _activePlayer!.stop();

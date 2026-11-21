@@ -3,6 +3,11 @@ package com.memorize.me
 import android.accounts.Account
 import android.app.Activity
 import android.content.Intent
+import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
@@ -15,6 +20,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val googlePickerChannel = "memorize_me/google_picker"
+    private val studyHapticsChannel = "memorize_me/study_haptics"
     private val googlePickerRequestCode = 9134
     private val driveFileScope = "https://www.googleapis.com/auth/drive.file"
     private val spreadsheetMimeType = "application/vnd.google-apps.spreadsheet"
@@ -36,6 +42,52 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            studyHapticsChannel,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "play" -> result.success(
+                    playStudyHaptic(call.argument<String>("effect").orEmpty()),
+                )
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun playStudyHaptic(effect: String): Boolean {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(VibratorManager::class.java).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+        if (!vibrator.hasVibrator()) return false
+
+        val (timings, amplitudes) = when (effect) {
+            "cardFlip" -> Pair(
+                longArrayOf(0, 80),
+                intArrayOf(0, 205),
+            )
+            "knownOrCorrect" -> Pair(
+                longArrayOf(0, 80, 55, 105),
+                intArrayOf(0, 220, 0, 255),
+            )
+            "unknownOrIncorrect" -> Pair(
+                longArrayOf(0, 300),
+                intArrayOf(0, 255),
+            )
+            else -> return false
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(timings, -1)
+        }
+        return true
     }
 
     private fun openNativePicker(

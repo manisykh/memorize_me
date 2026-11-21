@@ -1589,3 +1589,41 @@ footer p {
     transition: none;
   }
 }
+/* Korean copy rhythm -------------------------------------------------------
+ * Display copy uses explicit editorial lines (`CopyLines`). Long-form copy
+ * still wraps, but only at natural Korean word boundaries.
+ */
+:where(h1, h2, h3, h4, h5, h6, p, li, summary, figcaption, a, button, strong, span) {
+  word-break: keep-all;
+}
+
+:where(h1, h2, h3, h4, h5, h6) {
+  text-wrap: balance;
+}
+
+:where(p, li, summary, figcaption) {
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+.copy-lines,
+.copy-line {
+  display: block;
+}
+
+.copy-line {
+  white-space: nowrap;
+  text-wrap: nowrap;
+}
+
+.infographic-preview-frame {
+  overflow: hidden;
+  margin-inline: auto;
+  background: #f5f8fc;
+}
+
+.infographic-preview-canvas {
+  width: 1080px;
+  height: 1920px;
+  transform-origin: top left;
+}

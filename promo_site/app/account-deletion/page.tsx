@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "../legal.css";
+import { CopyLines } from "../copy-lines";
 
 export const metadata: Metadata = {
   title: "계정 삭제 | Memorize Me",
@@ -21,8 +22,7 @@ export default function AccountDeletionPage() {
         <p className="legal-updated">최종 업데이트: 2026년 10월 18일</p>
 
         <div className="legal-summary">
-          앱에서 계정 삭제를 즉시 요청할 수 있습니다. 앱에 접근할 수 없다면
-          아래 외부 요청 방법을 이용하세요.
+          <CopyLines lines={["앱에서 계정 삭제를", "즉시 요청할 수 있습니다.", "앱에 접근할 수 없다면", "아래 외부 요청 방법을", "이용하세요."]} />
         </div>
 
         <section className="legal-section">

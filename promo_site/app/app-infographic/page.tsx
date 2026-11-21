@@ -1,3 +1,6 @@
+import { CopyLines } from "../copy-lines";
+import { InfographicFrame } from "../infographic-frame";
+
 export const metadata = {
   title: "Memorize Me 앱 사용 인포그래픽",
   robots: { index: false, follow: false },
@@ -48,11 +51,12 @@ const steps = [
 
 export default function AppInfographicPage() {
   return (
+    <InfographicFrame>
     <main className="app-infographic-canvas">
       <header className="app-infographic-header">
         <div className="app-infographic-brand"><img src="/app-icon.png" alt="" /><span>Memorize Me</span></div>
         <p>처음 사용하는 분을 위한 한 장 가이드</p>
-        <h1>단어장부터 복습까지,<br /><em>이 순서대로 시작하세요.</em></h1>
+        <h1><CopyLines lines={["단어장부터 복습까지,", <em key="app-info">이 순서대로 시작하세요.</em>]} /></h1>
         <div className="app-infographic-imports"><span>Google Sheets</span><span>CSV</span><span>XLSX</span></div>
       </header>
 
@@ -63,7 +67,7 @@ export default function AppInfographicPage() {
             <figure><img src={step.image} alt={step.alt} /></figure>
             <div className="app-infographic-copy">
               <span>{step.kicker}</span>
-              <h2>{step.title}</h2>
+              <h2><CopyLines lines={[step.title]} /></h2>
               <p>{step.body}</p>
             </div>
           </article>
@@ -80,5 +84,6 @@ export default function AppInfographicPage() {
         <p>설정의 <strong>가이드</strong>에서 온보딩과 사용 설명을 언제든 다시 볼 수 있습니다.</p>
       </footer>
     </main>
+    </InfographicFrame>
   );
 }

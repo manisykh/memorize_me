@@ -1491,44 +1491,19 @@ class _HomeGoalRingState extends State<_HomeGoalRing>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (widget.summary.additionalCount > 0)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              _HomeGoalNumber(
-                                label: '기본',
-                                value: widget.summary.baseCount,
-                                color: widget.identity.primaryAction,
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(7, 0, 7, 7),
-                                child: Text(
-                                  '+',
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    color: widget.identity.mutedInk,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                              _HomeGoalNumber(
-                                label: '추가',
-                                value: widget.summary.additionalCount,
-                                color: widget.identity.scheduled,
-                              ),
-                            ],
-                          )
-                        else
-                          _HomeGoalNumber(
-                            label: '기본',
-                            value: widget.summary.baseCount,
-                            color: widget.identity.primaryAction,
-                            emphasized: true,
-                          ),
+                        _HomeGoalNumber(
+                          label:
+                              widget.summary.remainingCount == 0 ? '완료' : '남음',
+                          value: widget.summary.remainingCount,
+                          color:
+                              widget.summary.remainingCount == 0
+                                  ? widget.identity.success
+                                  : widget.identity.primaryAction,
+                          emphasized: true,
+                        ),
                         const SizedBox(height: 14),
                         Text(
-                          '${widget.summary.completedCount}개 완료 · ${widget.summary.remainingCount}개 남음',
+                          '전체 ${widget.summary.totalCount}개 · ${widget.summary.completedCount}개 완료',
                           maxLines: 1,
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: widget.identity.mutedInk,

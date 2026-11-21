@@ -1,3 +1,6 @@
+import { CopyLines } from "../copy-lines";
+import { InfographicFrame } from "../infographic-frame";
+
 export const metadata = {
   title: "Memorize Me 학습 기능 인포그래픽",
   robots: { index: false, follow: false },
@@ -18,11 +21,12 @@ const aiModes = [
 
 export default function LearningInfographicPage() {
   return (
+    <InfographicFrame>
     <main className="learning-infographic-canvas">
       <header className="learning-infographic-header">
         <div className="learning-infographic-brand"><img src="/app-icon.png" alt="" /><span>Memorize Me</span></div>
         <p>단어장 하나로 만드는 학습 흐름</p>
-        <h1>외우고, 확인하고,<br /><em>문제와 시험지까지.</em></h1>
+        <h1><CopyLines lines={["외우고, 확인하고,", <em key="learning-info">문제와 시험지까지.</em>]} /></h1>
       </header>
 
       <section className="learning-wordbook-hub">
@@ -50,7 +54,7 @@ export default function LearningInfographicPage() {
       </section>
 
       <section className="learning-output-flow">
-        <header><span>문제를 만든 다음</span><h2>앱에서 풀거나, 시험지로 내보내세요</h2></header>
+        <header><span>문제를 만든 다음</span><h2><CopyLines lines={["앱에서 풀거나,", "시험지로 내보내세요"]} /></h2></header>
         <div className="learning-output-steps">
           <div><b>1</b><strong>문제 생성</strong><span>단어 · 문법 · 독해</span></div>
           <i>→</i>
@@ -67,5 +71,6 @@ export default function LearningInfographicPage() {
         <div className="learning-endline"><strong>내 단어장으로 오늘 바로 시작해보세요.</strong><span>Memorize Me</span></div>
       </footer>
     </main>
+    </InfographicFrame>
   );
 }

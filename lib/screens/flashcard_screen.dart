@@ -17,7 +17,9 @@ import '../services/srs_service.dart';
 import '../services/analytics_service.dart';
 import '../services/tts_service.dart';
 import '../services/study_sound_service.dart';
+import '../services/study_haptic_service.dart';
 import '../services/study_history_service.dart';
+import '../services/study_schedule_service.dart';
 import '../themes/app_theme.dart';
 import '../themes/memorize_identity.dart';
 import '../widgets/wordbook_selection_dialog.dart';
@@ -166,6 +168,13 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
             : StudySoundEffect.unknownSwipe,
       ),
     );
+    unawaited(
+      context.read<StudyHapticService>().play(
+        difficulty == SrsDifficulty.good
+            ? StudyHapticEffect.knownOrCorrect
+            : StudyHapticEffect.unknownOrIncorrect,
+      ),
+    );
 
     final updatedWord = _srsService.updateWordSrs(
       word: word,
@@ -228,24 +237,160 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
   }
 
   void _runInitialLaunchIfNeeded() {
-    if (!_pendingInitialLaunch ||
-        _selectedWordbook == null ||
-        (_sessionWords.isEmpty &&
-            (widget.reviewWordsOverride?.isEmpty ?? true))) {
+    if (!_pendingInitialLaunch || _selectedWordbook == null) {
       return;
     }
     _pendingInitialLaunch = false;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (widget.initialMode == FlashcardLaunchMode.review) {
-        _startSession(srsOnly: true);
-      } else if (widget.initialMode == FlashcardLaunchMode.newWords) {
-        _startNewWordSession();
-      } else if (widget.initialMode == FlashcardLaunchMode.allWords) {
-        _startSession(srsOnly: false);
-      }
+      unawaited(_restoreOrStartInitialSession());
     });
+  }
+
+  Future<void> _restoreOrStartInitialSession() async {
+    final book = _selectedWordbook;
+    if (book == null) return;
+    final history = StudyHistoryService.instance;
+    await history.ensureLoaded();
+    if (!mounted || _selectedWordbook?.dbFileName != book.dbFileName) return;
+
+    final pending = history.latestResumableSession(
+      book.dbFileName,
+      StudyHistoryMode.flashcard,
+    );
+    if (pending != null) {
+      final remaining = _remainingWordsFor(pending);
+      if (remaining.isEmpty) {
+        await history.abandonResumableSessions(
+          book.dbFileName,
+          StudyHistoryMode.flashcard,
+        );
+      } else if (mounted) {
+        final continueSession = await _showResumeDialog(
+          completedCount: pending.answers.length,
+          totalCount: pending.expectedCount,
+          remainingCount: remaining.length,
+        );
+        if (!mounted) return;
+        if (continueSession) {
+          await _resumeSession(pending, remaining);
+          return;
+        }
+        await history.abandonResumableSessions(
+          book.dbFileName,
+          StudyHistoryMode.flashcard,
+        );
+        if (!mounted) return;
+      }
+    }
+    _startRequestedInitialMode();
+  }
+
+  void _startRequestedInitialMode() {
+    if (widget.initialMode == FlashcardLaunchMode.review) {
+      _startSession(srsOnly: true);
+    } else if (widget.initialMode == FlashcardLaunchMode.newWords) {
+      _startNewWordSession();
+    } else if (widget.initialMode == FlashcardLaunchMode.allWords) {
+      _startSession(srsOnly: false);
+    }
+  }
+
+  List<Word> _remainingWordsFor(StudySessionRecord session) {
+    final answeredKeys =
+        session.answers.map((answer) => answer.wordKey).toSet();
+    final currentByKey = <String, Word>{
+      for (final word in _allWords) StudyScheduleService.wordKey(word): word,
+    };
+    return [
+      for (final key in session.wordKeys)
+        if (!answeredKeys.contains(key) && currentByKey[key] != null)
+          currentByKey[key]!,
+    ];
+  }
+
+  Future<bool> _showResumeDialog({
+    required int completedCount,
+    required int totalCount,
+    required int remainingCount,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        final identity = MemorizeIdentity.of(theme);
+        return PopScope<void>(
+          canPop: false,
+          child: AlertDialog(
+            icon: Icon(
+              CupertinoIcons.play_circle_fill,
+              color: identity.primaryAction,
+              size: 34,
+            ),
+            title: const Text('진행 중인 카드 학습이 있어요'),
+            content: Text(
+              '전체 $totalCount개 중 $completedCount개를 확인했어요. '
+              '남은 $remainingCount개부터 이어서 학습할까요?',
+              textAlign: TextAlign.center,
+            ),
+            actions: [
+              OutlinedButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('새로 시작'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text('$remainingCount개 이어서 학습'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    return result ?? true;
+  }
+
+  Future<void> _resumeSession(
+    StudySessionRecord session,
+    List<Word> remaining,
+  ) async {
+    final book = _selectedWordbook;
+    if (book == null || remaining.isEmpty) return;
+    final normalized = session.copyWith(
+      expectedCount: session.answers.length + remaining.length,
+      wordKeys: [
+        ...session.answers.map((answer) => answer.wordKey),
+        ...remaining.map(StudyScheduleService.wordKey),
+      ],
+    );
+    await StudyHistoryService.instance.persist(normalized);
+    if (!mounted) return;
+    setState(() {
+      _sessionWords = _wordbookManager.latestStudyWords(
+        book.dbFileName,
+        remaining,
+      );
+      _sessionType = FlashcardSessionType.allWords;
+      _currentCardIndex = 0;
+      _sessionActive = true;
+      _updatedWordsInSession.clear();
+      _sessionDecisions.clear();
+      _unknownCount = 0;
+      _knownCount = 0;
+      _isEndingSession = false;
+      _showEmptyDeckCompletion = false;
+      _revealedAdditionalMeaningKey = null;
+      _historyRecorder = StudyHistoryService.instance.resume(
+        wordbook: book,
+        session: normalized,
+      );
+    });
+    context.read<AnalyticsService>().logStudyStarted(
+      mode: 'flashcard_resume',
+      wordCount: remaining.length,
+    );
   }
 
   void _resetSessionProgress() {
@@ -260,6 +405,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
         mode: StudyHistoryMode.flashcard,
         expectedCount: _sessionWords.length,
         plan: _wordbookManager.planForSession(book, _sessionWords),
+        sessionWords: _sessionWords,
       );
     }
     _updatedWordsInSession.clear();
@@ -2063,6 +2209,9 @@ class _ResponsiveFlipCardState extends State<_ResponsiveFlipCard>
 
   Future<void> _toggle() async {
     if (_controller.isAnimating) return;
+    unawaited(
+      context.read<StudyHapticService>().play(StudyHapticEffect.cardFlip),
+    );
     if (_showingFront) {
       await _controller.forward();
     } else {

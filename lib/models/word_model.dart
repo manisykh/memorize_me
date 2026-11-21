@@ -35,6 +35,9 @@ class Word {
     this.pendingSpellingReview = 0,
   });
 
+  bool get hasExampleSentence =>
+      exampleSentence?.trim().isNotEmpty ?? false;
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,

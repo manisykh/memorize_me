@@ -1,3 +1,6 @@
+import { CopyLines } from "../copy-lines";
+import { InfographicFrame } from "../infographic-frame";
+
 export const metadata = {
   title: "Memorize Me AI API 연결 인포그래픽",
   robots: { index: false, follow: false },
@@ -5,11 +8,12 @@ export const metadata = {
 
 export default function InfographicPage() {
   return (
+    <InfographicFrame>
     <main className="infographic-canvas">
       <header className="infographic-header">
         <div className="infographic-brand"><img src="/app-icon.png" alt="" /><span>Memorize Me</span></div>
         <p>AI 학습 시작 가이드</p>
-        <h1>내 API 연결,<br /><em>3단계면 끝나요.</em></h1>
+        <h1><CopyLines lines={["내 API 연결,", <em key="api-info">3단계면 끝나요.</em>]} /></h1>
         <span className="infographic-subtitle">예문 · 퀴즈 · 문법 문제를 내 단어장으로 생성하세요</span>
       </header>
 
@@ -49,5 +53,6 @@ export default function InfographicPage() {
       </footer>
       <div className="infographic-path"><span>앱에서 찾기</span><strong>AI 학습 탭 → 무료 API로 시작</strong></div>
     </main>
+    </InfographicFrame>
   );
 }

@@ -8,6 +8,7 @@ import '../providers/entitlement_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/wordbook_manager.dart';
 import '../services/study_sound_service.dart';
+import '../services/study_haptic_service.dart';
 import '../themes/app_theme.dart';
 import '../themes/memorize_identity.dart';
 import '../widgets/ai_settings_card.dart';
@@ -182,8 +183,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       color: identity.review,
                       background: identity.softReview,
                     ),
-                    title: '소리와 음성',
-                    subtitle: '효과음, 발음과 듣기 음성을 관리합니다.',
+                    title: '소리·진동·음성',
+                    subtitle: '효과음, 햄틱 반응과 듣기 음성을 관리합니다.',
                     expanded: _isSoundSettingsExpanded,
                     onTap:
                         () => setState(
@@ -731,6 +732,16 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             value: context.watch<StudySoundService>().enabled,
             onChanged:
                 (value) => context.read<StudySoundService>().setEnabled(value),
+          ),
+          const Divider(height: 1),
+          SwitchListTile.adaptive(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+            secondary: const Icon(Icons.vibration_rounded),
+            title: const Text('햄틱 반응'),
+            subtitle: const Text('카드 조작과 정답·오답을 짧은 진동으로 구분'),
+            value: context.watch<StudyHapticService>().enabled,
+            onChanged:
+                (value) => context.read<StudyHapticService>().setEnabled(value),
           ),
           const Divider(height: 1),
           const Padding(

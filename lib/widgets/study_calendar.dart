@@ -11,6 +11,8 @@ import '../services/study_schedule_service.dart';
 import '../themes/memorize_identity.dart';
 import 'study_mode_icon.dart';
 
+const _calendarReviewScheduleColor = Color(0xFF7C5CFC);
+
 class StudyCalendar extends StatefulWidget {
   final StudyHistoryService? history;
   final DateTime? initialDate;
@@ -315,6 +317,8 @@ class _StudyCalendarState extends State<StudyCalendar>
         _buildMonthCard(data, today, theme, identity),
         const SizedBox(height: 12),
         _buildLegend(identity),
+        const SizedBox(height: 10),
+        _buildCalendarGuide(theme: theme, identity: identity),
         const SizedBox(height: 24),
         Text(
           '다가오는 일정',
@@ -422,7 +426,7 @@ class _StudyCalendarState extends State<StudyCalendar>
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
-              mainAxisExtent: 48 * textScale.clamp(1.0, 1.45).toDouble(),
+              mainAxisExtent: 56 * textScale.clamp(1.0, 1.45).toDouble(),
               crossAxisSpacing: 2,
               mainAxisSpacing: 3,
             ),
@@ -434,25 +438,25 @@ class _StudyCalendarState extends State<StudyCalendar>
               }
 
               final date = DateTime(_month.year, _month.month, number);
-              final completed =
-                  data.modesByDay[studyDateKey(date)]?.isNotEmpty == true;
+              final completedModes =
+                  data.modesByDay[studyDateKey(date)] ??
+                  const <StudyHistoryMode>{};
               final due =
                   !date.isBefore(today) &&
                   data.dueDates.contains(studyDateKey(date));
-              final planned = data.books.any(
-                (book) => _planCountOn(data, book, date, today) > 0,
-              );
               final selected = _isSameDay(date, _selected);
               final isToday = _isSameDay(date, today);
+              final completedLabels = completedModes
+                  .map(_modeShortLabel)
+                  .join(', ');
 
               return Semantics(
                 button: true,
                 selected: selected,
                 label:
                     '${studyDateKey(date)}'
-                    '${completed ? ' 학습 완료' : ''}'
-                    '${due ? ' 맞춤 복습 예정' : ''}'
-                    '${planned ? ' 학습 계획' : ''}',
+                    '${completedLabels.isNotEmpty ? ' $completedLabels 학습 완료' : ''}'
+                    '${due ? ' 맞춤 복습 예정' : ''}',
                 child: InkWell(
                   borderRadius: BorderRadius.circular(18),
                   onTap: () => _openDayDetails(data, date, today),
@@ -496,21 +500,15 @@ class _StudyCalendarState extends State<StudyCalendar>
                       ),
                       const SizedBox(height: 2),
                       SizedBox(
-                        height: 8,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (completed)
-                              _CalendarMarker.completed(identity.success),
-                            if (completed && (due || planned))
-                              const SizedBox(width: 3),
-                            if (due)
-                              _CalendarMarker.review(identity.primaryAction),
-                            if (due && planned) const SizedBox(width: 3),
-                            if (planned)
-                              _CalendarMarker.plan(const Color(0xFFFF920F)),
-                          ],
-                        ),
+                        height: 18,
+                        child:
+                            completedModes.isNotEmpty || due
+                                ? _CalendarStatusLines(
+                                  modes: completedModes,
+                                  reviewDue: due,
+                                  identity: identity,
+                                )
+                                : null,
                       ),
                     ],
                   ),
@@ -530,21 +528,58 @@ class _StudyCalendarState extends State<StudyCalendar>
       runSpacing: 8,
       children: [
         _CalendarLegendItem(
-          marker: _CalendarMarker.completed(identity.success),
-          label: '학습 완료',
-          identity: identity,
-        ),
-        _CalendarLegendItem(
-          marker: _CalendarMarker.review(identity.primaryAction),
+          marker: _CalendarMarker.modeLine(_calendarReviewScheduleColor),
           label: '복습 예정',
           identity: identity,
         ),
         _CalendarLegendItem(
-          marker: _CalendarMarker.plan(const Color(0xFFFF920F)),
-          label: '학습 계획',
+          marker: _CalendarMarker.modeLine(identity.success),
+          label: '플래시카드',
+          identity: identity,
+        ),
+        _CalendarLegendItem(
+          marker: _CalendarMarker.modeLine(const Color(0xFFE77B12)),
+          label: '객관식',
+          identity: identity,
+        ),
+        _CalendarLegendItem(
+          marker: _CalendarMarker.modeLine(identity.review),
+          label: '스펠링',
           identity: identity,
         ),
       ],
+    );
+  }
+
+  Widget _buildCalendarGuide({
+    required ThemeData theme,
+    required MemorizeIdentity identity,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: identity.softContext.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(CupertinoIcons.info_circle, size: 17, color: identity.mutedInk),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '날짜 아래 선은 완료한 학습 방식이고, '
+              '보라색 선은 복습 예정이에요. '
+              '날짜를 누르면 단어장별 결과를 확인할 수 있어요.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: identity.mutedInk,
+                height: 1.45,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -557,7 +592,7 @@ class _StudyCalendarState extends State<StudyCalendar>
   ) {
     if (upcoming.isEmpty) {
       return _CalendarEmptyGroup(
-        label: '앞으로 예정된 복습이나 학습 계획이 없습니다.',
+        label: '앞으로 예정된 복습이나 새 단어 계획이 없습니다.',
         identity: identity,
       );
     }
@@ -583,7 +618,9 @@ class _StudyCalendarState extends State<StudyCalendar>
   ) {
     final isToday = _isSameDay(item.date, today);
     final color =
-        item.reviewCount > 0 ? identity.primaryAction : const Color(0xFFFF920F);
+        item.reviewCount > 0
+            ? _calendarReviewScheduleColor
+            : const Color(0xFFFF920F);
     final icon =
         item.reviewCount > 0 && item.planCount > 0
             ? CupertinoIcons.book
@@ -995,7 +1032,7 @@ class _StudyCalendarState extends State<StudyCalendar>
         rows.add(
           _ScheduleDetailRow(
             icon: CupertinoIcons.arrow_2_circlepath,
-            color: identity.primaryAction,
+            color: _calendarReviewScheduleColor,
             background: identity.softInfo,
             title: '맞춤 복습 $reviewCount개',
             subtitle:
@@ -1021,7 +1058,7 @@ class _StudyCalendarState extends State<StudyCalendar>
 
     if (rows.isEmpty) {
       return _CalendarEmptyGroup(
-        label: '이 날짜에 예정된 복습이나 학습 계획이 없습니다.',
+        label: '이 날짜에 예정된 복습이나 새 단어 계획이 없습니다.',
         identity: identity,
       );
     }
@@ -1208,50 +1245,69 @@ class _ScopeSegment extends StatelessWidget {
 
 class _CalendarMarker extends StatelessWidget {
   final Color color;
-  final _CalendarMarkerType type;
 
-  const _CalendarMarker._(this.color, this.type);
+  const _CalendarMarker._(this.color);
 
-  factory _CalendarMarker.completed(Color color) =>
-      _CalendarMarker._(color, _CalendarMarkerType.completed);
-  factory _CalendarMarker.review(Color color) =>
-      _CalendarMarker._(color, _CalendarMarkerType.review);
-  factory _CalendarMarker.plan(Color color) =>
-      _CalendarMarker._(color, _CalendarMarkerType.plan);
+  factory _CalendarMarker.modeLine(Color color) => _CalendarMarker._(color);
 
   @override
   Widget build(BuildContext context) {
-    switch (type) {
-      case _CalendarMarkerType.completed:
-        return Container(
-          width: 7,
-          height: 7,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        );
-      case _CalendarMarkerType.review:
-        return Container(
-          width: 9,
-          height: 9,
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            shape: BoxShape.circle,
-            border: Border.all(color: color, width: 2),
-          ),
-        );
-      case _CalendarMarkerType.plan:
-        return Container(
-          width: 13,
-          height: 4,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(99),
-          ),
-        );
-    }
+    return Container(
+      width: 18,
+      height: 4,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(99),
+      ),
+    );
   }
 }
 
-enum _CalendarMarkerType { completed, review, plan }
+class _CalendarStatusLines extends StatelessWidget {
+  final Set<StudyHistoryMode> modes;
+  final bool reviewDue;
+  final MemorizeIdentity identity;
+
+  const _CalendarStatusLines({
+    required this.modes,
+    required this.reviewDue,
+    required this.identity,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = <(bool, Color)>[
+      (reviewDue, _calendarReviewScheduleColor),
+      (modes.contains(StudyHistoryMode.flashcard), identity.success),
+      (
+        modes.contains(StudyHistoryMode.multipleChoice),
+        const Color(0xFFE77B12),
+      ),
+      (modes.contains(StudyHistoryMode.spelling), identity.review),
+    ];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var index = 0; index < entries.length; index++) ...[
+          SizedBox(
+            width: 24,
+            height: 3,
+            child:
+                entries[index].$1
+                    ? DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: entries[index].$2,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    )
+                    : const SizedBox.shrink(),
+          ),
+          if (index != entries.length - 1) const SizedBox(height: 2),
+        ],
+      ],
+    );
+  }
+}
 
 class _CalendarLegendItem extends StatelessWidget {
   final Widget marker;
@@ -1269,7 +1325,7 @@ class _CalendarLegendItem extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SizedBox(width: 16, height: 12, child: Center(child: marker)),
+        SizedBox(width: 20, height: 12, child: Center(child: marker)),
         const SizedBox(width: 6),
         Text(
           label,

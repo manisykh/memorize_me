@@ -29,6 +29,7 @@ import 'services/mode_state_service.dart'; // ▼▼▼ [추가]
 import 'services/onboarding_state_service.dart';
 import 'services/sheets_service.dart';
 import 'services/study_sound_service.dart';
+import 'services/study_haptic_service.dart';
 import 'services/test_sheet_service.dart';
 import 'services/tts_service.dart';
 import 'themes/app_theme.dart';
@@ -71,6 +72,9 @@ Future<void> main() async {
         Provider<TtsService>(create: (_) => TtsService()),
         ChangeNotifierProvider<StudySoundService>(
           create: (_) => StudySoundService(),
+        ),
+        ChangeNotifierProvider<StudyHapticService>(
+          create: (_) => StudyHapticService(),
         ),
         Provider<ModeStateService>(
           create: (_) => ModeStateService(),

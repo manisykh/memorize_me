@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-html-link-for-pages */
 import type { Metadata } from "next";
 import { FeedbackBoard } from "./feedback-board";
+import { CopyLines } from "../copy-lines";
 
 export const metadata: Metadata = {
   title: "테스터 의견 게시판 | Memorize Me",
@@ -23,10 +24,9 @@ export default function FeedbackPage() {
       <section className="feedback-hero">
         <div>
           <p className="feedback-kicker">TESTER FEEDBACK</p>
-          <h1>함께 더 나은<br />Memorize Me를 만들어요.</h1>
+          <h1><CopyLines lines={["함께 더 나은", "Memorize Me를", "만들어요."]} /></h1>
           <p>
-            사용하며 좋았던 점, 불편, 오류와 아이디어를 자유롭게 남겨 주세요.
-            회원가입 없이 작성할 수 있고, 운영자가 확인 후 답변과 진행 상태를 알려드립니다.
+            <CopyLines lines={["사용하며 좋았던 점과", "불편이나 오류,", "새로운 아이디어를", "자유롭게 남겨 주세요.", "회원가입 없이 작성할 수 있고,", "운영자가 답변과 진행 상태를", "알려드립니다."]} />
           </p>
         </div>
         <aside>

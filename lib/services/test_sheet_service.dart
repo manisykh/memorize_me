@@ -1060,8 +1060,16 @@ class TestSheetService {
       subtitle: '단어 시험지',
       dataJson: jsonEncode(questions),
       mode: 'word',
+      fontSize: settings.fontSize,
     );
   }
+
+  @visibleForTesting
+  String generateWordTestHtmlForTest(
+    String title,
+    List<Map<String, dynamic>> testData,
+    AppSettings settings,
+  ) => _generateWordTestHtml(title, testData, settings);
 
   String _generateAiQuizHtml(String title, List<AiQuestion> questions) {
     final items = <Map<String, dynamic>>[];
@@ -1115,10 +1123,12 @@ class TestSheetService {
     required String subtitle,
     required String dataJson,
     required String mode,
+    double? fontSize,
   }) {
     final safeTitle = _htmlEscape.convert(title);
     final safeSubtitle = _htmlEscape.convert(subtitle);
     final safeDataJson = dataJson.replaceAll('</script>', '<\\/script>');
+    final htmlFontSize = (fontSize ?? 16).clamp(8, 20).toStringAsFixed(0);
 
     return '''
 <!doctype html>
@@ -1141,6 +1151,7 @@ class TestSheetService {
       --danger: #c94f4f;
       --line: #dfe4da;
     }
+    html { font-size: ${htmlFontSize}px; }
     * { box-sizing: border-box; }
     body {
       margin: 0;

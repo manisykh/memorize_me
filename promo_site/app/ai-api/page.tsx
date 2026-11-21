@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CopyLines } from "../copy-lines";
 
 export const metadata: Metadata = {
   title: "AI API 연결 가이드 | Memorize Me",
@@ -11,18 +12,21 @@ const setupSteps = [
     number: "1",
     label: "제공업체 선택",
     title: "무료로 시작하거나, 보유한 키를 선택합니다",
+    titleLines: ["무료로 시작하거나,", "보유한 키를 선택합니다"],
     body: "처음이라면 ‘무료 API로 시작’을 권장합니다. 이미 결제·발급한 키가 있다면 ‘보유한 API 키 연결’을 선택하세요.",
   },
   {
     number: "2",
     label: "API 키 연결",
     title: "발급 주소를 확인하고 키를 붙여넣습니다",
+    titleLines: ["발급 주소를 확인하고", "키를 붙여넣습니다"],
     body: "앱이 보여주는 발급 순서를 따라 키를 만든 뒤 입력합니다. API 키는 구독 계정 비밀번호와 다르며, 앞뒤 공백 없이 붙여넣어야 합니다.",
   },
   {
     number: "3",
     label: "연결 확인",
     title: "짧은 테스트 요청으로 실제 작동을 확인합니다",
+    titleLines: ["짧은 테스트 요청으로", "실제 작동을 확인합니다"],
     body: "모델과 키가 정상일 때만 등록을 마칩니다. 실패하면 이전 단계로 돌아가 제공업체·모델·키를 바로 수정할 수 있습니다.",
   },
 ];
@@ -43,8 +47,8 @@ export default function AiApiGuidePage() {
           <span>Memorize Me</span>
         </a>
         <nav aria-label="AI API 가이드 메뉴">
-          <a href="/">제품 소개</a>
-          <a href="/manual">전체 사용 가이드</a>
+          <a href="/">홈으로 돌아가기</a>
+          <a className="manual-nav-action" href="/manual">사용자 가이드</a>
           <a className="manual-nav-current" href="#api-steps">AI API 연결</a>
         </nav>
       </header>
@@ -52,10 +56,9 @@ export default function AiApiGuidePage() {
       <section className="api-hero">
         <div className="api-hero-copy">
           <p className="eyebrow">AI SETUP · BEGINNER GUIDE</p>
-          <h1>내 API로<br /><em>AI 학습을 더해요.</em></h1>
+          <h1><CopyLines lines={["내 API로", <em key="api-hero-1">AI 학습을</em>, <em key="api-hero-2">더해요.</em>]} /></h1>
           <p>
-            Memorize Me가 AI 사용료를 대신 청구하지 않습니다. 사용자가 직접 발급한
-            무료 API 또는 보유한 API 키를 기기에 연결해 예문·퀴즈·문법 문제를 만듭니다.
+            <CopyLines lines={["Memorize Me가 AI 사용료를", "대신 청구하지 않습니다.", "직접 발급한 무료 API나", "보유한 키를 연결해", "예문·퀴즈·문법 문제를 만듭니다."]} />
           </p>
           <div className="api-hero-actions">
             <a className="button button-primary" href="#api-steps">3단계로 연결하기 <span>↓</span></a>
@@ -76,8 +79,8 @@ export default function AiApiGuidePage() {
       <section className="api-route-section" aria-labelledby="route-title">
         <div className="api-section-heading">
           <p className="eyebrow">CHOOSE YOUR ROUTE</p>
-          <h2 id="route-title">나는 어디서 시작하면 될까요?</h2>
-          <p>두 경로 모두 같은 3단계를 사용합니다. 키를 가지고 있는지만 판단하면 됩니다.</p>
+          <h2 id="route-title"><CopyLines lines={["나는 어디서", "시작하면 될까요?"]} /></h2>
+          <p><CopyLines lines={["두 경로 모두 같은 3단계를 사용합니다.", "키를 가지고 있는지만 확인하면 됩니다."]} /></p>
         </div>
         <div className="api-route-grid">
           <article className="api-route-card api-route-recommended">
@@ -110,8 +113,8 @@ export default function AiApiGuidePage() {
       <section className="api-steps-section" id="api-steps">
         <div className="api-section-heading api-section-heading-light">
           <p className="eyebrow">THREE STEPS</p>
-          <h2>화면 위 숫자만 따라가세요</h2>
-          <p>각 단계에서 이전 버튼으로 되돌아가 수정할 수 있고, 닫기를 누르면 설정을 확정하지 않고 나갈 수 있습니다.</p>
+          <h2><CopyLines lines={["화면 위 숫자만", "따라가세요"]} /></h2>
+          <p><CopyLines lines={["이전 버튼으로 돌아가 내용을 수정할 수 있습니다.", "닫기를 누르면 확정하지 않고 나갈 수 있습니다."]} /></p>
         </div>
 
         <div className="api-progress-demo" aria-label="제공업체 선택, API 키 연결, 연결 확인의 세 단계">
@@ -130,7 +133,7 @@ export default function AiApiGuidePage() {
               <div className="api-step-index">{step.number}</div>
               <div>
                 <p>{step.label}</p>
-                <h3>{step.title}</h3>
+                <h3><CopyLines lines={step.titleLines} /></h3>
                 <span>{step.body}</span>
               </div>
             </article>
@@ -155,14 +158,14 @@ export default function AiApiGuidePage() {
           </figure>
           <div className="api-callout-panel">
             <p className="eyebrow">AFTER CONNECTING</p>
-            <h3>연결되면 등록된 AI가 카드로 나타납니다</h3>
+            <h3><CopyLines lines={["연결되면 등록된 AI가", "카드로 나타납니다"]} /></h3>
             <ul>
               <li><strong>가장 위 카드</strong>가 주 모델입니다.</li>
               <li><strong>자동 대체</strong>를 켜면 아래 모델을 순서대로 시도합니다.</li>
               <li><strong>연결 테스트</strong>로 각 카드 또는 전체 모델을 다시 확인할 수 있습니다.</li>
               <li>모델 변경에서는 현재 키로 사용할 수 있는 후보를 확인합니다.</li>
             </ul>
-            <a href="/manual#ai-guide">AI 문제 생성까지 이어서 보기 <span>→</span></a>
+            <a href="/manual#ai">AI 문제 생성까지 이어서 보기 <span>→</span></a>
           </div>
         </div>
       </section>
@@ -170,7 +173,7 @@ export default function AiApiGuidePage() {
       <section className="api-errors-section" id="api-errors">
         <div className="api-section-heading">
           <p className="eyebrow">QUICK FIX</p>
-          <h2>연결이 안 될 때는 오류 종류부터 봅니다</h2>
+          <h2><CopyLines lines={["연결이 안 될 때는", "오류 종류부터 봅니다"]} /></h2>
         </div>
         <div className="api-error-grid">
           {quickChecks.map(([title, body]) => (
@@ -190,11 +193,11 @@ export default function AiApiGuidePage() {
       <section className="api-end-section">
         <div>
           <p>연결 준비가 끝났습니다.</p>
-          <h2>API를 연결하고<br />내 단어장으로 문제를 만드세요.</h2>
+          <h2><CopyLines lines={["API를 연결하고", "내 단어장으로 문제를 만드세요."]} /></h2>
         </div>
         <div>
           <a className="button button-light" href="#api-top">처음부터 다시 보기 <span>↑</span></a>
-          <a className="api-end-link" href="/manual">전체 사용 가이드 보기</a>
+          <a className="api-end-link" href="/manual">사용자 가이드 보기</a>
         </div>
       </section>
     </main>

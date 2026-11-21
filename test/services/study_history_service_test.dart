@@ -49,7 +49,141 @@ void main() {
   StudySessionRecorder start({
     StudyHistoryMode mode = StudyHistoryMode.spelling,
     int expectedCount = 1,
-  }) => service.start(wordbook: book, mode: mode, expectedCount: expectedCount);
+    List<Word> sessionWords = const [],
+  }) => service.start(
+    wordbook: book,
+    mode: mode,
+    expectedCount: expectedCount,
+    sessionWords: sessionWords,
+  );
+
+  test(
+    'unfinished flashcard sessions restore and complete from remaining words',
+    () async {
+      final secondWord = Word(id: 2, word: 'second', meaning: 'meaning');
+      final recorder = start(
+        mode: StudyHistoryMode.flashcard,
+        expectedCount: 2,
+        sessionWords: [word, secondWord],
+      );
+      recorder.answer(word, success: true);
+      await service.pendingWrites;
+
+      final pending = service.latestResumableSession(
+        book.dbFileName,
+        StudyHistoryMode.flashcard,
+      );
+      expect(pending, isNotNull);
+      expect(pending!.wordKeys, ['1', '2']);
+      expect(pending.answers.single.wordKey, '1');
+
+      final restored = StudyHistoryService.forTesting(database, now: () => now);
+      await restored.ensureLoaded();
+      final restoredPending = restored.latestResumableSession(
+        book.dbFileName,
+        StudyHistoryMode.flashcard,
+      );
+      final resumed = restored.resume(
+        wordbook: book,
+        session: restoredPending!,
+      );
+      resumed.answer(secondWord, success: false);
+      resumed.complete();
+      await restored.pendingWrites;
+
+      expect(restored.sessions, hasLength(1));
+      expect(restored.sessions.single.completed, isTrue);
+      expect(restored.sessions.single.answers, hasLength(2));
+      restored.dispose();
+    },
+  );
+
+  test(
+    'starting over abandons unfinished sessions so they are not prompted again',
+    () async {
+      final recorder = start(
+        mode: StudyHistoryMode.flashcard,
+        expectedCount: 2,
+        sessionWords: [word, Word(id: 2, word: 'second', meaning: 'meaning')],
+      );
+      recorder.answer(word, success: true);
+      await service.pendingWrites;
+
+      await service.abandonResumableSessions(
+        book.dbFileName,
+        StudyHistoryMode.flashcard,
+      );
+
+      expect(
+        service.latestResumableSession(
+          book.dbFileName,
+          StudyHistoryMode.flashcard,
+        ),
+        isNull,
+      );
+      expect(service.sessions.single.abandoned, isTrue);
+      expect(service.completedSessions, isEmpty);
+    },
+  );
+
+  test(
+    'multiple-choice and spelling resumable sessions stay independent',
+    () async {
+      final secondWord = Word(id: 2, word: 'second', meaning: 'meaning');
+      final mcq = start(
+        mode: StudyHistoryMode.multipleChoice,
+        expectedCount: 2,
+        sessionWords: [word, secondWord],
+      );
+      mcq.answer(word, success: true);
+      final spelling = start(
+        mode: StudyHistoryMode.spelling,
+        expectedCount: 2,
+        sessionWords: [word, secondWord],
+      );
+      spelling.answer(secondWord, success: false);
+      await service.pendingWrites;
+
+      expect(
+        service
+            .latestResumableSession(
+              book.dbFileName,
+              StudyHistoryMode.multipleChoice,
+            )
+            ?.answers
+            .single
+            .wordKey,
+        '1',
+      );
+      expect(
+        service
+            .latestResumableSession(book.dbFileName, StudyHistoryMode.spelling)
+            ?.answers
+            .single
+            .wordKey,
+        '2',
+      );
+
+      await service.abandonResumableSessions(
+        book.dbFileName,
+        StudyHistoryMode.multipleChoice,
+      );
+      expect(
+        service.latestResumableSession(
+          book.dbFileName,
+          StudyHistoryMode.multipleChoice,
+        ),
+        isNull,
+      );
+      expect(
+        service.latestResumableSession(
+          book.dbFileName,
+          StudyHistoryMode.spelling,
+        ),
+        isNotNull,
+      );
+    },
+  );
 
   test(
     'partial sessions persist without increasing completed-session totals',

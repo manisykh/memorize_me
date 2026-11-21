@@ -404,6 +404,56 @@ class _ManageWordsScreenState extends State<ManageWordsScreen> {
                                                         ),
                                                       ),
                                                     ),
+                                                    if (word
+                                                        .hasExampleSentence)
+                                                      Semantics(
+                                                        label: '예문 있음',
+                                                        child: Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 4,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color:
+                                                                identity
+                                                                    .softInfo,
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  999,
+                                                                ),
+                                                          ),
+                                                          child: Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize.min,
+                                                            children: [
+                                                              Icon(
+                                                                Icons
+                                                                    .notes_rounded,
+                                                                size: 14,
+                                                                color:
+                                                                    identity
+                                                                        .primaryAction,
+                                                              ),
+                                                              const SizedBox(
+                                                                width: 4,
+                                                              ),
+                                                              Text(
+                                                                '예문',
+                                                                style: TextStyle(
+                                                                  color:
+                                                                      identity
+                                                                          .primaryAction,
+                                                                  fontSize: 12,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
                                                     Text(
                                                       _srsService.reasonForWord(
                                                         word,
