@@ -1,5 +1,3 @@
-export type JourneyKey = "import" | "learn" | "review";
-
 export type MotionVideo = {
   src: string;
   startAt?: number;
@@ -21,17 +19,14 @@ const landscapeRecordingCrop = {
   cropBottom: 44,
 } as const;
 
-export type JourneyStep = {
-  key: JourneyKey;
-  label: string;
+export type PreparationIconName = "import" | "create" | "builtin";
+
+export type PreparationOption = {
+  icon: PreparationIconName;
   title: string;
   titleLines: readonly string[];
   description: string;
   descriptionLines: readonly string[];
-  points: string[];
-  image: string;
-  imageAlt: string;
-  video?: MotionVideo;
 };
 
 export type StudyModeIconName = "flashcard" | "choice" | "spelling" | "mistakes" | "review" | "test";
@@ -46,47 +41,40 @@ type StudyMode = {
   video?: MotionVideo;
 };
 
-export const journeySteps: JourneyStep[] = [
+export const preparationOptions: readonly PreparationOption[] = [
   {
-    key: "import",
-    label: "단어장 준비",
-    title: "정리한 단어장을 그대로 가져오세요",
-    titleLines: ["정리한 단어장을", "그대로 가져오세요"],
-    description: "단어와 뜻이 열로 정리된 Google Sheets·CSV·XLSX를 선택합니다. 앱에서 새 단어장을 직접 만들 수도 있습니다.",
-    descriptionLines: ["단어와 뜻이 정리된 파일을 선택하세요.", "앱에서 새 단어장을 직접 만들 수도 있습니다."],
-    points: ["단어·뜻 열 확인", "가져올 파일과 시트 선택", "현재 학습 단어장 지정"],
-    image: "/media/feature/sheet-selection-current.svg",
-    imageAlt: "가져올 시트를 선택하는 Memorize Me 화면",
-    video: {
-      src: "/media/video/wordbook-import.mp4",
-      startAt: 0.2,
-      endAt: 13.25,
-      ...landscapeRecordingCrop,
-    },
+    icon: "import",
+    title: "내 단어장 가져오기",
+    titleLines: ["내 단어장", "가져오기"],
+    description: "Google Sheets·CSV·XLSX에 정리한 단어와 뜻을 그대로 불러옵니다.",
+    descriptionLines: ["Google Sheets·CSV·XLSX에", "정리한 단어와 뜻을", "그대로 불러옵니다."],
   },
   {
-    key: "learn",
-    label: "첫 학습",
-    title: "학습 범위와 방식을 선택하세요",
-    titleLines: ["학습 범위와 방식을", "선택하세요"],
-    description: "오늘 학습할 단어장과 범위를 정한 뒤 플래시카드·객관식·스펠링 중 원하는 방식을 선택합니다.",
-    descriptionLines: ["오늘 학습할 단어장과 범위를 정하세요.", "원하는 학습 방식을 선택해 시작합니다."],
-    points: ["학습 단어장 선택", "새 단어·복습 범위 확인", "학습 방식 선택"],
-    image: "/media/latest/learning-current.png",
-    imageAlt: "오늘 복습과 플래시카드·객관식·스펠링 학습 방식을 한눈에 보여주는 학습 화면",
+    icon: "create",
+    title: "직접 만들기",
+    titleLines: ["직접 만들기"],
+    description: "필요한 단어와 뜻을 앱에서 바로 입력해 나만의 단어장을 만듭니다.",
+    descriptionLines: ["필요한 단어와 뜻을 앱에서 바로 입력해", "나만의 단어장을 만듭니다."],
   },
   {
-    key: "review",
-    label: "오늘 복습",
-    title: "오늘 다시 볼 단어만 확인하세요",
-    titleLines: ["오늘 다시 볼 단어만", "확인하세요"],
-    description: "학습 기록을 바탕으로 앱이 오늘 복습할 단어를 모아 보여줍니다. 복습 후 다음 일정도 바로 확인합니다.",
-    descriptionLines: ["앱이 오늘 복습할 단어를 모아 보여줍니다.", "복습을 마치면 다음 일정도 바로 확인합니다."],
-    points: ["오늘 복습 수량 확인", "필요한 단어 복습", "결과와 다음 일정 확인"],
-    image: "/media/showcase/review-today.jpg",
-    imageAlt: "오늘 복습할 단어 수와 복습 시작 버튼을 보여주는 화면",
+    icon: "builtin",
+    title: "기본 단어장으로 시작하기",
+    titleLines: ["기본 단어장으로", "시작하기"],
+    description: "필수 영어단어 6000을 1,000개씩 여섯 단계로 나누어 학습합니다.",
+    descriptionLines: ["필수 영어단어 6000을", "1,000개씩 여섯 단계로", "나누어 학습합니다."],
   },
 ];
+
+export const preparationVisual = {
+  image: "/media/feature/sheet-selection-current.svg",
+  imageAlt: "가져올 시트를 선택하는 Memorize Me 화면",
+  video: {
+    src: "/media/video/wordbook-import.mp4",
+    startAt: 0.2,
+    endAt: 13.25,
+    ...landscapeRecordingCrop,
+  } satisfies MotionVideo,
+} as const;
 
 export const studyModes: readonly StudyMode[] = [
   {

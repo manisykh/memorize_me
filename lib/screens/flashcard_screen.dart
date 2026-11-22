@@ -273,6 +273,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
           remainingCount: remaining.length,
         );
         if (!mounted) return;
+        if (continueSession == null) return;
         if (continueSession) {
           await _resumeSession(pending, remaining);
           return;
@@ -310,46 +311,71 @@ class _FlashcardScreenState extends State<FlashcardScreen> {
     ];
   }
 
-  Future<bool> _showResumeDialog({
+  Future<bool?> _showResumeDialog({
     required int completedCount,
     required int totalCount,
     required int remainingCount,
   }) async {
     final result = await showDialog<bool>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (dialogContext) {
         final theme = Theme.of(dialogContext);
         final identity = MemorizeIdentity.of(theme);
-        return PopScope<void>(
-          canPop: false,
-          child: AlertDialog(
-            icon: Icon(
-              CupertinoIcons.play_circle_fill,
-              color: identity.primaryAction,
-              size: 34,
+        return AlertDialog(
+          iconPadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+          icon: SizedBox(
+            width: double.maxFinite,
+            height: 42,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  CupertinoIcons.play_circle_fill,
+                  color: identity.primaryAction,
+                  size: 34,
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    tooltip: '닫기',
+                    constraints: const BoxConstraints.tightFor(
+                      width: 40,
+                      height: 40,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    icon: Icon(
+                      CupertinoIcons.xmark,
+                      color: identity.mutedInk,
+                      size: 20,
+                      semanticLabel: '닫기',
+                    ),
+                  ),
+                ),
+              ],
             ),
-            title: const Text('진행 중인 카드 학습이 있어요'),
-            content: Text(
-              '전체 $totalCount개 중 $completedCount개를 확인했어요. '
-              '남은 $remainingCount개부터 이어서 학습할까요?',
-              textAlign: TextAlign.center,
-            ),
-            actions: [
-              OutlinedButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('새로 시작'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: Text('$remainingCount개 이어서 학습'),
-              ),
-            ],
           ),
+          title: const Text('진행 중인 카드 학습이 있어요'),
+          content: Text(
+            '전체 $totalCount개 중 $completedCount개를 확인했어요. '
+            '남은 $remainingCount개부터 이어서 학습할까요?',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('새로 시작'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text('$remainingCount개 이어서 학습'),
+            ),
+          ],
         );
       },
     );
-    return result ?? true;
+    return result;
   }
 
   Future<void> _resumeSession(

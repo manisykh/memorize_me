@@ -46,7 +46,8 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
+          // TEMP_RECORDING_OVERSCROLL_DISABLED: 녹화 중 가장자리 반동 제거.
+          physics: const ClampingScrollPhysics(),
           slivers: [
             SliverAppBar(
               backgroundColor: palette.surface.withValues(

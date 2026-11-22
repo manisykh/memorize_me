@@ -1491,19 +1491,44 @@ class _HomeGoalRingState extends State<_HomeGoalRing>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _HomeGoalNumber(
-                          label:
-                              widget.summary.remainingCount == 0 ? '완료' : '남음',
-                          value: widget.summary.remainingCount,
-                          color:
-                              widget.summary.remainingCount == 0
-                                  ? widget.identity.success
-                                  : widget.identity.primaryAction,
-                          emphasized: true,
-                        ),
+                        if (widget.summary.additionalCount > 0)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              _HomeGoalNumber(
+                                label: '기본',
+                                value: widget.summary.baseCount,
+                                color: widget.identity.primaryAction,
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(7, 0, 7, 7),
+                                child: Text(
+                                  '+',
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    color: widget.identity.mutedInk,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              _HomeGoalNumber(
+                                label: '추가',
+                                value: widget.summary.additionalCount,
+                                color: widget.identity.scheduled,
+                              ),
+                            ],
+                          )
+                        else
+                          _HomeGoalNumber(
+                            label: '기본',
+                            value: widget.summary.baseCount,
+                            color: widget.identity.primaryAction,
+                            emphasized: true,
+                          ),
                         const SizedBox(height: 14),
                         Text(
-                          '전체 ${widget.summary.totalCount}개 · ${widget.summary.completedCount}개 완료',
+                          '${widget.summary.completedCount}개 완료 · ${widget.summary.remainingCount}개 남음',
                           maxLines: 1,
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: widget.identity.mutedInk,
@@ -2753,7 +2778,8 @@ class _WordbookStatusPagerState extends State<_WordbookStatusPager> {
         controller: _pageController,
         padEnds: false,
         clipBehavior: Clip.hardEdge,
-        physics: const BouncingScrollPhysics(),
+        // TEMP_RECORDING_OVERSCROLL_DISABLED: 녹화 중 가장자리 반동 제거.
+        physics: const ClampingScrollPhysics(),
         itemBuilder: (context, index) {
           final wordbook = widget.wordbooks[index % widget.wordbooks.length];
           return Padding(

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { faqItems, journeySteps, studyModes, type JourneyKey, type MotionVideo, type StudyModeIconName } from "./home-content";
+import { faqItems, preparationOptions, preparationVisual, studyModes, type MotionVideo, type PreparationIconName, type StudyModeIconName } from "./home-content";
 import { CopyLines } from "./copy-lines";
 import styles from "./home-v2.module.css";
 
@@ -110,6 +110,16 @@ function FormatIcon({ type }: { type: "sheets" | "csv" | "xlsx" }) {
   return <span className={`${styles.formatIconBox} ${styles.xlsxIcon}`}><svg viewBox="0 0 32 38" aria-hidden="true"><path fill="#107c41" d="M4 0h16l8 8v27a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3Z"/><path fill="#54aa78" d="M20 0v8h8Z"/><path fill="#fff" d="m8 14 4.2 7L8 28h4l2.4-4.3L17 28h4l-4.4-7 4.2-7h-4l-2.2 4-2.3-4Z"/></svg></span>;
 }
 
+function PreparationIcon({ type }: { type: PreparationIconName }) {
+  if (type === "import") {
+    return <span className={`${styles.preparationIcon} ${styles.importPreparationIcon}`} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M12 11v7M9 15l3 3 3-3"/></svg></span>;
+  }
+  if (type === "create") {
+    return <span className={`${styles.preparationIcon} ${styles.createPreparationIcon}`} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H12v18H7.5A3.5 3.5 0 0 0 4 23Z"/><path d="M20 5.5A3.5 3.5 0 0 0 16.5 2H12v18h4.5a3.5 3.5 0 0 1 3.5 3ZM7 11h3M8.5 9.5v3"/></svg></span>;
+  }
+  return <span className={`${styles.preparationIcon} ${styles.builtinPreparationIcon}`} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 7 8-4 8 4-8 4-8-4Z"/><path d="m4 12 8 4 8-4M4 17l8 4 8-4"/><path d="M12 11v5"/></svg></span>;
+}
+
 function StudyModeIcon({ type }: { type: StudyModeIconName }) {
   if (type === "flashcard") {
     return <span className={`${styles.studyModeIcon} ${styles.flashcardModeIcon}`} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 7 7-3 7 3-7 3-7-3Z"/><path d="m5 11 7 3 7-3M5 15l7 3 7-3"/></svg></span>;
@@ -154,13 +164,10 @@ function PrimaryCta({ googlePlayUrl, supportEmail, compact = false }: HomeLandin
 
 export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [activeJourney, setActiveJourney] = useState<JourneyKey>("import");
   const [activeMode, setActiveMode] = useState(0);
   const [lightboxImage, setLightboxImage] = useState<LightboxImage | null>(null);
   const modeTouchStartX = useRef<number | null>(null);
   const modeTabsRef = useRef<HTMLDivElement>(null);
-  const journeyRefs = useRef<Record<JourneyKey, HTMLElement | null>>({ import: null, learn: null, review: null });
-  const activeJourneyStep = useMemo(() => journeySteps.find((step) => step.key === activeJourney) ?? journeySteps[0], [activeJourney]);
   const activeStudyMode = studyModes[activeMode];
 
   useEffect(() => {
@@ -190,46 +197,6 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
     });
   }, [activeMode]);
-
-  useEffect(() => {
-    let frame = 0;
-
-    const updateActiveStep = () => {
-      frame = 0;
-      const readingLine = window.innerHeight * 0.52;
-      let nextStep: JourneyKey = "import";
-
-      for (const step of journeySteps) {
-        const node = journeyRefs.current[step.key];
-        if (!node) continue;
-
-        const bounds = node.getBoundingClientRect();
-        const contentFocusPoint =
-          bounds.top + Math.min(bounds.height * 0.38, 240);
-
-        if (contentFocusPoint <= readingLine) {
-          nextStep = step.key;
-        }
-      }
-
-      setActiveJourney((current) => current === nextStep ? current : nextStep);
-    };
-
-    const scheduleUpdate = () => {
-      if (frame) return;
-      frame = window.requestAnimationFrame(updateActiveStep);
-    };
-
-    updateActiveStep();
-    window.addEventListener("scroll", scheduleUpdate, { passive: true });
-    window.addEventListener("resize", scheduleUpdate);
-
-    return () => {
-      window.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("resize", scheduleUpdate);
-      if (frame) window.cancelAnimationFrame(frame);
-    };
-  }, []);
 
   const showImage = (image: LightboxImage) => setLightboxImage(image);
   const selectMode = (index: number) => setActiveMode((index + studyModes.length) % studyModes.length);
@@ -274,11 +241,12 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
 
         <section className={styles.journey} id="journey" aria-labelledby="journey-title">
           <div className={styles.sectionInner}>
-            <div className={styles.sectionHeading}><p className={styles.kicker}>처음 시작하기</p><h2 id="journey-title"><CopyLines lines={["세 단계면", "학습이 시작됩니다."]} /></h2><p><CopyLines lines={["단어장을 가져와 학습하고,", "오늘 필요한 단어를 다시 봅니다."]} /></p></div>
-            <div className={styles.journeyLayout}>
-              <div className={styles.journeySteps}>{journeySteps.map((step) => <article key={step.key} data-step={step.key} ref={(node) => { journeyRefs.current[step.key] = node; }} className={activeJourney === step.key ? styles.activeJourney : ""}><p>{step.label}</p><h3><CopyLines lines={step.titleLines} /></h3><p><CopyLines lines={step.descriptionLines} /></p><ul>{step.points.map((point) => <li key={point}>{point}</li>)}</ul><div className={styles.mobileJourneyImage}><MotionFrame poster={step.image} alt={step.imageAlt} video={step.video} /></div></article>)}</div>
-              <div className={styles.journeySticky} aria-live="polite"><MotionFrame key={activeJourneyStep.key} poster={activeJourneyStep.image} alt={activeJourneyStep.imageAlt} video={activeJourneyStep.video} /><p>{activeJourneyStep.label}</p></div>
+            <div className={styles.sectionHeading}><p className={styles.kicker}>시작하기</p><h2 id="journey-title"><CopyLines lines={["단어장만 준비하면,", "바로 시작할 수 있어요."]} /></h2><p><CopyLines lines={["이미 정리한 자료를 가져오거나", "직접 만들 수 있습니다.", "준비된 자료가 없다면", "필수 영어단어 6000으로 시작하세요."]} /></p></div>
+            <div className={styles.preparationLayout}>
+              <div className={styles.preparationOptions}>{preparationOptions.map((option) => <article key={option.title}><PreparationIcon type={option.icon} /><div><h3><CopyLines lines={option.titleLines} /></h3><p><CopyLines lines={option.descriptionLines} /></p></div></article>)}</div>
+              <div className={styles.preparationVisual}><MotionFrame poster={preparationVisual.image} alt={preparationVisual.imageAlt} video={preparationVisual.video} /><p>정리한 단어장을 그대로 가져오는 과정</p></div>
             </div>
+            <div className={styles.learningBridge}><span>단어장 준비 완료</span><strong><CopyLines lines={["이제 나에게 맞는", "학습 방식을 골라보세요."]} /></strong></div>
           </div>
         </section>
 

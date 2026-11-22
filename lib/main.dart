@@ -149,6 +149,9 @@ class MyApp extends StatelessWidget {
           title: 'Memorize Me',
           restorationScopeId: 'memorize_me',
           theme: theme,
+          // TEMP_RECORDING_OVERSCROLL_DISABLED:
+          // 앱 조작 영상 녹화 중 화면 끝의 늘어남·반동 효과를 숨깁니다.
+          scrollBehavior: const _NoOverscrollBehavior(),
           debugShowCheckedModeBanner: false,
           navigatorObservers: [context.read<AnalyticsService>().observer],
           builder: (context, child) {
@@ -243,6 +246,26 @@ class MyApp extends StatelessWidget {
       systemStatusBarContrastEnforced: true,
       systemNavigationBarContrastEnforced: true,
     );
+  }
+}
+
+// TEMP_RECORDING_OVERSCROLL_DISABLED:
+// 원복할 때 MaterialApp.scrollBehavior와 이 클래스를 함께 제거합니다.
+class _NoOverscrollBehavior extends MaterialScrollBehavior {
+  const _NoOverscrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
+  }
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const ClampingScrollPhysics();
   }
 }
 
