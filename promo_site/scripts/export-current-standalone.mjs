@@ -19,6 +19,7 @@ const cssPaths = [
 const assetPaths = [
   "/app-icon-192.png",
   "/media/hero/wordbook-hero-bg-v1.png",
+  "/media/hero/wordbook-hero-bg-mobile-v1.png",
   "/media/feature/sheet-selection-current.svg",
   "/media/latest/learning-current.png",
   "/media/showcase/review-today.jpg",

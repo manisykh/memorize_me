@@ -252,8 +252,8 @@
 @media (max-width: 620px) {
   .sectionInner, .learningInner, .heroInner, .footerInner, .footerBottom { width: min(100% - 40px,1120px); }
   .sectionHeading h2, .learningHeading h2, .aiCopy h2, .helpPanel h2, .faq h2, .finalCta h2 { font-size: clamp(28px,8.5vw,36px); }
-  .hero::before { background-size: 100% auto; background-position: center 54px; opacity: .78; }
-  .hero::after { background: linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,.56) 34%,rgba(247,251,255,.9) 64%); }
+  .hero::before { background-image: url("/media/hero/wordbook-hero-bg-mobile-v1.png"); background-size: cover; background-position: center top; opacity: .86; }
+  .hero::after { background: linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,.46) 40%,rgba(247,251,255,.68)); }
   .hero h1 { font-size: clamp(34px,10vw,46px); }
   .heroDescription, .sectionHeading > p:last-child { font-size: 16px; }
   .heroActions { display: grid; }
