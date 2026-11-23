@@ -15,12 +15,21 @@ const benefits = [
   ["03", "오늘 복습할 단어만 모아보기", "학습 결과에 맞춰 필요한 단어만 다시 확인합니다."],
 ] as const;
 
-function MotionFrame({ poster, alt, video }: { poster: string; alt: string; video?: MotionVideo }) {
+function MotionFrame({ poster, alt, video, active = true }: { poster: string; alt: string; video?: MotionVideo; active?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const element = videoRef.current;
     if (!element || !video) return;
+
+    // Keep every learning video warm in the browser cache. Only the selected
+    // panel plays, so switching modes shows motion immediately without six
+    // videos competing for playback at the same time.
+    if (element.readyState === HTMLMediaElement.HAVE_NOTHING) element.load();
+    if (!active) {
+      element.pause();
+      return;
+    }
 
     const startAt = video.startAt ?? 0;
     const endAt = video.endAt;
@@ -65,7 +74,7 @@ function MotionFrame({ poster, alt, video }: { poster: string; alt: string; vide
       element.removeEventListener("timeupdate", onTimeUpdate);
       element.pause();
     };
-  }, [video]);
+  }, [video, active]);
 
   const sourceWidth = video?.sourceWidth ?? 1080;
   const sourceHeight = video?.sourceHeight ?? 2340;
@@ -90,7 +99,7 @@ function MotionFrame({ poster, alt, video }: { poster: string; alt: string; vide
       {video ? (
         <div className={styles.videoViewport}>
           <div className={styles.videoCrop} style={cropStyle}>
-            <video ref={videoRef} muted playsInline preload="metadata" poster={poster} aria-label={alt} style={videoStyle}>
+            <video ref={videoRef} muted playsInline preload="auto" poster={poster} aria-label={alt} style={videoStyle}>
               <source src={video.src} type="video/mp4" />
             </video>
           </div>
@@ -209,10 +218,10 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
       <header className={styles.header}>
         <div className={styles.headerInner}>
           <a className={styles.brand} href="#top" aria-label="Memorize Me 처음으로"><img src="/app-icon-192.png" width="42" height="42" alt="" /><span>Memorize Me</span></a>
-          <nav className={styles.desktopNav} aria-label="주요 메뉴"><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a><a className={styles.guideLink} href="/manual">사용자 가이드</a><a className={`${styles.primaryCta} ${styles.compactCta}`} href="/feedback">의견 게시판 <span aria-hidden="true">→</span></a></nav>
+          <nav className={styles.desktopNav} aria-label="주요 메뉴"><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a><a className={styles.guideLink} href="/ai-api">AI API 연결 가이드</a><a className={`${styles.primaryCta} ${styles.compactCta}`} href="/feedback">의견 게시판 <span aria-hidden="true">→</span></a></nav>
           <button type="button" className={styles.menuButton} aria-expanded={menuOpen} aria-controls="mobile-menu" onClick={() => setMenuOpen((open) => !open)}><span aria-hidden="true">{menuOpen ? "×" : "☰"}</span><span className={styles.srOnly}>{menuOpen ? "메뉴 닫기" : "메뉴 열기"}</span></button>
         </div>
-        {menuOpen ? <nav id="mobile-menu" className={styles.mobileMenu} aria-label="모바일 메뉴"><a href="#journey" onClick={closeMenu}>시작하기</a><a href="#learning" onClick={closeMenu}>학습 방식</a><a href="#ai" onClick={closeMenu}>AI 학습</a><a href="#faq" onClick={closeMenu}>FAQ</a><a href="/manual" onClick={closeMenu}>사용자 가이드</a><a className={styles.primaryCta} href="/feedback" onClick={closeMenu}>의견 게시판 <span aria-hidden="true">→</span></a></nav> : null}
+        {menuOpen ? <nav id="mobile-menu" className={styles.mobileMenu} aria-label="모바일 메뉴"><a href="#journey" onClick={closeMenu}>시작하기</a><a href="#learning" onClick={closeMenu}>학습 방식</a><a href="#ai" onClick={closeMenu}>AI 학습</a><a href="#faq" onClick={closeMenu}>FAQ</a><a href="/ai-api" onClick={closeMenu}>AI API 연결 가이드</a><a className={styles.primaryCta} href="/feedback" onClick={closeMenu}>의견 게시판 <span aria-hidden="true">→</span></a></nav> : null}
       </header>
 
       <div id="main-content">
@@ -260,7 +269,7 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
                 <div ref={modeTabsRef} id="mode-tabs" className={styles.modeTabs} role="tablist" aria-label="학습과 복습 기능 선택" onKeyDown={(event) => tabKeyHandler(event, activeMode, studyModes.length, selectMode)}>{studyModes.map((mode, index) => <button id={`mode-tabs-tab-${index}`} key={mode.title} type="button" role="tab" aria-selected={activeMode === index} aria-controls={`mode-panel-${index}`} tabIndex={activeMode === index ? 0 : -1} onClick={() => selectMode(index)}><StudyModeIcon type={mode.icon} /><span>{mode.title}</span></button>)}</div>
               </div>
               <div className={styles.modeCarousel} role="region" aria-roledescription="carousel" aria-label="학습과 복습 기능 화면. 모바일에서는 좌우로 밀어 전환할 수 있습니다." onTouchStart={(event) => { modeTouchStartX.current = event.changedTouches[0]?.clientX ?? null; }} onTouchEnd={(event) => { const startX = modeTouchStartX.current; const endX = event.changedTouches[0]?.clientX; modeTouchStartX.current = null; if (startX === null || endX === undefined) return; const distance = endX - startX; if (Math.abs(distance) >= 48) selectMode(activeMode + (distance < 0 ? 1 : -1)); }}>
-                <div id={`mode-panel-${activeMode}`} key={activeStudyMode.title} role="tabpanel" aria-labelledby={`mode-tabs-tab-${activeMode}`} className={styles.modePanel}><div role="group" aria-label={`${activeMode + 1}/${studyModes.length}`}><MotionFrame poster={activeStudyMode.image} alt={activeStudyMode.imageAlt} video={activeStudyMode.video} /></div></div>
+                {studyModes.map((mode, index) => <div id={`mode-panel-${index}`} key={mode.title} role="tabpanel" aria-labelledby={`mode-tabs-tab-${index}`} className={styles.modePanel} hidden={activeMode !== index}><div role="group" aria-label={`${index + 1}/${studyModes.length}`}><MotionFrame poster={mode.image} alt={mode.imageAlt} video={mode.video} active={activeMode === index} /></div></div>)}
                 <div className={styles.carouselControls}><button type="button" onClick={() => selectMode(activeMode - 1)} aria-label="이전 학습 방식">←</button><div>{studyModes.map((mode, index) => <button key={mode.title} type="button" aria-label={`${mode.title} 보기`} aria-current={activeMode === index ? "true" : undefined} onClick={() => selectMode(index)}><span /></button>)}</div><button type="button" onClick={() => selectMode(activeMode + 1)} aria-label="다음 학습 방식">→</button></div>
                 <button className={styles.expandButton} type="button" onClick={() => showImage({ src: activeStudyMode.image, alt: activeStudyMode.imageAlt, label: activeStudyMode.title })}>화면 크게 보기</button>
               </div>
@@ -279,14 +288,14 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
 
         <section className={styles.faqSection} id="faq" aria-labelledby="faq-title">
           <div className={styles.sectionInner}>
-            <div className={styles.faqLayout}><div className={styles.helpPanel}><p className={styles.kicker}>도움말</p><h2><CopyLines lines={["필요한 안내를", "바로 찾아보세요."]} /></h2><p><CopyLines lines={["실제 조작은 사용자 가이드에서 확인하고,", "발견한 내용은 의견 게시판에 남겨주세요."]} /></p><a href="/manual">사용자 가이드 →</a><a href="/feedback">의견 게시판 →</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 {supportEmail}</a> : null}</div><div className={styles.faq}><p className={styles.kicker}>자주 묻는 질문</p><h2 id="faq-title">시작 전에 확인하세요.</h2>{faqItems.map((item, index) => <details key={item.question} open={index === 0}><summary>{item.question}<b aria-hidden="true" /></summary><p>{item.answer}</p></details>)}</div></div>
+            <div className={styles.faqLayout}><div className={styles.helpPanel}><p className={styles.kicker}>도움말</p><h2><CopyLines lines={["필요한 안내를", "바로 찾아보세요."]} /></h2><p><CopyLines lines={["AI 연결 방법은 전용 가이드에서 확인하고,", "발견한 내용은 의견 게시판에 남겨주세요."]} /></p><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 {supportEmail}</a> : null}</div><div className={styles.faq}><p className={styles.kicker}>자주 묻는 질문</p><h2 id="faq-title">시작 전에 확인하세요.</h2>{faqItems.map((item, index) => <details key={item.question} open={index === 0}><summary>{item.question}<b aria-hidden="true" /></summary><p>{item.answer}</p></details>)}</div></div>
           </div>
         </section>
 
-        <section className={styles.finalCta} aria-labelledby="final-title"><div><p className={styles.kicker}>내 단어장으로 시작하기</p><h2 id="final-title"><CopyLines lines={["이미 정리한 단어장으로,", "오늘의 학습을 준비하세요."]} /></h2><p>{googlePlayUrl ? "Google Play에서 앱을 설치하고 학습을 시작하세요." : "출시 알림을 신청하거나 사용자 가이드에서 학습 방법을 미리 확인하세요."}</p><div className={styles.finalActions}><PrimaryCta googlePlayUrl={googlePlayUrl} supportEmail={supportEmail} /><a href="/manual">사용자 가이드 보기 <span aria-hidden="true">→</span></a></div></div></section>
+        <section className={styles.finalCta} aria-labelledby="final-title"><div><p className={styles.kicker}>내 단어장으로 시작하기</p><h2 id="final-title"><CopyLines lines={["이미 정리한 단어장으로,", "오늘의 학습을 준비하세요."]} /></h2><p>{googlePlayUrl ? "Google Play에서 앱을 설치하고 학습을 시작하세요." : "출시 알림을 신청하고 Memorize Me의 소식을 받아보세요."}</p><div className={styles.finalActions}><PrimaryCta googlePlayUrl={googlePlayUrl} supportEmail={supportEmail} /></div></div></section>
       </div>
 
-      <footer className={styles.footer}><div className={styles.footerInner}><div className={styles.footerBrand}><a className={styles.brand} href="#top"><img src="/app-icon-192.png" width="42" height="42" alt="" /><span>Memorize Me</span></a><p>내 단어장으로 시작하는 학습</p></div><nav aria-label="서비스"><strong>서비스</strong><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a></nav><nav aria-label="지원"><strong>지원</strong><a href="/manual">사용자 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 이메일</a> : null}</nav><nav aria-label="정책"><strong>정책</strong><a href="/privacy">개인정보 처리방침</a><a href="/account-deletion">계정 삭제 안내</a></nav><div><strong>앱</strong><p>{googlePlayUrl ? "Google Play에서 제공" : "Google Play 출시 준비 중"}</p></div></div><div className={styles.footerBottom}>© 2026 Memorize Me</div></footer>
+      <footer className={styles.footer}><div className={styles.footerInner}><div className={styles.footerBrand}><a className={styles.brand} href="#top"><img src="/app-icon-192.png" width="42" height="42" alt="" /><span>Memorize Me</span></a><p>내 단어장으로 시작하는 학습</p></div><nav aria-label="서비스"><strong>서비스</strong><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a></nav><nav aria-label="지원"><strong>지원</strong><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 이메일</a> : null}</nav><nav aria-label="정책"><strong>정책</strong><a href="/privacy">개인정보 처리방침</a><a href="/account-deletion">계정 삭제 안내</a></nav><div><strong>앱</strong><p>{googlePlayUrl ? "Google Play에서 제공" : "Google Play 출시 준비 중"}</p></div></div><div className={styles.footerBottom}>© 2026 Memorize Me</div></footer>
 
       {lightboxImage ? <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label={`${lightboxImage.label} 화면 확대`} onMouseDown={(event) => { if (event.target === event.currentTarget) setLightboxImage(null); }}><button type="button" onClick={() => setLightboxImage(null)} aria-label="확대 화면 닫기">닫기 ×</button><figure><img src={lightboxImage.src} alt={lightboxImage.alt} /><figcaption>{lightboxImage.label}</figcaption></figure></div> : null}
     </main>

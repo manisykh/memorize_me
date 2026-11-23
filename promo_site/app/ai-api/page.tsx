@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CopyLines } from "../copy-lines";
 
 export const metadata: Metadata = {
@@ -42,13 +43,12 @@ export default function AiApiGuidePage() {
   return (
     <main className="manual-page api-guide-page" id="api-top">
       <header className="manual-topbar">
-        <a className="brand" href="/" aria-label="Memorize Me 제품 소개로 이동">
+        <Link className="brand" href="/" aria-label="Memorize Me 제품 소개로 이동">
           <img className="brand-app-icon" src="/app-icon.png" alt="" aria-hidden="true" />
           <span>Memorize Me</span>
-        </a>
+        </Link>
         <nav aria-label="AI API 가이드 메뉴">
-          <a href="/">홈으로 돌아가기</a>
-          <a className="manual-nav-action" href="/manual">사용자 가이드</a>
+          <Link href="/">홈으로 돌아가기</Link>
           <a className="manual-nav-current" href="#api-steps">AI API 연결</a>
         </nav>
       </header>
@@ -165,7 +165,6 @@ export default function AiApiGuidePage() {
               <li><strong>연결 테스트</strong>로 각 카드 또는 전체 모델을 다시 확인할 수 있습니다.</li>
               <li>모델 변경에서는 현재 키로 사용할 수 있는 후보를 확인합니다.</li>
             </ul>
-            <a href="/manual#ai">AI 문제 생성까지 이어서 보기 <span>→</span></a>
           </div>
         </div>
       </section>
@@ -197,7 +196,6 @@ export default function AiApiGuidePage() {
         </div>
         <div>
           <a className="button button-light" href="#api-top">처음부터 다시 보기 <span>↑</span></a>
-          <a className="api-end-link" href="/manual">사용자 가이드 보기</a>
         </div>
       </section>
     </main>

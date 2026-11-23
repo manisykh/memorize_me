@@ -113,7 +113,7 @@ const standaloneScript = String.raw`
     menu.id = 'standalone-mobile-menu';
     menu.setAttribute('aria-label', '모바일 메뉴');
     menu.dataset.open = 'false';
-    menu.innerHTML = '<a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a><a href="' + pageUrl + '/manual">사용자 가이드</a><a href="' + pageUrl + '/feedback">의견 게시판 →</a>';
+    menu.innerHTML = '<a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a><a href="' + pageUrl + '/ai-api">AI API 연결 가이드</a><a href="' + pageUrl + '/feedback">의견 게시판</a>';
     header.append(menu);
     menuButton.setAttribute('aria-controls', menu.id);
     menuButton.addEventListener('click', () => {

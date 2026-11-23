@@ -59,7 +59,7 @@
 .hero h1 strong { display: block; color: var(--mint); font: inherit; }
 .heroDescription { max-width: 42em; margin: 27px auto 0; color: var(--muted); font-size: 18px; line-height: 1.7; }
 .formatList { width: min(100%,480px); margin: 30px auto 0; padding: 0; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; list-style: none; }
-.formatList li { min-width: 0; padding: 13px 8px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: #244469; background: rgba(255,255,255,.74); border: 1px solid #dce6f1; border-radius: 18px; text-align: center; font-size: 14px; font-weight: 850; }
+.formatList li { min-width: 0; padding: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: #244469; text-align: center; font-size: 14px; font-weight: 850; }
 .formatIconBox { width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 14px; }
 .formatIconBox svg { width: 23px; height: 28px; display: block; filter: drop-shadow(0 4px 6px rgba(6,38,93,.1)); }
 .sheetsIcon { background: #eaf8f0; border-color: #d0ecdc; }
@@ -99,9 +99,9 @@
 .preparationVisual, .modeCarousel, .aiVisual { width: clamp(420px,42vw,540px); max-width: 100%; height: 680px; margin-inline: auto; }
 
 .journey { padding: 120px 0; scroll-margin-top: 80px; }
-.preparationLayout { margin-top: 58px; display: grid; grid-template-columns: minmax(0,1fr) clamp(420px,42vw,540px); gap: 64px; align-items: center; }
-.preparationOptions { display: grid; gap: 12px; }
-.preparationOptions article { min-height: 132px; padding: 22px 24px; display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 18px; align-items: center; background: #fff; border: 1px solid #d6e1ed; border-radius: 22px; box-shadow: 0 12px 30px rgba(6,38,93,.055); }
+.preparationLayout { height: 560px; margin-top: 58px; display: grid; grid-template-columns: minmax(0,1fr) clamp(420px,42vw,540px); gap: 64px; align-items: stretch; }
+.preparationOptions { height: 100%; display: grid; grid-template-rows: repeat(3,minmax(0,1fr)); gap: 12px; }
+.preparationOptions article { min-height: 0; height: 100%; padding: 22px 24px; display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 18px; align-items: center; background: #fff; border: 1px solid #d6e1ed; border-radius: 22px; box-shadow: 0 12px 30px rgba(6,38,93,.055); }
 .preparationOptions h3 { margin: 0; font-size: 22px; line-height: 1.28; letter-spacing: -.015em; word-break: keep-all; }
 .preparationOptions p { margin: 9px 0 0; color: var(--muted); font-size: 15px; line-height: 1.65; }
 .preparationIcon { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 17px; }
@@ -109,9 +109,9 @@
 .importPreparationIcon { color: #1477e8; background: #e7f1ff; }
 .createPreparationIcon { color: #00a978; background: #e4f8f1; }
 .builtinPreparationIcon { color: #7257dc; background: #eeeaff; }
-.preparationVisual { display: grid; grid-template-rows: 1fr auto; align-items: center; }
-.preparationVisual .motionFrame { width: min(440px,100%); margin: auto; }
-.preparationVisual > p { margin: 18px 0 0; color: #3d5577; text-align: center; font-size: 14px; font-weight: 850; }
+.preparationVisual { position: relative; width: 100%; height: 100%; display: block; }
+.preparationVisual .motionFrame { width: 100%; height: 100%; margin: 0; aspect-ratio: auto; }
+.preparationVisual > p { position: absolute; right: 18px; bottom: 18px; left: 18px; width: fit-content; margin: 0 auto; padding: 9px 13px; color: #3d5577; background: rgba(255,255,255,.9); border: 1px solid rgba(203,217,232,.9); border-radius: 999px; text-align: center; font-size: 14px; font-weight: 850; box-shadow: 0 8px 24px rgba(6,38,93,.08); }
 .learningBridge { margin-top: 62px; padding: 28px 0 0; display: flex; align-items: center; gap: 22px; border-top: 1px solid var(--line); }
 .learningBridge > span { padding: 8px 12px; flex: 0 0 auto; color: #08745b; background: #e5f8f1; border-radius: 999px; font-size: 13px; font-weight: 900; }
 .learningBridge strong { font-size: 22px; line-height: 1.35; letter-spacing: -.01em; }
@@ -149,7 +149,8 @@
 .modeTabs button[aria-selected="true"] .reviewModeIcon { background: #ede9ff; }
 .modeTabs button[aria-selected="true"] .testModeIcon { background: #e2f7fb; }
 .modeCarousel { position: relative; min-height: 654px; padding: 0 0 76px; touch-action: pan-y; user-select: none; }
-.modePanel { width: min(440px,100%); margin: auto; }
+.modePanel { width: min(440px,100%); margin: auto; animation: fadeIn .22s ease; }
+.modePanel[hidden] { display: none; }
 .modePanel > div { width: 100%; margin: auto; }
 .carouselControls { position: absolute; right: 24px; bottom: 17px; left: 24px; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; }
 .carouselControls > button { width: 44px; height: 44px; color: var(--navy); background: #fff; border: 1px solid #cbd9e8; border-radius: 50%; cursor: pointer; }
@@ -230,10 +231,12 @@
   .menuButton { display: grid; place-items: center; }
   .hero { padding: 104px 0 78px; }
   .heroCopy { max-width: 720px; }
-  .preparationLayout { grid-template-columns: 1fr; }
-  .preparationOptions { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .preparationLayout { height: auto; grid-template-columns: 1fr; }
+  .preparationOptions { height: auto; grid-template-columns: repeat(3,minmax(0,1fr)); grid-template-rows: none; }
   .preparationOptions article { min-height: 218px; grid-template-columns: 1fr; align-content: start; }
   .preparationVisual { width: min(540px,100%); height: auto; }
+  .preparationVisual .motionFrame { height: auto; aspect-ratio: 4 / 5; }
+  .preparationVisual > p { position: static; width: auto; margin: 13px 0 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
   .learningAxis { grid-template-columns: 1fr; padding: 26px; }
   .modeTabs { grid-template-columns: repeat(3,1fr); }
   .modeTabs button { justify-content: center; text-align: center; }
@@ -249,15 +252,15 @@
 @media (max-width: 620px) {
   .sectionInner, .learningInner, .heroInner, .footerInner, .footerBottom { width: min(100% - 40px,1120px); }
   .sectionHeading h2, .learningHeading h2, .aiCopy h2, .helpPanel h2, .faq h2, .finalCta h2 { font-size: clamp(28px,8.5vw,36px); }
-  .hero::before { background-size: auto 100%; background-position: 14% center; opacity: .52; }
-  .hero::after { background: linear-gradient(180deg,rgba(255,255,255,.9),rgba(255,255,255,.78) 54%,rgba(247,251,255,.86)); }
+  .hero::before { background-size: 100% auto; background-position: center 54px; opacity: .78; }
+  .hero::after { background: linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,.56) 34%,rgba(247,251,255,.9) 64%); }
   .hero h1 { font-size: clamp(34px,10vw,46px); }
   .heroDescription, .sectionHeading > p:last-child { font-size: 16px; }
   .heroActions { display: grid; }
   .heroActions .primaryCta { width: 100%; }
   .benefits, .journey, .learning, .aiSection, .faqSection { padding-block: 72px; }
   .formatList { width: 100%; margin-top: 24px; gap: 8px; }
-  .formatList li { min-height: 82px; padding: 10px 4px 9px; gap: 7px; border-radius: 15px; font-size: 12px; }
+  .formatList li { min-height: 0; padding: 4px 2px; gap: 7px; font-size: 12px; }
   .formatIconBox { width: 40px; height: 40px; border-radius: 12px; }
   .formatIconBox svg { width: 20px; height: 25px; }
   .benefits { padding-block: 54px; }
@@ -270,7 +273,7 @@
   .benefitGrid h3 { grid-column: 2; margin: 0; font-size: 19px; line-height: 1.35; }
   .benefitGrid p { grid-column: 2; margin: 7px 0 0; font-size: 15px; line-height: 1.6; }
   .preparationLayout { margin-top: 36px; gap: 34px; }
-  .preparationOptions { grid-template-columns: 1fr; gap: 9px; }
+  .preparationOptions { grid-template-columns: 1fr; grid-auto-rows: 1fr; gap: 9px; }
   .preparationOptions article { min-height: 0; padding: 18px; grid-template-columns: 48px minmax(0,1fr); gap: 14px; align-content: center; border-radius: 18px; }
   .preparationOptions h3 { font-size: 19px; }
   .preparationOptions p { margin-top: 6px; font-size: 14px; line-height: 1.55; }

@@ -35,7 +35,8 @@ test("server-renders the production landing page and legal links", async () => {
   assert.match(html, /<title>Memorize Me \| 시트에서 시작하는 단어 학습<\/title>/i);
   assert.match(html, /href="\/privacy"[^>]*>개인정보 처리방침<\/a>/);
   assert.match(html, /href="\/account-deletion"[^>]*>계정 삭제<\/a>/);
-  assert.match(html, /href="\/manual"[^>]*>사용 가이드<\/a>/);
+  assert.doesNotMatch(html, /href="\/manual"/);
+  assert.match(html, /href="\/ai-api"[^>]*>AI API 연결 가이드<\/a>/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/i);
 });
 
