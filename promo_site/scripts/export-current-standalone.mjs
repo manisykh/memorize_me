@@ -35,7 +35,16 @@ const assetPaths = [
   "/media/video/flashcard.mp4",
   "/media/video/quiz-choice.mp4",
   "/media/video/quiz-spelling.mp4",
+  "/media/video/mistakes.mp4",
+  "/media/video/review.mp4",
   "/media/video/test-sheet.mp4",
+  "/media/video/posters/wordbook-import.jpg",
+  "/media/video/posters/flashcard.jpg",
+  "/media/video/posters/quiz-choice.jpg",
+  "/media/video/posters/quiz-spelling.jpg",
+  "/media/video/posters/mistakes.jpg",
+  "/media/video/posters/review.jpg",
+  "/media/video/posters/test-sheet.jpg",
 ];
 
 const mimeByExtension = {
@@ -164,12 +173,12 @@ const standaloneScript = String.raw`
   }
 
   const modes = [
-    { title: '플래시카드', body: ['뜻과 예문을 확인하고', '알아요·몰라요로 기억을 쌓습니다.'], poster: '/media/showcase/flashcard-action.jpg', video: '/media/video/flashcard.mp4', alt: '단어와 응답 버튼이 보이는 플래시카드 학습 화면', end: 6.85 },
-    { title: '객관식 퀴즈', body: ['여러 보기에서 정확한 뜻을 고르며', '기억을 확인합니다.'], poster: '/media/showcase/quiz-choice.jpg', video: '/media/video/quiz-choice.mp4', alt: '단어의 뜻을 보기에서 고르는 객관식 퀴즈 화면', end: 10.15 },
-    { title: '스펠링 퀴즈', body: ['뜻을 보고 철자를 직접 입력해', '기억을 더 단단하게 만듭니다.'], poster: '/media/showcase/quiz-spelling.jpg', video: '/media/video/quiz-spelling.mp4', alt: '뜻을 보고 영단어 철자를 입력하는 스펠링 퀴즈 화면', end: 25.6 },
-    { title: '오답노트', body: ['틀린 단어와 다시 확인할 기록을 모아', '취약한 부분을 반복합니다.'], poster: '/media/current-20261107/learning-overview.jpg', alt: '누적 오답과 다시 확인할 학습 기록을 보여주는 화면' },
-    { title: '복습하기', body: ['오늘 필요한 단어를 모아 복습하고', '다음 복습 일정까지 확인합니다.'], poster: '/media/showcase/review-today.jpg', alt: '오늘 복습할 단어 수와 복습 시작 버튼을 보여주는 화면' },
-    { title: '시험지 만들기', body: ['학습할 단어를 골라 시험지로 만들고', 'PDF·Excel·HTML로 공유합니다.'], poster: '/media/manual/pdf-options.jpg', video: '/media/video/test-sheet.mp4', alt: '시험지 파일 형식과 출력 구성을 선택하는 화면', end: 15.68 },
+    { title: '플래시카드', body: ['뜻과 예문을 확인하고', '알아요·몰라요로 기억을 쌓습니다.'], poster: '/media/video/posters/flashcard.jpg', video: '/media/video/flashcard.mp4', alt: '단어와 응답 버튼이 보이는 플래시카드 학습 화면', start: .1, end: 13.94 },
+    { title: '객관식 퀴즈', body: ['여러 보기에서 정확한 뜻을 고르며', '기억을 확인합니다.'], poster: '/media/video/posters/quiz-choice.jpg', video: '/media/video/quiz-choice.mp4', alt: '단어의 뜻을 보기에서 고르는 객관식 퀴즈 화면', start: .1, end: 19.17 },
+    { title: '스펠링 퀴즈', body: ['뜻을 보고 철자를 직접 입력해', '기억을 더 단단하게 만듭니다.'], poster: '/media/video/posters/quiz-spelling.jpg', video: '/media/video/quiz-spelling.mp4', alt: '뜻을 보고 영단어 철자를 입력하는 스펠링 퀴즈 화면', start: .1, end: 19.09 },
+    { title: '오답노트', body: ['틀린 단어와 다시 확인할 기록을 모아', '취약한 부분을 반복합니다.'], poster: '/media/video/posters/mistakes.jpg', video: '/media/video/mistakes.mp4', alt: '누적 오답과 다시 확인할 학습 기록을 보여주는 화면', start: .1, end: 10.55 },
+    { title: '복습하기', body: ['오늘 필요한 단어를 모아 복습하고', '다음 복습 일정까지 확인합니다.'], poster: '/media/video/posters/review.jpg', video: '/media/video/review.mp4', alt: '오늘 복습할 단어 수와 복습 시작 버튼을 보여주는 화면', start: .1, end: 11.7 },
+    { title: '시험지 만들기', body: ['학습할 단어를 골라 시험지로 만들고', 'PDF·Excel·HTML로 공유합니다.'], poster: '/media/video/posters/test-sheet.jpg', video: '/media/video/test-sheet.mp4', alt: '시험지 파일 형식과 출력 구성을 선택하는 화면', start: .1, end: 14.9 },
   ];
   const tabs = byClass('modeTabs');
   const modeCopy = byClass('modeCopy');
@@ -203,7 +212,7 @@ const standaloneScript = String.raw`
       if (mode.video && video && source) {
         video.poster = mode.poster;
         video.setAttribute('aria-label', mode.alt);
-        video.dataset.start = '.2';
+        video.dataset.start = String(mode.start ?? .1);
         video.dataset.end = String(mode.end);
         video.removeAttribute('data-standalone-ready');
         source.src = mode.video;

@@ -94,6 +94,8 @@ class _WordImportMappingDialogState extends State<_WordImportMappingDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final identity = MemorizeIdentity.of(theme);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final dialogWidth = screenWidth > 544 ? 520.0 : screenWidth - 24;
     final columns = List<int>.generate(_columnCount, (index) => index);
     if (!columns.contains(_wordColumn)) _wordColumn = 0;
     if (!columns.contains(_primaryMeaningColumn) ||
@@ -113,6 +115,7 @@ class _WordImportMappingDialogState extends State<_WordImportMappingDialog> {
       backgroundColor: identity.canvas,
       surfaceTintColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+      constraints: BoxConstraints(minWidth: dialogWidth, maxWidth: dialogWidth),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       titlePadding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
       title: Column(

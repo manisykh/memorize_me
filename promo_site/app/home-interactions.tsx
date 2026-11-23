@@ -99,7 +99,17 @@ function MotionFrame({ poster, alt, video, active = true }: { poster: string; al
       {video ? (
         <div className={styles.videoViewport}>
           <div className={styles.videoCrop} style={cropStyle}>
-            <video ref={videoRef} muted playsInline preload="auto" poster={poster} aria-label={alt} style={videoStyle}>
+            <video
+              ref={videoRef}
+              muted
+              playsInline
+              preload={active ? "auto" : "metadata"}
+              poster={poster}
+              aria-label={alt}
+              data-start={video.startAt ?? 0}
+              data-end={video.endAt}
+              style={videoStyle}
+            >
               <source src={video.src} type="video/mp4" />
             </video>
           </div>
