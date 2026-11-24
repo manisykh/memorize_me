@@ -18,8 +18,8 @@ const cssPaths = [
 
 const assetPaths = [
   "/app-icon-192.png",
-  "/media/hero/wordbook-hero-bg-v1.png",
-  "/media/hero/wordbook-hero-bg-mobile-v1.png",
+  "/media/hero/wordbook-hero-bg-v1.webp",
+  "/media/hero/wordbook-hero-bg-mobile-v1.webp",
   "/media/feature/sheet-selection-current.svg",
   "/media/latest/learning-current.png",
   "/media/showcase/review-today.jpg",
@@ -54,6 +54,7 @@ const mimeByExtension = {
   ".mp4": "video/mp4",
   ".png": "image/png",
   ".svg": "image/svg+xml",
+  ".webp": "image/webp",
 };
 
 async function fetchText(path) {
@@ -82,12 +83,6 @@ const standaloneCss = `
 .standalone-mobile-menu{display:none;padding:12px 20px 20px;background:#fff;border-top:1px solid #dce5f0}
 .standalone-mobile-menu[data-open="true"]{display:grid;gap:4px}
 .standalone-mobile-menu a{padding:13px 8px;font-weight:800;color:#102b54;text-decoration:none}
-.standalone-lightbox{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:24px;background:rgba(2,18,48,.78)}
-.standalone-lightbox[hidden]{display:none}
-.standalone-lightbox button{position:absolute;top:20px;right:20px;padding:11px 16px;color:#fff;background:#0b5fd8;border:0;border-radius:999px;font-weight:800;cursor:pointer}
-.standalone-lightbox figure{max-width:min(92vw,760px);max-height:88vh;margin:0;display:grid;justify-items:center;gap:10px}
-.standalone-lightbox img{max-width:100%;max-height:80vh;border-radius:24px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
-.standalone-lightbox figcaption{color:#fff;font-weight:800}
 @media(min-width:901px){.standalone-mobile-menu{display:none!important}}
 `;
 
@@ -114,6 +109,41 @@ const standaloneScript = String.raw`
     if (video.readyState >= 1) { reset(); play(); }
   };
   document.querySelectorAll('video').forEach(setupVideo);
+
+  const preparationVisual = byClass('preparationVisual');
+  const preparationOptions = allByClass('preparationOptions')[0];
+  const preparationVideo = preparationVisual?.querySelector('video');
+  const preparationCaption = preparationVisual?.querySelector(':scope > p');
+  const preparationCards = preparationOptions ? [...preparationOptions.querySelectorAll('article')] : [];
+  const preparationStarts = [0, 8.6, 18.8];
+  const preparationCaptions = [
+    '필수 영어단어 6000으로 시작하는 과정',
+    'Google Sheets에서 내 단어장을 가져오는 과정',
+    '앱에서 나만의 단어장을 직접 만드는 과정',
+  ];
+  let activePreparation = -1;
+  const syncPreparation = () => {
+    if (!preparationVideo) return;
+    let next = 0;
+    preparationStarts.forEach((start, index) => { if (preparationVideo.currentTime >= start) next = index; });
+    if (next === activePreparation) return;
+    activePreparation = next;
+    preparationCards.forEach((card, index) => {
+      if (index === next) {
+        card.dataset.active = 'true';
+        card.setAttribute('aria-current', 'step');
+      } else {
+        card.removeAttribute('data-active');
+        card.removeAttribute('aria-current');
+      }
+    });
+    if (preparationCaption) preparationCaption.textContent = preparationCaptions[next];
+  };
+  if (preparationVideo) {
+    preparationVideo.addEventListener('loadedmetadata', syncPreparation);
+    preparationVideo.addEventListener('timeupdate', syncPreparation);
+    syncPreparation();
+  }
 
   const menuButton = byClass('menuButton');
   const header = byClass('header');
@@ -184,7 +214,6 @@ const standaloneScript = String.raw`
   const modeCopy = byClass('modeCopy');
   const panel = byClass('modePanel');
   const controls = byClass('carouselControls');
-  const expand = byClass('expandButton');
   const initialFrame = panel && byClass('motionFrame', panel)?.cloneNode(true);
   let activeMode = 0;
   const showMode = (requested) => {
@@ -255,23 +284,6 @@ const standaloneScript = String.raw`
     }, { passive: true });
   }
 
-  const lightbox = document.createElement('div');
-  lightbox.className = 'standalone-lightbox';
-  lightbox.hidden = true;
-  lightbox.innerHTML = '<button type="button" aria-label="확대 화면 닫기">닫기 ×</button><figure><img alt=""><figcaption></figcaption></figure>';
-  document.body.append(lightbox);
-  const closeLightbox = () => { lightbox.hidden = true; document.body.style.overflow = ''; };
-  lightbox.querySelector('button').addEventListener('click', closeLightbox);
-  lightbox.addEventListener('click', (event) => { if (event.target === lightbox) closeLightbox(); });
-  addEventListener('keydown', (event) => { if (event.key === 'Escape') closeLightbox(); });
-  if (expand) expand.addEventListener('click', () => {
-    const mode = modes[activeMode];
-    lightbox.querySelector('img').src = mode.poster;
-    lightbox.querySelector('img').alt = mode.alt;
-    lightbox.querySelector('figcaption').textContent = mode.title;
-    lightbox.hidden = false;
-    document.body.style.overflow = 'hidden';
-  });
 })();
 `;
 

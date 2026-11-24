@@ -3650,7 +3650,7 @@ class _ReviewTodayCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: identity.mutedInk,
@@ -4984,7 +4984,7 @@ class _BloomAiLearningTab extends _AiLearningTab {
           const SizedBox(height: 12),
           _BloomFeatureCard(
             title: '저장된 AI 퀴즈',
-            subtitle: '저장한 문제를 다시 보거나 여러 퀴즈를 합쳐요.',
+            subtitle: '저장한 문제를 다시 보거나 합쳐요.',
             icon: Icons.library_books_rounded,
             accentColor: identity.scheduled,
             onTap: () {

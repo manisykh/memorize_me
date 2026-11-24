@@ -58,6 +58,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
+      <head>
+        <link rel="preload" as="image" href="/media/hero/wordbook-hero-bg-v1.webp" type="image/webp" media="(min-width: 621px)" fetchPriority="high" />
+        <link rel="preload" as="image" href="/media/hero/wordbook-hero-bg-mobile-v1.webp" type="image/webp" media="(max-width: 620px)" fetchPriority="high" />
+      </head>
       <body>{children}</body>
     </html>
   );

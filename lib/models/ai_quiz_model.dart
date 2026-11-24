@@ -13,12 +13,14 @@ class AiQuizResponse {
   final List<AiQuestion> questions;
   final int requestedQuestionCount;
   final int droppedDuplicateCount;
+  final int droppedInvalidCount;
   final int difficultyMismatchCount;
 
   AiQuizResponse({
     required this.questions,
     this.requestedQuestionCount = 0,
     this.droppedDuplicateCount = 0,
+    this.droppedInvalidCount = 0,
     this.difficultyMismatchCount = 0,
   });
 
@@ -54,6 +56,7 @@ class AiQuizResponse {
           (json['requestedQuestionCount'] as num?)?.toInt() ?? 0,
       droppedDuplicateCount:
           (json['droppedDuplicateCount'] as num?)?.toInt() ?? 0,
+      droppedInvalidCount: (json['droppedInvalidCount'] as num?)?.toInt() ?? 0,
       difficultyMismatchCount:
           (json['difficultyMismatchCount'] as num?)?.toInt() ?? 0,
     );
@@ -70,6 +73,7 @@ class AiQuizResponse {
     'questions': questions.map((question) => question.toJson()).toList(),
     'requestedQuestionCount': requestedQuestionCount,
     'droppedDuplicateCount': droppedDuplicateCount,
+    'droppedInvalidCount': droppedInvalidCount,
     'difficultyMismatchCount': difficultyMismatchCount,
   };
 }

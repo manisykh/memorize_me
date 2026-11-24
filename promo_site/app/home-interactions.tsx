@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { faqItems, preparationOptions, preparationVisual, studyModes, type MotionVideo, type PreparationIconName, type StudyModeIconName } from "./home-content";
 import { CopyLines } from "./copy-lines";
 import styles from "./home-v2.module.css";
 
 type HomeLandingProps = { googlePlayUrl?: string; supportEmail?: string };
-type LightboxImage = { src: string; alt: string; label: string };
 
 const benefits = [
   ["01", "다시 입력하지 않고 가져오기", "정리한 단어장을 학습에 바로 활용합니다."],
@@ -15,7 +14,50 @@ const benefits = [
   ["03", "오늘 복습할 단어만 모아보기", "학습 결과에 맞춰 필요한 단어만 다시 확인합니다."],
 ] as const;
 
-function MotionFrame({ poster, alt, video, active = true }: { poster: string; alt: string; video?: MotionVideo; active?: boolean }) {
+const aiFeatures = [
+  {
+    title: "예문·뜻 보강",
+    subtitle: "예문·뜻·오타를 한 번에 보강해요.",
+    icon: "doc_text",
+    accent: "#087fe0",
+    softAccent: "#e8f2ff",
+    image: "/media/manual/ai-result.jpg",
+    imageAlt: "AI가 예문과 뜻을 보강한 앱 결과 화면",
+    caption: "예문과 뜻을 한 번에 보강하는 과정",
+  },
+  {
+    title: "퀴즈 생성",
+    subtitle: "단어장 맞춤 문제를 만들어줘요.",
+    icon: "list_bullet",
+    accent: "#00ad7c",
+    softAccent: "#e2f8f1",
+    image: "/media/app-ai-result.jpg",
+    imageAlt: "단어장으로 생성한 AI 맞춤 퀴즈 화면",
+    caption: "단어장으로 맞춤 문제를 생성하는 과정",
+  },
+  {
+    title: "문법 문제 생성",
+    subtitle: "문법 범위별 문제를 만들어줘요.",
+    icon: "book",
+    accent: "#e77b12",
+    softAccent: "#fff0e3",
+    image: "/media/manual/ai-quiz-current.jpg",
+    imageAlt: "문법 범위를 선택해 생성한 문제 화면",
+    caption: "선택한 문법 범위로 문제를 만드는 과정",
+  },
+  {
+    title: "저장된 AI 퀴즈",
+    subtitle: "저장한 문제를 다시 보거나 합쳐요.",
+    icon: "rectangle_stack",
+    accent: "#7257dc",
+    softAccent: "#eeeaff",
+    image: "/media/manual/ai-home.jpg",
+    imageAlt: "저장된 AI 퀴즈를 다시 확인하는 화면",
+    caption: "저장한 문제를 다시 열고 묶어 활용하는 과정",
+  },
+] as const;
+
+function MotionFrame({ poster, alt, video, active = true, onProgress }: { poster: string; alt: string; video?: MotionVideo; active?: boolean; onProgress?: (currentTime: number) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -44,13 +86,17 @@ function MotionFrame({ poster, alt, video, active = true }: { poster: string; al
     };
     const onLoadedMetadata = () => {
       moveToStart();
+      onProgress?.(startAt);
       play();
     };
     const onTimeUpdate = () => {
       if (endAt !== undefined && element.currentTime >= endAt) {
         element.currentTime = startAt;
+        onProgress?.(startAt);
         play();
+        return;
       }
+      onProgress?.(element.currentTime);
     };
 
     element.addEventListener("loadedmetadata", onLoadedMetadata);
@@ -74,7 +120,7 @@ function MotionFrame({ poster, alt, video, active = true }: { poster: string; al
       element.removeEventListener("timeupdate", onTimeUpdate);
       element.pause();
     };
-  }, [video, active]);
+  }, [video, active, onProgress]);
 
   const sourceWidth = video?.sourceWidth ?? 1080;
   const sourceHeight = video?.sourceHeight ?? 2340;
@@ -119,6 +165,36 @@ function MotionFrame({ poster, alt, video, active = true }: { poster: string; al
   );
 }
 
+function BeforeAfterSlider({ beforeSrc, afterSrc, beforeAlt, afterAlt }: { beforeSrc: string; afterSrc: string; beforeAlt: string; afterAlt: string }) {
+  const [position, setPosition] = useState(50);
+
+  return (
+    <div className={`${styles.motionFrame} ${styles.aiCompareFrame}`}>
+      <div className={styles.aiCompareCanvas}>
+        <img className={styles.aiCompareImage} src={beforeSrc} alt={beforeAlt} width="591" height="1200" loading="eager" decoding="async" />
+        <div className={styles.aiCompareAfter} style={{ clipPath: `inset(0 0 0 ${position}%)` }}>
+          <img className={styles.aiCompareImage} src={afterSrc} alt={afterAlt} width="591" height="1200" loading="eager" decoding="async" />
+        </div>
+        <span className={`${styles.aiCompareLabel} ${styles.aiCompareBeforeLabel}`} aria-hidden="true">보강 전</span>
+        <span className={`${styles.aiCompareLabel} ${styles.aiCompareAfterLabel}`} aria-hidden="true">보강 후</span>
+        <span className={styles.aiCompareDivider} style={{ left: `${position}%` }} aria-hidden="true">
+          <span className={styles.aiCompareHandle}><b>‹</b><b>›</b></span>
+        </span>
+        <input
+          className={styles.aiCompareRange}
+          type="range"
+          min="0"
+          max="100"
+          value={position}
+          onChange={(event) => setPosition(Number(event.currentTarget.value))}
+          aria-label="예문과 뜻 보강 전후 화면 비교"
+          aria-valuetext={`보강 전 ${position}%, 보강 후 ${100 - position}%`}
+        />
+      </div>
+    </div>
+  );
+}
+
 function FormatIcon({ type }: { type: "sheets" | "csv" | "xlsx" }) {
   if (type === "sheets") {
     return <span className={`${styles.formatIconBox} ${styles.sheetsIcon}`}><svg viewBox="0 0 32 38" aria-hidden="true"><path fill="#0f9d58" d="M4 0h16l8 8v27a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3Z"/><path fill="#87d6aa" d="M20 0v8h8Z"/><path fill="#fff" d="M7 14h15v15H7Zm3 3v3h3v-3Zm5 0v3h4v-3Zm-5 5v4h3v-4Zm5 0v4h4v-4Z"/></svg></span>;
@@ -158,6 +234,18 @@ function StudyModeIcon({ type }: { type: StudyModeIconName }) {
   return <span className={`${styles.studyModeIcon} ${styles.testModeIcon}`} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h5M9 12h7M9 16h7"/></svg></span>;
 }
 
+function AiFeatureIcon({ feature }: { feature: (typeof aiFeatures)[number] }) {
+  return (
+    <span
+      className={styles.aiFeatureIcon}
+      style={{ "--ai-accent": feature.accent, "--ai-soft-accent": feature.softAccent } as CSSProperties}
+      aria-hidden="true"
+    >
+      <i className={styles.cupertinoIcon}>{feature.icon}</i>
+    </span>
+  );
+}
+
 function tabKeyHandler(event: ReactKeyboardEvent<HTMLDivElement>, current: number, count: number, select: (index: number) => void) {
   let next = current;
   if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (current + 1) % count;
@@ -184,16 +272,17 @@ function PrimaryCta({ googlePlayUrl, supportEmail, compact = false }: HomeLandin
 export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeMode, setActiveMode] = useState(0);
-  const [lightboxImage, setLightboxImage] = useState<LightboxImage | null>(null);
+  const [activePreparation, setActivePreparation] = useState(0);
+  const [activeAiFeature, setActiveAiFeature] = useState(0);
   const modeTouchStartX = useRef<number | null>(null);
   const modeTabsRef = useRef<HTMLDivElement>(null);
   const activeStudyMode = studyModes[activeMode];
+  const selectedAiFeature = aiFeatures[activeAiFeature];
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setMenuOpen(false);
-        setLightboxImage(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -201,11 +290,11 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
   }, []);
 
   useEffect(() => {
-    if (!menuOpen && !lightboxImage) return;
+    if (!menuOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = previous; };
-  }, [menuOpen, lightboxImage]);
+  }, [menuOpen]);
 
   useEffect(() => {
     const container = modeTabsRef.current;
@@ -217,7 +306,13 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
     });
   }, [activeMode]);
 
-  const showImage = (image: LightboxImage) => setLightboxImage(image);
+  const syncPreparationToVideo = useCallback((currentTime: number) => {
+    let nextIndex = 0;
+    preparationOptions.forEach((option, index) => {
+      if (currentTime >= option.videoStartsAt) nextIndex = index;
+    });
+    setActivePreparation((current) => current === nextIndex ? current : nextIndex);
+  }, []);
   const selectMode = (index: number) => setActiveMode((index + studyModes.length) % studyModes.length);
   const closeMenu = () => setMenuOpen(false);
 
@@ -262,8 +357,8 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
           <div className={styles.sectionInner}>
             <div className={styles.sectionHeading}><p className={styles.kicker}>시작하기</p><h2 id="journey-title"><CopyLines lines={["단어장만 준비하면,", "바로 시작할 수 있어요."]} /></h2><p><CopyLines lines={["이미 정리한 자료를 가져오거나", "직접 만들 수 있습니다.", "준비된 자료가 없다면", "필수 영어단어 6000으로 시작하세요."]} /></p></div>
             <div className={styles.preparationLayout}>
-              <div className={styles.preparationOptions}>{preparationOptions.map((option) => <article key={option.title}><PreparationIcon type={option.icon} /><div><h3><CopyLines lines={option.titleLines} /></h3><p><CopyLines lines={option.descriptionLines} /></p></div></article>)}</div>
-              <div className={styles.preparationVisual}><MotionFrame poster={preparationVisual.image} alt={preparationVisual.imageAlt} video={preparationVisual.video} /><p>정리한 단어장을 그대로 가져오는 과정</p></div>
+              <div className={styles.preparationOptions}>{preparationOptions.map((option, index) => <article key={option.title} data-active={activePreparation === index ? "true" : undefined} aria-current={activePreparation === index ? "step" : undefined}><PreparationIcon type={option.icon} /><div><h3><CopyLines lines={option.titleLines} /></h3><p><CopyLines lines={option.descriptionLines} /></p></div></article>)}</div>
+              <div className={styles.preparationVisual}><MotionFrame poster={preparationVisual.image} alt={preparationVisual.imageAlt} video={preparationVisual.video} onProgress={syncPreparationToVideo} /><p aria-live="polite">{preparationOptions[activePreparation].caption}</p></div>
             </div>
             <div className={styles.learningBridge}><span>단어장 준비 완료</span><strong><CopyLines lines={["이제 나에게 맞는", "학습 방식을 골라보세요."]} /></strong></div>
           </div>
@@ -281,7 +376,6 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
               <div className={styles.modeCarousel} role="region" aria-roledescription="carousel" aria-label="학습과 복습 기능 화면. 모바일에서는 좌우로 밀어 전환할 수 있습니다." onTouchStart={(event) => { modeTouchStartX.current = event.changedTouches[0]?.clientX ?? null; }} onTouchEnd={(event) => { const startX = modeTouchStartX.current; const endX = event.changedTouches[0]?.clientX; modeTouchStartX.current = null; if (startX === null || endX === undefined) return; const distance = endX - startX; if (Math.abs(distance) >= 48) selectMode(activeMode + (distance < 0 ? 1 : -1)); }}>
                 {studyModes.map((mode, index) => <div id={`mode-panel-${index}`} key={mode.title} role="tabpanel" aria-labelledby={`mode-tabs-tab-${index}`} className={styles.modePanel} hidden={activeMode !== index}><div role="group" aria-label={`${index + 1}/${studyModes.length}`}><MotionFrame poster={mode.image} alt={mode.imageAlt} video={mode.video} active={activeMode === index} /></div></div>)}
                 <div className={styles.carouselControls}><button type="button" onClick={() => selectMode(activeMode - 1)} aria-label="이전 학습 방식">←</button><div>{studyModes.map((mode, index) => <button key={mode.title} type="button" aria-label={`${mode.title} 보기`} aria-current={activeMode === index ? "true" : undefined} onClick={() => selectMode(index)}><span /></button>)}</div><button type="button" onClick={() => selectMode(activeMode + 1)} aria-label="다음 학습 방식">→</button></div>
-                <button className={styles.expandButton} type="button" onClick={() => showImage({ src: activeStudyMode.image, alt: activeStudyMode.imageAlt, label: activeStudyMode.title })}>화면 크게 보기</button>
               </div>
             </div>
           </div>
@@ -290,8 +384,42 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
         <section className={styles.aiSection} id="ai" aria-labelledby="ai-title">
           <div className={styles.sectionInner}>
             <div className={styles.aiLayout}>
-              <div className={styles.aiCopy}><p className={styles.kicker}>선택 기능 · AI 학습</p><h2 id="ai-title"><CopyLines lines={["내 API가 있을 때,", "학습을 더 넓게."]} /></h2><p><CopyLines lines={["기본 학습은 AI 연결 없이", "사용할 수 있습니다.", "개인 API로 예문과 뜻을 보강하고,", "난이도별 문제를 만들 수 있습니다."]} /></p><ul><li><span aria-hidden="true">✓</span>예문과 뜻 보강</li><li><span aria-hidden="true">✓</span>단어·독해·문법 문제 생성</li><li><span aria-hidden="true">✓</span>PDF·HTML 시험지 저장·내보내기</li></ul><p className={styles.aiNotice}><CopyLines lines={["AI 기능에는 직접 발급한", "API 키가 필요합니다.", "요금은 연결한 서비스 정책에 따르며,", "무료 이용은 사용량 제한이나", "응답 지연이 있을 수 있습니다."]} /></p><div className={styles.aiLinks}><a href="/ai-api">AI API 연결 가이드</a></div></div>
-              <div className={styles.aiVisual}><MotionFrame poster="/media/showcase/ai-menu.jpg" alt="AI 학습 기능과 개인 API 안내를 보여주는 화면" /><div className={styles.aiResultCard}><span>생성 후 활용</span><strong>PDF · HTML 저장</strong></div></div>
+              <div className={styles.aiCopy}>
+                <p className={styles.kicker}>선택 기능 · AI 학습</p>
+                <h2 id="ai-title"><CopyLines lines={["내 단어장의 어휘를,", "다양한 문제로."]} /></h2>
+                <p><CopyLines lines={["공부 중인 단어로 예문과", "맞춤 문제를 만들 수 있습니다.", "암기한 어휘를 다시 떠올리고 적용하며,", "기억을 한 단계 더 단단하게 보조합니다."]} /></p>
+                <div id="ai-feature-tabs" className={styles.aiFeatureTabs} role="tablist" aria-label="AI 학습 기능 선택" onKeyDown={(event) => tabKeyHandler(event, activeAiFeature, aiFeatures.length, setActiveAiFeature)}>
+                  {aiFeatures.map((feature, index) => (
+                    <button
+                      id={`ai-feature-tabs-tab-${index}`}
+                      key={feature.title}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeAiFeature === index}
+                      aria-controls="ai-feature-panel"
+                      tabIndex={activeAiFeature === index ? 0 : -1}
+                      style={{ "--ai-accent": feature.accent, "--ai-soft-accent": feature.softAccent } as CSSProperties}
+                      onClick={() => setActiveAiFeature(index)}
+                    >
+                      <AiFeatureIcon feature={feature} />
+                      <span className={styles.aiFeatureText}><strong>{feature.title}</strong><small>{feature.subtitle}</small></span>
+                      <span className={`${styles.aiChevron} ${styles.cupertinoIcon}`} aria-hidden="true">chevron_right</span>
+                    </button>
+                  ))}
+                </div>
+                <div className={styles.aiLinks}><a href="/ai-api">AI API 연결 가이드</a></div>
+              </div>
+              <div id="ai-feature-panel" className={styles.aiVisual} role="tabpanel" aria-labelledby={`ai-feature-tabs-tab-${activeAiFeature}`}>
+                {activeAiFeature === 0 ? (
+                  <BeforeAfterSlider
+                    beforeSrc="/media/ai/flashcard-before-example.jpg"
+                    afterSrc="/media/ai/flashcard-after-example.jpg"
+                    beforeAlt="예문이 아직 보강되지 않은 플래시카드 학습 화면"
+                    afterAlt="AI가 예문을 보강한 플래시카드 학습 화면"
+                  />
+                ) : <MotionFrame poster={selectedAiFeature.image} alt={selectedAiFeature.imageAlt} />}
+                <p className={styles.aiVisualCaption} aria-live="polite">{selectedAiFeature.caption}</p>
+              </div>
             </div>
           </div>
         </section>
@@ -307,7 +435,6 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
 
       <footer className={styles.footer}><div className={styles.footerInner}><div className={styles.footerBrand}><a className={styles.brand} href="#top"><img src="/app-icon-192.png" width="42" height="42" alt="" /><span>Memorize Me</span></a><p>내 단어장으로 시작하는 학습</p></div><nav aria-label="서비스"><strong>서비스</strong><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a></nav><nav aria-label="지원"><strong>지원</strong><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 이메일</a> : null}</nav><nav aria-label="정책"><strong>정책</strong><a href="/privacy">개인정보 처리방침</a><a href="/account-deletion">계정 삭제 안내</a></nav><div><strong>앱</strong><p>{googlePlayUrl ? "Google Play에서 제공" : "Google Play 출시 준비 중"}</p></div></div><div className={styles.footerBottom}>© 2026 Memorize Me</div></footer>
 
-      {lightboxImage ? <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label={`${lightboxImage.label} 화면 확대`} onMouseDown={(event) => { if (event.target === event.currentTarget) setLightboxImage(null); }}><button type="button" onClick={() => setLightboxImage(null)} aria-label="확대 화면 닫기">닫기 ×</button><figure><img src={lightboxImage.src} alt={lightboxImage.alt} /><figcaption>{lightboxImage.label}</figcaption></figure></div> : null}
     </main>
   );
 }

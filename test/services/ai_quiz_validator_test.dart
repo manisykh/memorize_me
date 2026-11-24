@@ -186,6 +186,81 @@ void main() {
     );
   });
 
+  test('학습 단어의 자연스러운 활용형과 구동사 활용형을 허용한다', () {
+    final response = AiQuizResponse(
+      questions: [
+        AiQuestion(
+          type: 'vocabulary',
+          targetWord: 'study',
+          question: 'She studied English every evening after dinner.',
+          options: const ['studied', 'worked', 'rested', 'traveled'],
+          answer: 'studied',
+        ),
+        AiQuestion(
+          type: 'vocabulary',
+          targetWord: 'look up',
+          question: 'He looked up the unfamiliar word in a dictionary.',
+          options: const ['looked up', 'ignored', 'copied', 'deleted'],
+          answer: 'looked up',
+        ),
+      ],
+    );
+
+    final result = AiQuizValidator.sanitize(
+      response,
+      allowedTargetWords: const ['study', 'look up'],
+      expectedAnswerableCount: 2,
+    );
+
+    expect(result.answerableQuestionCount, 2);
+    expect(result.droppedInvalidCount, 0);
+  });
+
+  test('학습 단어가 빠진 문항만 제외하고 정상 문항은 유지한다', () {
+    final response = AiQuizResponse(
+      questions: [
+        AiQuestion(
+          type: 'vocabulary',
+          targetWord: 'harvest',
+          question: 'Farmers harvest the grain before the rainy season.',
+          options: const ['harvest', 'borrow', 'float', 'whisper'],
+          answer: 'harvest',
+        ),
+        AiQuestion(
+          type: 'vocabulary',
+          targetWord: 'protect',
+          question: 'Choose the best word for this sentence.',
+          options: const ['open', 'visit', 'carry', 'answer'],
+          answer: 'answer',
+        ),
+      ],
+    );
+
+    final result = AiQuizValidator.sanitize(
+      response,
+      allowedTargetWords: const ['harvest', 'protect'],
+      expectedAnswerableCount: 2,
+    );
+
+    expect(result.answerableQuestionCount, 1);
+    expect(result.questions.single.targetWord, 'harvest');
+    expect(result.droppedInvalidCount, 1);
+    expect(result.requestedQuestionCount, 2);
+  });
+
+  test('제외된 문항 수는 JSON 저장과 복원 과정에서도 유지된다', () {
+    final original = AiQuizResponse(
+      questions: [question('Choose the answer.')],
+      requestedQuestionCount: 2,
+      droppedInvalidCount: 1,
+    );
+
+    final restored = AiQuizResponse.fromJson(original.toJson());
+
+    expect(restored.droppedInvalidCount, 1);
+    expect(restored.requestedQuestionCount, 2);
+  });
+
   test('요청하지 않은 문제 유형과 단어장 밖의 targetWord를 거부한다', () {
     final invalid = AiQuestion(
       type: 'grammar',

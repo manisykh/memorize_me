@@ -318,6 +318,135 @@ Input: ${jsonEncode(input)}
     }
   }
 
+  Future<AiQuizResponse?> _generateValidatedQuizWithRepair({
+    required AiProvider provider,
+    required String modelName,
+    required String apiKey,
+    required List<Word> selectedWords,
+    required int questionCount,
+    required String Function(List<Word> words, int count) buildPrompt,
+    String? endpoint,
+    Set<String>? allowedGrammarChapterIds,
+    Set<String>? expectedTypes,
+    AiDifficultyProfile? difficultyProfile,
+    bool requireFormatDiversity = false,
+    bool requireTypeDiversity = false,
+    bool requireKoreanQuestions = false,
+  }) async {
+    Future<AiQuizResponse?> requestAndValidate(
+      List<Word> words,
+      int count, {
+      required bool retryInvalidResponse,
+    }) async {
+      CustomApiException? lastValidationError;
+      final maxAttempts = retryInvalidResponse ? 2 : 1;
+      for (var attempt = 0; attempt < maxAttempts; attempt++) {
+        final responseText = await _sendPrompt(
+          provider: provider,
+          modelName: modelName,
+          apiKey: apiKey,
+          prompt: buildPrompt(words, count),
+          endpoint: endpoint,
+        );
+        if (responseText == null) return null;
+        try {
+          return _parseAndValidateQuizResponse(
+            responseText,
+            expectedAnswerableCount: count,
+            allowedTargetWords: words.map((word) => word.word),
+            allowedGrammarChapterIds: allowedGrammarChapterIds,
+            expectedTypes: expectedTypes,
+            difficultyProfile: difficultyProfile,
+            requireFormatDiversity: requireFormatDiversity,
+            requireTypeDiversity: requireTypeDiversity,
+            requireKoreanQuestions: requireKoreanQuestions,
+          );
+        } on CustomApiException catch (error) {
+          if (error.code != 'model_response_invalid' ||
+              attempt == maxAttempts - 1) {
+            rethrow;
+          }
+          lastValidationError = error;
+        }
+      }
+      if (lastValidationError != null) throw lastValidationError;
+      return null;
+    }
+
+    final initial = await requestAndValidate(
+      selectedWords,
+      questionCount,
+      retryInvalidResponse: true,
+    );
+    if (initial == null) return null;
+
+    final missingCount = questionCount - initial.answerableQuestionCount;
+    if (missingCount <= 0) return initial;
+
+    final usedTargets = <String>{
+      for (final question in initial.questions)
+        if (question.type == 'reading_section')
+          ...?question.questions?.map(
+            (question) => question.targetWord.trim().toLowerCase(),
+          )
+        else if (question.targetWord != null)
+          question.targetWord!.trim().toLowerCase(),
+    };
+    final unusedWords =
+        selectedWords
+            .where(
+              (word) => !usedTargets.contains(word.word.trim().toLowerCase()),
+            )
+            .toList();
+    final repairWords = unusedWords.isNotEmpty ? unusedWords : selectedWords;
+
+    try {
+      final repair = await requestAndValidate(
+        repairWords,
+        missingCount,
+        retryInvalidResponse: false,
+      );
+      if (repair == null || repair.questions.isEmpty) return initial;
+      final merged = AiQuizResponse(
+        questions: [...initial.questions, ...repair.questions],
+      );
+      final validatedMerged = _sanitizeAndValidateQuizResponse(
+        merged,
+        expectedAnswerableCount:
+            initial.answerableQuestionCount + repair.answerableQuestionCount,
+        allowedTargetWords: selectedWords.map((word) => word.word),
+        allowedGrammarChapterIds: allowedGrammarChapterIds,
+        expectedTypes: expectedTypes,
+        difficultyProfile: difficultyProfile,
+        requireFormatDiversity: requireFormatDiversity,
+        requireTypeDiversity: requireTypeDiversity,
+        requireKoreanQuestions: requireKoreanQuestions,
+      );
+      final isComplete =
+          validatedMerged.answerableQuestionCount >= questionCount;
+      return AiQuizResponse(
+        questions: validatedMerged.questions,
+        requestedQuestionCount: questionCount,
+        droppedDuplicateCount:
+            isComplete
+                ? 0
+                : initial.droppedDuplicateCount +
+                    repair.droppedDuplicateCount +
+                    validatedMerged.droppedDuplicateCount,
+        droppedInvalidCount:
+            isComplete
+                ? 0
+                : initial.droppedInvalidCount + repair.droppedInvalidCount,
+        difficultyMismatchCount: validatedMerged.difficultyMismatchCount,
+      );
+    } catch (_) {
+      // Keep the valid first-pass questions even when the repair request or
+      // its validation fails. A partial quiz is better than discarding every
+      // question that already passed validation.
+      return initial;
+    }
+  }
+
   Future<AiQuizResponse?> generateGrammarQuiz({
     required AiProvider provider,
     required String modelName,
@@ -345,40 +474,33 @@ Input: ${jsonEncode(input)}
         '${provider.name} API 키가 등록되지 않았습니다.',
       );
     }
-    final prompt = _buildGrammarPrompt(
-      category,
-      chapters,
-      questionCount,
-      difficulty,
-      includeExplanation,
-      questionLanguage,
-      selectedWords,
-    );
     try {
-      String? responseText;
-      responseText = await _sendPrompt(
+      return _generateValidatedQuizWithRepair(
         provider: provider,
         modelName: modelName,
         apiKey: apiKey,
-        prompt: prompt,
+        selectedWords: selectedWords,
+        questionCount: questionCount,
+        buildPrompt:
+            (words, count) => _buildGrammarPrompt(
+              category,
+              chapters,
+              count,
+              difficulty,
+              includeExplanation,
+              questionLanguage,
+              words,
+            ),
         endpoint: endpoint,
+        allowedGrammarChapterIds: {
+          for (var index = 0; index < chapters.length; index++)
+            'ch${index + 1}',
+        },
+        expectedTypes: const {'grammar'},
+        difficultyProfile: AiDifficultyProfiles.fromLabel(difficulty),
+        requireFormatDiversity: true,
+        requireKoreanQuestions: _isKoreanLanguage(questionLanguage),
       );
-      if (responseText != null) {
-        return _parseAndValidateQuizResponse(
-          responseText,
-          expectedAnswerableCount: questionCount,
-          allowedTargetWords: selectedWords.map((word) => word.word),
-          allowedGrammarChapterIds: {
-            for (var index = 0; index < chapters.length; index++)
-              'ch${index + 1}',
-          },
-          expectedTypes: const {'grammar'},
-          difficultyProfile: AiDifficultyProfiles.fromLabel(difficulty),
-          requireFormatDiversity: true,
-          requireKoreanQuestions: _isKoreanLanguage(questionLanguage),
-        );
-      }
-      return null;
     } on CustomApiException {
       rethrow;
     } on Exception catch (e) {
@@ -432,39 +554,32 @@ Input: ${jsonEncode(input)}
         '${provider.name} API 키가 등록되지 않았습니다.',
       );
     }
-    final prompt = _buildImprovedPrompt(
-      selectedWords,
-      quizType,
-      difficulty,
-      questionCount,
-      includeExplanation,
-      questionLanguage,
-    );
     try {
-      String? responseText;
-      responseText = await _sendPrompt(
+      return _generateValidatedQuizWithRepair(
         provider: provider,
         modelName: modelName,
         apiKey: apiKey,
-        prompt: prompt,
+        selectedWords: selectedWords,
+        questionCount: questionCount,
+        buildPrompt:
+            (words, count) => _buildImprovedPrompt(
+              words,
+              quizType,
+              difficulty,
+              count,
+              includeExplanation,
+              questionLanguage,
+            ),
         endpoint: endpoint,
+        expectedTypes:
+            _canonicalQuizType(quizType) == 'mixed'
+                ? null
+                : {_canonicalQuizType(quizType)},
+        difficultyProfile: AiDifficultyProfiles.fromLabel(difficulty),
+        requireFormatDiversity: true,
+        requireTypeDiversity: _canonicalQuizType(quizType) == 'mixed',
+        requireKoreanQuestions: _isKoreanLanguage(questionLanguage),
       );
-      if (responseText != null) {
-        return _parseAndValidateQuizResponse(
-          responseText,
-          expectedAnswerableCount: questionCount,
-          allowedTargetWords: selectedWords.map((word) => word.word),
-          expectedTypes:
-              _canonicalQuizType(quizType) == 'mixed'
-                  ? null
-                  : {_canonicalQuizType(quizType)},
-          difficultyProfile: AiDifficultyProfiles.fromLabel(difficulty),
-          requireFormatDiversity: true,
-          requireTypeDiversity: _canonicalQuizType(quizType) == 'mixed',
-          requireKoreanQuestions: _isKoreanLanguage(questionLanguage),
-        );
-      }
-      return null;
     } on CustomApiException {
       rethrow;
     } on Exception catch (e) {
@@ -919,6 +1034,21 @@ Input: ${jsonEncode(input)}
     return shuffledWords.take(candidateLimit).toList();
   }
 
+  List<Map<String, Object>> _targetAssignments(
+    List<Word> promptWords,
+    int count,
+  ) {
+    if (promptWords.isEmpty) return const [];
+    return List.generate(count, (index) {
+      final word = promptWords[index % promptWords.length];
+      return {
+        'questionNumber': index + 1,
+        'targetWord': word.word,
+        'meaning': word.meaning,
+      };
+    });
+  }
+
   String _buildGrammarPrompt(
     GrammarCategory category,
     List<GrammarChapter> chapters,
@@ -933,6 +1063,9 @@ Input: ${jsonEncode(input)}
       promptWords
           .map((word) => {'word': word.word, 'meaning': word.meaning})
           .toList(),
+    );
+    final targetAssignmentsJson = jsonEncode(
+      _targetAssignments(promptWords, count),
     );
     final chaptersJson = jsonEncode(
       chapters
@@ -966,8 +1099,8 @@ Input: ${jsonEncode(input)}
     # Core Rules
     1. Scope: Each question MUST directly test one chapter from Selected Chapters JSON. Return that chapter's exact `id` as `chapterId`. Do not label an unrelated question with a selected chapter ID.
        When there are more chapters than questions, choose a suitable subset. Never force a question for every chapter.
-    2. Wordbook anchor: Every question MUST use at least one exact English `word` from Vocabulary Candidates in its stem or options and declare it in `targetWord`.
-       Choose a candidate that fits the sentence naturally. The `targetWord` MUST exactly match a candidate `word`; never invent or inflect this field. Its use must agree with the supplied Korean meaning.
+    2. Wordbook anchor: Follow Target Assignments JSON in question order. Every question MUST use its assigned English word in the stem or options and declare the exact base word in `targetWord`.
+       The `targetWord` field MUST exactly match the assigned candidate. In the actual sentence, the word may use a natural grammatical inflection (for example study/studied or aggravate/aggravated). Its use must agree with the supplied Korean meaning.
     3. Difficulty: Sentence length, vocabulary, reasoning, and distractor subtlety MUST match every part of the level guide below.
        Each question MUST contain a complete contextual English sentence of ${difficultyProfile.contextMinWords}–${difficultyProfile.contextMaxWords} words.
     4. Count: The response MUST contain exactly `$count` answerable questions.
@@ -1006,6 +1139,7 @@ $languageGuide
     - **Question Language:** $questionLanguage
     - **Selected Chapters JSON:** $chaptersJson
     - **Vocabulary Candidates JSON:** $wordListJson
+    - **Target Assignments JSON:** $targetAssignmentsJson
 
     # Allowed Question Formats
     - `fill_blank`: fill in a grammatically necessary blank.
@@ -1054,6 +1188,9 @@ $languageGuide
             },
           )
           .toList(),
+    );
+    final targetAssignmentsJson = jsonEncode(
+      _targetAssignments(promptWords, count),
     );
 
     final difficultyProfile = AiDifficultyProfiles.fromLabel(difficulty);
@@ -1137,9 +1274,9 @@ $readingInstructions
     - Difficulty: Vocabulary, sentence structure, and passage length MUST match the Target Difficulty.
     - Vocabulary and grammar items MUST include a complete contextual English sentence of ${difficultyProfile.contextMinWords}–${difficultyProfile.contextMaxWords} words.
     - Every reading passage MUST contain ${difficultyProfile.passageMinWords}–${difficultyProfile.passageMaxWords} English words. Do not fall below the minimum.
-    - Wordbook anchor: Every answerable question MUST use at least one exact English `word` from Vocabulary Candidates and declare it in `targetWord`.
-    - `targetWord` MUST exactly match a candidate `word`; never invent, translate, or inflect the field value.
-    - The declared word MUST visibly occur in that question's stem/options, or in its reading passage/sub-question/options, and its use MUST match the supplied Korean meaning.
+    - Wordbook anchor: Follow Target Assignments JSON in answerable-question order. Every item MUST use its assigned English word and declare that exact base word in `targetWord`.
+    - The `targetWord` field MUST exactly match the assignment; never invent, translate, or inflect the field value.
+    - In the actual stem, options, passage, or sub-question, the assigned word may use a natural grammatical inflection (for example study/studied or aggravate/aggravated), and its use MUST match the supplied Korean meaning.
     - Count: Total answerable questions MUST be exactly `$count`. A reading_section with 3 sub-questions counts as 3.
     - Options: Every answerable question MUST have exactly 4 unique options.
     - Answer: The `answer` value MUST exactly match one string from `options`.
@@ -1170,6 +1307,7 @@ $languageGuide
 
     # 2. QUIZ CONFIGURATION
     - **Vocabulary Candidates JSON:** $wordListJson
+    - **Target Assignments JSON:** $targetAssignmentsJson
     - **Candidate Note:** $candidateNote
     - **Target Difficulty:** ${difficultyProfile.level}단계 ${difficultyProfile.label}
     - **Requested Quiz Type:** $quizType

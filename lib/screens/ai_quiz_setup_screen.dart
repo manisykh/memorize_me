@@ -294,10 +294,19 @@ class _AiQuizSetupScreenState extends State<AiQuizSetupScreen> {
   void _showPartialGenerationNotice(AiQuizResponse quizResponse) {
     final requested = quizResponse.requestedQuestionCount;
     final generated = quizResponse.answerableQuestionCount;
-    final dropped = quizResponse.droppedDuplicateCount;
-    if (requested <= 0 || (generated >= requested && dropped == 0)) return;
+    final duplicateCount = quizResponse.droppedDuplicateCount;
+    final invalidCount = quizResponse.droppedInvalidCount;
+    if (requested <= 0 ||
+        (generated >= requested && duplicateCount + invalidCount == 0)) {
+      return;
+    }
 
-    final droppedText = dropped > 0 ? ' 중복 문제 $dropped개는 제외했습니다.' : '';
+    final details = <String>[
+      if (duplicateCount > 0) '중복 $duplicateCount개',
+      if (invalidCount > 0) '학습 단어 미반영 $invalidCount개',
+    ];
+    final droppedText =
+        details.isEmpty ? '' : ' 검증에서 ${details.join(', ')}를 제외했습니다.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$requested문제 중 $generated문제를 생성했습니다.$droppedText'),

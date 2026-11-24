@@ -22,6 +22,7 @@ class AiQuizValidator {
 
     var answerableCount = 0;
     var droppedDuplicateCount = 0;
+    var droppedInvalidCount = 0;
     var difficultyMismatchCount = 0;
     final sanitizedQuestions = <AiQuestion>[];
     final seenQuestions = <String>{};
@@ -93,7 +94,7 @@ class AiQuizValidator {
             format: subQuestion.questionFormat,
             isRequired: requireFormatDiversity,
           );
-          _validateTargetWord(
+          if (!_matchesTargetWord(
             targetWord: subQuestion.targetWord,
             allowedTargets: normalizedAllowedTargets,
             content: [
@@ -101,7 +102,10 @@ class AiQuizValidator {
               subQuestion.question,
               ...subQuestion.options,
             ].join(' '),
-          );
+          )) {
+            droppedInvalidCount++;
+            continue;
+          }
           if (!_validateParts(
             question: subQuestion.question,
             options: subQuestion.options,
@@ -161,11 +165,14 @@ class AiQuizValidator {
         );
         if (!matchesDifficulty) difficultyMismatchCount++;
       }
-      _validateTargetWord(
+      if (!_matchesTargetWord(
         targetWord: question.targetWord,
         allowedTargets: normalizedAllowedTargets,
         content: [question.question ?? '', ...?question.options].join(' '),
-      );
+      )) {
+        droppedInvalidCount++;
+        continue;
+      }
       if (!_validateParts(
         question: question.question,
         options: question.options,
@@ -207,7 +214,7 @@ class AiQuizValidator {
     }
     if (expectedAnswerableCount != null &&
         answerableCount != expectedAnswerableCount) {
-      if (droppedDuplicateCount == 0 ||
+      if (droppedDuplicateCount + droppedInvalidCount == 0 ||
           answerableCount > expectedAnswerableCount) {
         throw CustomApiException(
           'model_response_invalid',
@@ -221,6 +228,7 @@ class AiQuizValidator {
       questions: sanitizedQuestions,
       requestedQuestionCount: expectedAnswerableCount ?? answerableCount,
       droppedDuplicateCount: droppedDuplicateCount,
+      droppedInvalidCount: droppedInvalidCount,
       difficultyMismatchCount: difficultyMismatchCount,
     );
   }
@@ -378,33 +386,126 @@ class AiQuizValidator {
     return count >= minimum && count <= maximum;
   }
 
-  static void _validateTargetWord({
+  static bool _matchesTargetWord({
     required String? targetWord,
     required Set<String> allowedTargets,
     required String content,
   }) {
-    if (allowedTargets.isEmpty) return;
-    if (_isBlank(targetWord)) {
-      throw CustomApiException(
-        'model_response_invalid',
-        '학습 단어 연결 정보가 누락되었습니다.',
-      );
-    }
+    if (allowedTargets.isEmpty) return true;
+    if (_isBlank(targetWord)) return false;
     final normalizedTarget = _normalizeTarget(targetWord!);
-    if (!allowedTargets.contains(normalizedTarget)) {
-      throw CustomApiException(
-        'model_response_invalid',
-        '단어장에 없는 학습 단어가 사용되었습니다.',
-      );
+    if (!allowedTargets.contains(normalizedTarget)) return false;
+
+    final targetTokens = normalizedTarget.split(' ');
+    final contentTokens = _normalizeTarget(content).split(' ');
+    if (targetTokens.isEmpty || contentTokens.length < targetTokens.length) {
+      return false;
     }
-    final normalizedContent = ' ${_normalizeTarget(content)} ';
-    if (!normalizedContent.contains(' $normalizedTarget ')) {
-      throw CustomApiException(
-        'model_response_invalid',
-        '학습 단어가 문제나 지문에 실제로 포함되지 않았습니다.',
-      );
+    for (
+      var start = 0;
+      start <= contentTokens.length - targetTokens.length;
+      start++
+    ) {
+      var allMatch = true;
+      for (var offset = 0; offset < targetTokens.length; offset++) {
+        if (!_isSameWordFamily(
+          targetTokens[offset],
+          contentTokens[start + offset],
+        )) {
+          allMatch = false;
+          break;
+        }
+      }
+      if (allMatch) return true;
     }
+    return false;
   }
+
+  static bool _isSameWordFamily(String base, String candidate) {
+    if (base == candidate) return true;
+    if (base.length < 3) {
+      return _irregularForms[base]?.contains(candidate) ?? false;
+    }
+    final forms = <String>{
+      '${base}s',
+      '${base}es',
+      '${base}ed',
+      '${base}ing',
+      "$base's",
+      ...?_irregularForms[base],
+    };
+    if (base.endsWith('e') && base.length > 3) {
+      forms
+        ..add('${base}d')
+        ..add('${base.substring(0, base.length - 1)}ing');
+    }
+    if (base.endsWith('y') &&
+        base.length > 3 &&
+        !'aeiou'.contains(base[base.length - 2])) {
+      final stem = base.substring(0, base.length - 1);
+      forms
+        ..add('${stem}ies')
+        ..add('${stem}ied');
+    }
+    if (_endsWithConsonantVowelConsonant(base)) {
+      final doubled = '$base${base[base.length - 1]}';
+      forms
+        ..add('${doubled}ed')
+        ..add('${doubled}ing');
+    }
+    return forms.contains(candidate);
+  }
+
+  static bool _endsWithConsonantVowelConsonant(String value) {
+    if (value.length < 3) return false;
+    const vowels = 'aeiou';
+    final first = value[value.length - 3];
+    final middle = value[value.length - 2];
+    final last = value[value.length - 1];
+    return !vowels.contains(first) &&
+        vowels.contains(middle) &&
+        !vowels.contains(last) &&
+        !'wxy'.contains(last);
+  }
+
+  static const Map<String, Set<String>> _irregularForms = {
+    'be': {'am', 'is', 'are', 'was', 'were', 'been', 'being'},
+    'become': {'became'},
+    'begin': {'began', 'begun', 'beginning'},
+    'bring': {'brought'},
+    'buy': {'bought'},
+    'catch': {'caught'},
+    'choose': {'chose', 'chosen'},
+    'come': {'came'},
+    'do': {'does', 'did', 'done', 'doing'},
+    'feel': {'felt'},
+    'fly': {'flew', 'flown'},
+    'get': {'got', 'gotten', 'getting'},
+    'go': {'goes', 'went', 'gone', 'going'},
+    'grow': {'grew', 'grown'},
+    'have': {'has', 'had', 'having'},
+    'keep': {'kept'},
+    'know': {'knew', 'known'},
+    'leave': {'left'},
+    'make': {'made', 'making'},
+    'meet': {'met'},
+    'pay': {'paid'},
+    'run': {'ran', 'running'},
+    'say': {'said'},
+    'see': {'saw', 'seen'},
+    'sell': {'sold'},
+    'send': {'sent'},
+    'sit': {'sat', 'sitting'},
+    'speak': {'spoke', 'spoken'},
+    'stand': {'stood'},
+    'swim': {'swam', 'swum', 'swimming'},
+    'take': {'took', 'taken'},
+    'teach': {'taught'},
+    'think': {'thought'},
+    'understand': {'understood'},
+    'win': {'won', 'winning'},
+    'write': {'wrote', 'written', 'writing'},
+  };
 
   static String _normalizeTarget(String value) {
     return value
