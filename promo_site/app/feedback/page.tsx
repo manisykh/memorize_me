@@ -23,10 +23,10 @@ export default function FeedbackPage() {
 
       <section className="feedback-hero">
         <div>
-          <p className="feedback-kicker">TESTER FEEDBACK</p>
-          <h1><CopyLines lines={["함께 더 나은", "Memorize Me를", "만들어요."]} /></h1>
+          <p className="feedback-kicker">FEEDBACK BOARD</p>
+          <h1><CopyLines lines={["Memorize Me를", "함께 발전시켜요."]} /></h1>
           <p>
-            <CopyLines lines={["사용하며 좋았던 점과", "불편이나 오류,", "새로운 아이디어를", "자유롭게 남겨 주세요.", "회원가입 없이 작성할 수 있고,", "운영자가 답변과 진행 상태를", "알려드립니다."]} />
+            <CopyLines lines={["좋았던 점과 불편했던 점,", "오류와 아이디어를 남겨 주세요.", "회원가입 없이 작성하고,", "답변과 진행 상태를 확인할 수 있습니다."]} />
           </p>
         </div>
         <aside>

@@ -107,9 +107,12 @@ export function ApiSetupGuide() {
           <h3>{selected.title}</h3>
           <span>{selected.body}</span>
           {"path" in selected ? (
-            <ol className="api-entry-path" aria-label="API 등록 화면 진입 경로">
-              {selected.path.map((item) => <li key={item}>{item}</li>)}
-            </ol>
+            <div className="api-entry-route">
+              <p className="api-entry-route-title"><span aria-hidden="true" />앱에서 따라갈 경로</p>
+              <ol className="api-entry-path" aria-label="API 등록 화면 진입 경로">
+                {selected.path.map((item, index) => <li key={item}><span aria-hidden="true">{index + 1}</span><strong>{item}</strong></li>)}
+              </ol>
+            </div>
           ) : null}
           <div className="api-setup-pagination" aria-label={`${activeStep + 1}/${guideSteps.length} 단계`}>
             {guideSteps.map((step, index) => (

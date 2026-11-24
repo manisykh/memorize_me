@@ -100,21 +100,21 @@
 .preparationVisual, .modeCarousel, .aiVisual { width: clamp(420px,42vw,540px); max-width: 100%; height: 680px; margin-inline: auto; }
 
 .journey { padding: 120px 0; scroll-margin-top: 80px; }
-.preparationLayout { height: 600px; margin-top: 58px; display: grid; grid-template-columns: minmax(0,1fr) clamp(420px,42vw,540px); gap: 64px; align-items: stretch; }
-.preparationOptions { height: 100%; display: grid; grid-template-rows: repeat(3,minmax(0,1fr)); gap: 12px; }
-.preparationOptions article { min-height: 0; height: 100%; padding: 22px 24px; display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 18px; align-items: center; background: #fff; border: 1px solid #d6e1ed; border-radius: 22px; box-shadow: 0 12px 30px rgba(6,38,93,.055); transition: border-color .2s ease,background-color .2s ease,box-shadow .2s ease; }
+.preparationLayout { height: 540px; margin-top: 50px; display: grid; grid-template-columns: minmax(340px,470px) minmax(400px,500px); justify-content: center; gap: 48px; align-items: stretch; }
+.preparationOptions { height: 100%; display: grid; grid-template-rows: repeat(3,minmax(0,1fr)); gap: 10px; }
+.preparationOptions article { min-height: 0; height: 100%; padding: 16px 18px; display: grid; grid-template-columns: 46px minmax(0,1fr); gap: 14px; align-items: center; background: #fff; border: 1px solid #d6e1ed; border-radius: 18px; box-shadow: 0 7px 20px rgba(6,38,93,.045); transition: border-color .2s ease,background-color .2s ease,box-shadow .2s ease; }
 .preparationOptions article[data-active="true"] { background: #f5f9ff; border-color: #78aef0; box-shadow: 0 0 0 2px rgba(35,116,232,.1),0 14px 34px rgba(6,38,93,.08); }
-.preparationOptions h3 { margin: 0; font-size: 22px; line-height: 1.28; letter-spacing: -.015em; word-break: keep-all; }
-.preparationOptions p { margin: 9px 0 0; color: var(--muted); font-size: 15px; line-height: 1.65; }
-.preparationIcon { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 17px; }
-.preparationIcon svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.preparationOptions h3 { margin: 0; font-size: 20px; line-height: 1.25; letter-spacing: -.015em; word-break: keep-all; }
+.preparationOptions p { margin: 6px 0 0; color: var(--muted); font-size: 14px; line-height: 1.52; }
+.preparationIcon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 14px; }
+.preparationIcon svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .importPreparationIcon { color: #1477e8; background: #e7f1ff; }
 .createPreparationIcon { color: #00a978; background: #e4f8f1; }
 .builtinPreparationIcon { color: #7257dc; background: #eeeaff; }
 .preparationVisual { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
-.preparationVisual .motionFrame { width: min(440px,100%); height: auto; margin: 0; aspect-ratio: 4 / 5; }
-.preparationVisual > p { width: fit-content; min-height: 34px; margin: 0; padding: 8px 13px; color: #3d5577; background: rgba(255,255,255,.92); border: 1px solid rgba(203,217,232,.9); border-radius: 999px; text-align: center; font-size: 14px; font-weight: 850; box-shadow: 0 8px 24px rgba(6,38,93,.08); }
-.learningBridge { margin-top: 62px; padding: 28px 0 0; display: flex; align-items: center; gap: 22px; border-top: 1px solid var(--line); }
+.preparationVisual .motionFrame { width: min(390px,100%); height: auto; margin: 0; aspect-ratio: 4 / 5; }
+.preparationVisual > p { width: fit-content; min-height: 32px; margin: 0; padding: 6px 11px; color: #3d5577; background: rgba(255,255,255,.92); border: 1px solid rgba(203,217,232,.9); border-radius: 999px; text-align: center; font-size: 13px; font-weight: 850; box-shadow: 0 6px 18px rgba(6,38,93,.065); }
+.learningBridge { margin-top: 52px; padding: 26px 0 0; display: flex; align-items: center; gap: 22px; border-top: 1px solid var(--line); }
 .learningBridge > span { padding: 8px 12px; flex: 0 0 auto; color: #08745b; background: #e5f8f1; border-radius: 999px; font-size: 13px; font-weight: 900; }
 .learningBridge strong { font-size: 22px; line-height: 1.35; letter-spacing: -.01em; }
 
@@ -150,12 +150,12 @@
 .modeTabs button[aria-selected="true"] .mistakesModeIcon { background: #fff0dc; }
 .modeTabs button[aria-selected="true"] .reviewModeIcon { background: #ede9ff; }
 .modeTabs button[aria-selected="true"] .testModeIcon { background: #e2f7fb; }
-.modeCarousel { position: relative; min-height: 654px; padding: 0 0 76px; touch-action: pan-y; user-select: none; }
+.modeCarousel { position: relative; height: 630px; min-height: 630px; padding: 14px 0 60px; touch-action: pan-y; user-select: none; }
 .modePanel { width: min(440px,100%); margin: auto; animation: fadeIn .22s ease; }
 .modePanel[hidden] { display: none; }
 .modePanel > div { width: 100%; margin: auto; }
-.carouselControls { position: absolute; right: 24px; bottom: 17px; left: 24px; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; }
-.carouselControls > button { width: 44px; height: 44px; color: var(--navy); background: #fff; border: 1px solid #cbd9e8; border-radius: 50%; cursor: pointer; }
+.carouselControls { position: absolute; right: 20px; bottom: 10px; left: 20px; display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; }
+.carouselControls > button { width: 36px; height: 36px; color: var(--navy); background: #fff; border: 1px solid #cbd9e8; border-radius: 50%; font-size: 13px; cursor: pointer; }
 .carouselControls > div { display: flex; justify-content: center; }
 .carouselControls > div button { width: 44px; height: 44px; padding: 0; display: grid; place-items: center; background: transparent; border: 0; cursor: pointer; }
 .carouselControls > div span { width: 8px; height: 8px; background: #aab9cc; border-radius: 50%; }
@@ -163,21 +163,20 @@
 .aiSection { padding: 120px 0; background: var(--surface-mint); scroll-margin-top: 80px; }
 .aiLayout { display: grid; grid-template-columns: minmax(0,1fr) clamp(420px,42vw,540px); gap: 82px; align-items: center; }
 .aiCopy > p:not(.kicker):not(.aiNotice) { max-width: 38em; margin: 22px 0 0; color: var(--muted); font-size: 17px; line-height: 1.7; }
-.aiFeatureTabs { margin-top: 28px; display: grid; gap: 12px; }
-.aiFeatureTabs > button { width: 100%; min-height: 78px; padding: 13px 14px; display: grid; grid-template-columns: 50px minmax(0,1fr) 19px; gap: 14px; align-items: center; color: var(--navy); background: #fff; border: 1px solid #d5e0ec; border-radius: 22px; text-align: left; box-shadow: 0 8px 22px rgba(6,38,93,.035); cursor: pointer; transition: border-color .18s ease,box-shadow .18s ease,background-color .18s ease; }
+.aiFeatureTabs { margin-top: 26px; display: grid; gap: 8px; }
+.aiFeatureTabs > button { width: 100%; min-height: 64px; padding: 9px 11px; display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 11px; align-items: center; color: var(--navy); background: #fff; border: 1px solid #d5e0ec; border-radius: 17px; text-align: left; box-shadow: 0 6px 16px rgba(6,38,93,.03); cursor: pointer; transition: border-color .18s ease,box-shadow .18s ease,background-color .18s ease; }
 .aiFeatureTabs > button:hover { border-color: color-mix(in srgb,var(--ai-accent) 38%,#d5e0ec); }
 .aiFeatureTabs > button[aria-selected="true"] { background: color-mix(in srgb,var(--ai-soft-accent) 42%,#fff); border-color: var(--ai-accent); box-shadow: 0 0 0 2px color-mix(in srgb,var(--ai-accent) 12%,transparent),0 10px 24px rgba(6,38,93,.055); }
-.aiFeatureIcon { width: 50px; height: 50px; display: grid; place-items: center; color: var(--ai-accent); background: var(--ai-soft-accent); border-radius: 13px; }
-.aiFeatureIcon i { font-size: 24px; line-height: 1; font-style: normal; font-weight: 400; font-feature-settings: "liga"; -webkit-font-feature-settings: "liga"; }
+.aiFeatureIcon { width: 42px; height: 42px; display: grid; place-items: center; color: var(--ai-accent); background: var(--ai-soft-accent); border-radius: 12px; }
+.aiFeatureIcon i { font-size: 21px; line-height: 1; font-style: normal; font-weight: 400; font-feature-settings: "liga"; -webkit-font-feature-settings: "liga"; }
 .cupertinoIcon { font-family: "Memorize Cupertino Icons"; font-weight: 400; font-style: normal; font-feature-settings: "liga"; -webkit-font-feature-settings: "liga"; }
 .aiFeatureText { min-width: 0; display: grid; gap: 3px; }
-.aiFeatureText strong { overflow: hidden; color: var(--navy); font-size: 16px; line-height: 1.35; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
-.aiFeatureText small { overflow: hidden; color: var(--muted); font-size: 13px; line-height: 1.42; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.aiChevron { color: #677b97; font-size: 19px; line-height: 1; }
+.aiFeatureText strong { overflow: hidden; color: var(--navy); font-size: 15px; line-height: 1.3; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.aiFeatureText small { overflow: hidden; color: var(--muted); font-size: 12px; line-height: 1.38; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .aiLinks { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 12px 20px; }
 .aiLinks a { min-height: 48px; display: inline-flex; align-items: center; color: var(--blue); font-size: 15px; font-weight: 900; }
 .aiLinks a:first-child { padding: 0 18px; border: 1px solid #9ab7aa; border-radius: 999px; color: #225f50; }
-.aiVisual { position: relative; min-height: 654px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; overflow: visible; animation: fadeIn .22s ease; }
+.aiVisual { position: relative; min-height: 654px; padding-top: 82px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 14px; overflow: visible; animation: fadeIn .22s ease; }
 .aiVisual .motionFrame { width: min(440px,100%); }
 .aiCompareFrame { isolation: isolate; }
 .aiCompareCanvas { position: relative; width: auto; max-width: 100%; height: 100%; aspect-ratio: 591 / 1200; overflow: hidden; background: #f8faff; border-radius: 18px; box-shadow: 0 10px 30px rgba(6,38,93,.12); user-select: none; }
@@ -187,8 +186,8 @@
 .aiCompareBeforeLabel { left: 12px; }
 .aiCompareAfterLabel { right: 12px; color: #064c3d; background: rgba(232,250,244,.92); border-color: rgba(0,173,124,.3); }
 .aiCompareDivider { position: absolute; z-index: 2; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 1px rgba(6,38,93,.16),0 0 18px rgba(6,38,93,.3); transform: translateX(-1px); pointer-events: none; }
-.aiCompareHandle { position: absolute; top: 50%; left: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--navy); background: #fff; border: 2px solid rgba(35,116,232,.32); border-radius: 50%; box-shadow: 0 8px 24px rgba(6,38,93,.23); transform: translate(-50%,-50%); transition: transform .18s ease,box-shadow .18s ease; }
-.aiCompareHandle b { font-size: 22px; line-height: 1; font-weight: 900; }
+.aiCompareHandle { position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--navy); background: #fff; border: 2px solid rgba(35,116,232,.32); border-radius: 50%; box-shadow: 0 6px 18px rgba(6,38,93,.2); transform: translate(-50%,-50%); transition: transform .18s ease,box-shadow .18s ease; }
+.aiCompareHandle b { font-size: 17px; line-height: 1; font-weight: 900; }
 .aiCompareRange { position: absolute; z-index: 4; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; touch-action: none; }
 .aiCompareCanvas:focus-within .aiCompareHandle { outline: 3px solid rgba(35,116,232,.32); outline-offset: 3px; box-shadow: 0 9px 28px rgba(6,38,93,.28); transform: translate(-50%,-50%) scale(1.06); }
 .aiVisualCaption { min-height: 24px; margin: 0; color: #405572; text-align: center; font-size: 14px; line-height: 1.55; font-weight: 800; }
@@ -231,9 +230,9 @@
 
 @media (max-width: 1100px) {
   .desktopNav { gap: 14px; font-size: 13px; }
-  .hero::before { background-size: 100% auto; background-position: center 38%; }
+  .hero::before { background-size: cover; background-position: center; }
   .heroInner { width: min(960px,calc(100% - 48px)); }
-  .preparationLayout, .learningAxis, .aiLayout, .faqLayout { gap: 44px; }
+  .preparationLayout, .learningAxis, .aiLayout, .faqLayout { gap: 36px; }
 }
 
 @media (max-width: 920px) {
@@ -247,7 +246,7 @@
   .heroCopy { max-width: 720px; }
   .preparationLayout { height: auto; grid-template-columns: 1fr; }
   .preparationOptions { height: auto; grid-template-columns: repeat(3,minmax(0,1fr)); grid-template-rows: none; }
-  .preparationOptions article { min-height: 218px; grid-template-columns: 1fr; align-content: start; }
+  .preparationOptions article { min-height: 176px; padding: 16px; grid-template-columns: 1fr; align-content: start; }
   .preparationVisual { width: min(540px,100%); height: auto; }
   .preparationVisual .motionFrame { height: auto; aspect-ratio: 4 / 5; }
   .preparationVisual > p { width: auto; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
@@ -257,7 +256,7 @@
   .carouselControls { grid-template-columns: 1fr; }
   .carouselControls > button { display: none; }
   .aiLayout, .faqLayout { grid-template-columns: 1fr; }
-  .aiVisual { min-height: 0; }
+  .aiVisual { min-height: 0; padding-top: 0; }
   .modeCarousel, .aiVisual { width: min(540px,100%); height: auto; min-height: 0; }
   .footerInner { grid-template-columns: repeat(2,1fr); }
   .footerBrand { grid-column: 1 / -1; }
@@ -286,13 +285,13 @@
   .benefitGrid article > span { grid-column: 1; grid-row: 1 / span 2; padding-top: 3px; }
   .benefitGrid h3 { grid-column: 2; margin: 0; font-size: 19px; line-height: 1.35; }
   .benefitGrid p { grid-column: 2; margin: 7px 0 0; font-size: 15px; line-height: 1.6; }
-  .preparationLayout { margin-top: 36px; gap: 34px; }
-  .preparationOptions { grid-template-columns: 1fr; grid-auto-rows: 1fr; gap: 9px; }
-  .preparationOptions article { min-height: 0; padding: 18px; grid-template-columns: 48px minmax(0,1fr); gap: 14px; align-content: center; border-radius: 18px; }
-  .preparationOptions h3 { font-size: 19px; }
-  .preparationOptions p { margin-top: 6px; font-size: 14px; line-height: 1.55; }
-  .preparationIcon { width: 48px; height: 48px; border-radius: 15px; }
-  .preparationIcon svg { width: 25px; height: 25px; }
+  .preparationLayout { margin-top: 32px; gap: 30px; }
+  .preparationOptions { width: min(100%,460px); margin-inline: auto; grid-template-columns: 1fr; grid-auto-rows: auto; gap: 8px; }
+  .preparationOptions article { min-height: 0; height: auto; padding: 13px 14px; grid-template-columns: 40px minmax(0,1fr); gap: 12px; align-content: center; border-radius: 15px; box-shadow: 0 4px 12px rgba(6,38,93,.035); }
+  .preparationOptions h3 { font-size: 17px; line-height: 1.25; }
+  .preparationOptions p { margin-top: 4px; font-size: 13px; line-height: 1.42; }
+  .preparationIcon { width: 40px; height: 40px; border-radius: 12px; }
+  .preparationIcon svg { width: 21px; height: 21px; }
   .learningBridge { margin-top: 42px; padding-top: 22px; align-items: flex-start; flex-direction: column; gap: 12px; }
   .learningBridge strong { font-size: 20px; }
   .motionFrame { padding: 16px; border-radius: 24px; }
@@ -312,7 +311,7 @@
   .aiCompareLabel { top: 9px; min-width: 57px; padding: 6px 9px; font-size: 11px; }
   .aiCompareBeforeLabel { left: 9px; }
   .aiCompareAfterLabel { right: 9px; }
-  .aiCompareHandle { width: 44px; height: 44px; }
+  .aiCompareHandle { width: 36px; height: 36px; }
   .faqLayout { gap: 66px; }
   .finalCta { padding-block: 72px; }
   .finalActions { display: grid; }

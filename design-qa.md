@@ -113,3 +113,78 @@ All seven source mockups are 853 × 1844 pixels:
 - Compare source and implementation together and resolve any P0/P1/P2 differences.
 
 final result: blocked
+
+## Homepage learning-mode frame density — 2026-11-24
+
+### Source visual truth
+
+- Requested target: `C:\Users\manis\AppData\Local\Temp\codex-clipboard-fc39f7de-21f2-4e6d-bd45-c1ad59d61aee.png`
+- Target state: desktop learning-mode carousel with a lower video stage, smaller previous/next controls, and a shorter outer navy frame.
+
+### Implementation evidence
+
+- Implementation screenshot path: unavailable
+- Source pixel dimensions: 1030 × 770
+- Intended viewport/state: desktop, 플래시카드 selected
+- Static evidence: carousel height reduced from 680 px to 630 px, top stage spacing increased to 14 px, and arrow controls reduced from 44 px to 36 px.
+
+### Fidelity surfaces
+
+- Fonts and typography: unchanged.
+- Spacing and layout rhythm: outer frame height is reduced by 50 px; the media stage begins 14 px lower; carousel control insets are tightened.
+- Colors and visual tokens: unchanged.
+- Image quality and asset fidelity: the existing flashcard video and frame treatment remain unchanged.
+- Copy and content: unchanged.
+
+### Findings
+
+- [P1] Browser-rendered comparison remains unavailable because the Codex in-app browser cannot initialize its kernel assets.
+  - Impact: exact visible balance between the left content, video stage, and bottom controls cannot be certified from a matching screenshot.
+  - Fix: capture the local homepage at the reference width once the in-app browser is available and compare the learning section against the supplied source image.
+
+### Comparison history
+
+- Iteration 1: reduced the fixed carousel height, lowered the video stage, tightened control insets, and reduced arrow size. Production build and standalone export passed; rendered comparison remained blocked.
+
+final result: blocked
+
+## Homepage hero background coverage — 2026-11-24
+
+### Source visual truth
+
+- Requested target: `C:\Users\manis\AppData\Local\Temp\codex-clipboard-c32312d6-b29f-4191-8231-cc12bdbc0884.png`
+- Target state: homepage hero at a roughly 1070 px desktop viewport, with the wordbook photograph continuing behind the Android · Google Play release-status row.
+
+### Implementation evidence
+
+- Implementation screenshot path: unavailable
+- Viewport: intended desktop widths from 621 px through 1100 px, plus existing mobile and wide-desktop breakpoints
+- Source pixel dimensions: 1070 × 560
+- Implementation pixel dimensions and density normalization: unavailable
+- Static evidence: the `max-width: 1100px` hero background override now uses `background-size: cover` and a centered crop instead of `100% auto`, so the pseudo-element covers the full hero height.
+
+### Fidelity surfaces
+
+- Fonts and typography: unchanged from the existing homepage.
+- Spacing and layout rhythm: hero content and release-status spacing are unchanged.
+- Colors and visual tokens: existing photograph, overlay, and background tokens are unchanged.
+- Image quality and asset fidelity: the original hero image remains in use; only its responsive sizing and crop behavior changed.
+- Copy and content: unchanged.
+
+### Findings
+
+- [P1] Browser-rendered comparison is unavailable.
+  - Evidence: the Codex in-app browser failed to initialize because its kernel asset path could not be written.
+  - Impact: the exact crop at representative desktop and mobile widths cannot be certified from rendered evidence.
+  - Fix: reopen the local page when the in-app browser is available and compare the hero against the supplied screenshot at matching width.
+
+### Full-view and focused-region comparison
+
+- Full-view comparison: blocked because no browser screenshot could be captured.
+- Focused-region comparison: blocked for the format icons and Android release-status row for the same reason.
+
+### Comparison history
+
+- Iteration 1: identified the `background-size: 100% auto` breakpoint as the reason the raster ended before the hero content; changed it to `cover`; production build and standalone export passed; rendered comparison remained blocked by the in-app browser initialization failure.
+
+final result: blocked

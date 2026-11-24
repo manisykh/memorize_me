@@ -386,8 +386,8 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
             <div className={styles.aiLayout}>
               <div className={styles.aiCopy}>
                 <p className={styles.kicker}>선택 기능 · AI 학습</p>
-                <h2 id="ai-title"><CopyLines lines={["내 단어장의 어휘를,", "다양한 문제로."]} /></h2>
-                <p><CopyLines lines={["공부 중인 단어로 예문과", "맞춤 문제를 만들 수 있습니다.", "암기한 어휘를 다시 떠올리고 적용하며,", "기억을 한 단계 더 단단하게 보조합니다."]} /></p>
+                <h2 id="ai-title"><CopyLines lines={["필요할 때만,", "내 API로 학습을 넓히세요."]} /></h2>
+                <p><CopyLines lines={["내 단어장의 뜻과 예문을 보강하고,", "공부 중인 어휘로 단어·문법·독해 문제를 만드세요.", "암기를 넘어 떠올리고 적용하는 학습을 돕습니다."]} /></p>
                 <div id="ai-feature-tabs" className={styles.aiFeatureTabs} role="tablist" aria-label="AI 학습 기능 선택" onKeyDown={(event) => tabKeyHandler(event, activeAiFeature, aiFeatures.length, setActiveAiFeature)}>
                   {aiFeatures.map((feature, index) => (
                     <button
@@ -403,7 +403,6 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
                     >
                       <AiFeatureIcon feature={feature} />
                       <span className={styles.aiFeatureText}><strong>{feature.title}</strong><small>{feature.subtitle}</small></span>
-                      <span className={`${styles.aiChevron} ${styles.cupertinoIcon}`} aria-hidden="true">chevron_right</span>
                     </button>
                   ))}
                 </div>

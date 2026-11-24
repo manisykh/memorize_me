@@ -31,6 +31,13 @@ const assetPaths = [
   "/media/showcase/stats-schedule.jpg",
   "/media/showcase/ai-menu.jpg",
   "/media/manual/pdf-options.jpg",
+  "/media/manual/ai-result.jpg",
+  "/media/app-ai-result.jpg",
+  "/media/manual/ai-quiz-current.jpg",
+  "/media/manual/ai-home.jpg",
+  "/media/ai/flashcard-before-example.jpg",
+  "/media/ai/flashcard-after-example.jpg",
+  "/fonts/CupertinoIcons.ttf",
   "/media/video/wordbook-import.mp4",
   "/media/video/flashcard.mp4",
   "/media/video/quiz-choice.mp4",
@@ -54,6 +61,7 @@ const mimeByExtension = {
   ".mp4": "video/mp4",
   ".png": "image/png",
   ".svg": "image/svg+xml",
+  ".ttf": "font/ttf",
   ".webp": "image/webp",
 };
 
