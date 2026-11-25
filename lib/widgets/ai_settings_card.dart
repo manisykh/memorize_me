@@ -87,7 +87,6 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
               accessType: AiAccessType.paid,
               summary: '',
               guideSteps: const [],
-              consoleUrl: '',
             ),
       );
 
@@ -137,6 +136,55 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
       _testingAll = false;
       _feedbackSuccess = success == providers.length;
       _feedbackMessage = '${providers.length}개 중 $success개 AI 연결이 정상입니다.';
+    });
+  }
+
+  Future<void> _deleteProvider(
+    AiProvider provider,
+    List<AiProvider> orderedProviders,
+  ) async {
+    final identity = MemorizeIdentity.of(Theme.of(context));
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('등록된 AI를 삭제할까요?'),
+            content: Text(
+              '${provider.shortLabel} 연결 정보와 이 기기에 저장된 API 키를 삭제합니다.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('취소'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: identity.review,
+                  foregroundColor: identity.surface,
+                ),
+                child: const Text('삭제'),
+              ),
+            ],
+          ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final remaining =
+        orderedProviders.where((candidate) => candidate != provider).toList();
+    await context.read<ApiKeyService>().deleteApiKey(provider);
+    if (!mounted) return;
+    await context.read<AiSettingsProvider>().removeProviderConfiguration(
+      provider,
+      remainingProviders: remaining,
+    );
+    if (!mounted) return;
+    await _refreshProviders();
+    if (!mounted) return;
+    setState(() {
+      _testing.remove(provider);
+      _feedbackSuccess = true;
+      _feedbackMessage = '${provider.shortLabel} 등록을 삭제했습니다.';
     });
   }
 
@@ -379,6 +427,23 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             buildDefaultDragHandles: false,
+            proxyDecorator:
+                (child, index, animation) => AnimatedBuilder(
+                  animation: animation,
+                  child: child,
+                  builder: (context, child) {
+                    final progress = Curves.easeOutCubic.transform(
+                      animation.value,
+                    );
+                    return Transform.scale(
+                      scale: 1 + (0.012 * progress),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: child,
+                      ),
+                    );
+                  },
+                ),
             itemCount: providers.length,
             onReorderItem: (oldIndex, newIndex) {
               final reordered = [...providers];
@@ -395,8 +460,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                   provider: provider,
                   model: settings.selectedModelFor(provider),
                   isMain: index == 0,
-                  activeInRouting:
-                      index == 0 || settings.autoFallbackEnabled,
+                  activeInRouting: index == 0 || settings.autoFallbackEnabled,
                   freeFirst:
                       settings.wasAddedFromFreeSetup(provider) ??
                       _catalogFor(provider).isFreeFirst,
@@ -404,6 +468,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                   index: index,
                   onModelTap: () => _openModelPicker(provider),
                   onTest: () => _test(provider),
+                  onDelete: () => _deleteProvider(provider, providers),
                 ),
               );
             },
@@ -545,6 +610,7 @@ class _RegisteredProviderCard extends StatelessWidget {
     required this.index,
     required this.onModelTap,
     required this.onTest,
+    required this.onDelete,
   });
 
   final AiProvider provider;
@@ -556,6 +622,7 @@ class _RegisteredProviderCard extends StatelessWidget {
   final int index;
   final VoidCallback onModelTap;
   final VoidCallback onTest;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -680,6 +747,12 @@ class _RegisteredProviderCard extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                     : const Text('연결 테스트'),
+          ),
+          IconButton(
+            tooltip: '등록 삭제',
+            onPressed: onDelete,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(CupertinoIcons.trash, size: 19, color: identity.review),
           ),
         ],
       ),

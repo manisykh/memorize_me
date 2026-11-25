@@ -37,7 +37,8 @@ class AiQuizValidator {
             .toSet() ??
         const <String>{};
 
-    for (final question in response.questions) {
+    for (final rawQuestion in response.questions) {
+      final question = _sanitizeGrammarBlankQuestion(rawQuestion);
       if (_isBlank(question.type) || !allowedTypes.contains(question.type)) {
         throw CustomApiException('model_response_invalid', '지원하지 않는 문제 유형입니다.');
       }
@@ -155,6 +156,10 @@ class AiQuizValidator {
         format: question.questionFormat,
         isRequired: requireFormatDiversity,
       );
+      if (!_hasExactlyOneGrammarBlank(question)) {
+        droppedInvalidCount++;
+        continue;
+      }
       if (difficultyProfile != null) {
         final matchesDifficulty = _matchesContextWordCount(
           question: question.question ?? '',
@@ -309,6 +314,77 @@ class AiQuizValidator {
   }
 
   static bool _isBlank(String? value) => value == null || value.trim().isEmpty;
+
+  /// Hides an answer that a model incorrectly returned as `[answer]`,
+  /// `(answer)`, `{answer}`, or `【answer】` in a grammar fill-in-the-blank stem.
+  /// This is public so already-saved quizzes receive the same protection in
+  /// the player even when they predate response validation.
+  static String sanitizeQuestionForDisplay({
+    required String type,
+    required String? questionFormat,
+    required String? question,
+    required String? answer,
+  }) {
+    final source = question ?? '';
+    if (type != 'grammar' ||
+        questionFormat?.trim().toLowerCase() != 'fill_blank' ||
+        _isBlank(answer)) {
+      return source;
+    }
+
+    final answerPattern = answer!
+        .trim()
+        .split(RegExp(r'\s+'))
+        .map(RegExp.escape)
+        .join(r'\s+');
+    final exposedAnswer = RegExp(
+      r'(?:\[|\{|\(|【)\s*(?:answer\s*[:：]\s*)?' +
+          answerPattern +
+          r'\s*(?:\]|\}|\)|】)',
+      caseSensitive: false,
+    );
+    final blankPattern = RegExp(r'_{3,}');
+    final alreadyHasBlank = blankPattern.hasMatch(source);
+    final hidden = source.replaceAll(
+      exposedAnswer,
+      alreadyHasBlank ? '' : '______',
+    );
+    return hidden
+        .replaceAll(blankPattern, '______')
+        .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+        .trim();
+  }
+
+  static AiQuestion _sanitizeGrammarBlankQuestion(AiQuestion question) {
+    final sanitizedText = sanitizeQuestionForDisplay(
+      type: question.type,
+      questionFormat: question.questionFormat,
+      question: question.question,
+      answer: question.answer,
+    );
+    if (sanitizedText == question.question) return question;
+    return AiQuestion(
+      type: question.type,
+      questionFormat: question.questionFormat,
+      targetWord: question.targetWord,
+      grammarChapterId: question.grammarChapterId,
+      passage: question.passage,
+      script: question.script,
+      question: sanitizedText,
+      options: question.options,
+      answer: question.answer,
+      explanation: question.explanation,
+      questions: question.questions,
+    );
+  }
+
+  static bool _hasExactlyOneGrammarBlank(AiQuestion question) {
+    if (question.type != 'grammar' ||
+        question.questionFormat?.trim().toLowerCase() != 'fill_blank') {
+      return true;
+    }
+    return RegExp(r'_{3,}').allMatches(question.question ?? '').length == 1;
+  }
 
   static const Map<String, Set<String>> _allowedFormats = {
     'vocabulary': {

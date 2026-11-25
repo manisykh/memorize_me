@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../models/ai_quiz_model.dart';
 import '../models/saved_ai_quiz.dart';
+import '../services/ai_quiz_validator.dart';
 import '../services/test_sheet_service.dart';
 import '../services/ai_quiz_library_service.dart';
 import '../services/analytics_service.dart';
@@ -607,7 +608,7 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
             _buildQuestionPrompt(
               theme: theme,
               number: questionIndex + 1,
-              question: question.question ?? '질문 없음',
+              question: _visibleQuestionText(question),
             ),
             const SizedBox(height: 12),
             ...?(question.options?.map(
@@ -622,6 +623,16 @@ class _AiQuizPlayerScreenState extends State<AiQuizPlayerScreen> {
         ),
       ),
     );
+  }
+
+  String _visibleQuestionText(AiQuestion question) {
+    final sanitized = AiQuizValidator.sanitizeQuestionForDisplay(
+      type: question.type,
+      questionFormat: question.questionFormat,
+      question: question.question,
+      answer: question.answer,
+    );
+    return sanitized.isEmpty ? '질문 없음' : sanitized;
   }
 
   Widget _buildPassage(String passage) {

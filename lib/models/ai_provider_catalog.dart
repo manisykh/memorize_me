@@ -17,7 +17,6 @@ class AiProviderCatalogEntry {
     required this.accessType,
     required this.summary,
     required this.guideSteps,
-    required this.consoleUrl,
     this.recommended = false,
     this.visible = true,
     this.requiresPaymentMethod = false,
@@ -30,7 +29,6 @@ class AiProviderCatalogEntry {
   final AiAccessType accessType;
   final String summary;
   final List<String> guideSteps;
-  final String consoleUrl;
   final bool recommended;
   final bool visible;
   final bool requiresPaymentMethod;
@@ -85,7 +83,6 @@ class AiProviderCatalogEntry {
     AiAccessType? accessType,
     String? summary,
     List<String>? guideSteps,
-    String? consoleUrl,
     bool? recommended,
     bool? visible,
     bool? requiresPaymentMethod,
@@ -98,7 +95,6 @@ class AiProviderCatalogEntry {
       accessType: accessType ?? this.accessType,
       summary: summary ?? this.summary,
       guideSteps: guideSteps ?? this.guideSteps,
-      consoleUrl: consoleUrl ?? this.consoleUrl,
       recommended: recommended ?? this.recommended,
       visible: visible ?? this.visible,
       requiresPaymentMethod:
@@ -121,7 +117,6 @@ class AiProviderCatalog {
         'API key 만들기 선택',
         '복사한 키를 아래에 붙여넣기',
       ],
-      consoleUrl: 'https://aistudio.google.com/app/apikey',
       recommended: true,
     ),
     AiProviderCatalogEntry(
@@ -129,7 +124,6 @@ class AiProviderCatalog {
       accessType: AiAccessType.freeTier,
       summary: '무료 플랜의 응답이 빠르고 카드 등록 없이 시작하기 쉬워요.',
       guideSteps: ['GroqCloud 계정 만들기', 'API Keys에서 새 키 생성', '키를 복사해 붙여넣기'],
-      consoleUrl: 'https://console.groq.com/keys',
       recommended: true,
     ),
     AiProviderCatalogEntry(
@@ -137,7 +131,6 @@ class AiProviderCatalog {
       accessType: AiAccessType.freeTier,
       summary: '무료 모드가 기본 제공되어 별도 결제수단 없이 시작할 수 있어요.',
       guideSteps: ['Mistral Studio에 로그인', 'API Keys에서 키 생성', '키를 복사해 붙여넣기'],
-      consoleUrl: 'https://console.mistral.ai/api-keys',
       recommended: true,
     ),
     AiProviderCatalogEntry(
@@ -145,7 +138,6 @@ class AiProviderCatalog {
       accessType: AiAccessType.freeModel,
       summary: '하나의 키로 여러 무료 모델을 자동 선택할 수 있어요.',
       guideSteps: ['OpenRouter에 로그인', 'Keys에서 새 키 생성', '무료 라우터 모델로 연결'],
-      consoleUrl: 'https://openrouter.ai/settings/keys',
       recommended: true,
     ),
     AiProviderCatalogEntry(
@@ -153,7 +145,6 @@ class AiProviderCatalog {
       accessType: AiAccessType.freeModel,
       summary: 'GLM Flash 무료 모델을 선택해 가볍게 사용할 수 있어요.',
       guideSteps: ['Z.AI 개발자 콘솔 로그인', 'API Keys에서 키 생성', 'Flash 모델을 선택해 연결'],
-      consoleUrl: 'https://z.ai/manage-apikey/apikey-list',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.nvidiaNim,
@@ -164,21 +155,18 @@ class AiProviderCatalog {
         '사용할 모델 페이지 열기',
         'Get API Key로 키 발급',
       ],
-      consoleUrl: 'https://build.nvidia.com/',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.huggingFace,
       accessType: AiAccessType.monthlyCredit,
       summary: '매월 제공되는 소액 무료 크레딧으로 여러 모델을 시험할 수 있어요.',
       guideSteps: ['Hugging Face 로그인', 'Access Tokens에서 토큰 생성', '토큰을 복사해 붙여넣기'],
-      consoleUrl: 'https://huggingface.co/settings/tokens',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.cerebras,
       accessType: AiAccessType.trialCredit,
       summary: '빠른 추론을 체험 크레딧으로 시험할 수 있어요.',
       guideSteps: ['Cerebras Cloud 로그인', 'API Keys에서 키 생성', '사용 가능한 모델 ID를 확인'],
-      consoleUrl: 'https://cloud.cerebras.ai/',
       requiresPaymentMethod: true,
     ),
     AiProviderCatalogEntry(
@@ -186,7 +174,6 @@ class AiProviderCatalog {
       accessType: AiAccessType.freeModel,
       summary: '일부 무료 모델을 제공하며 지역에 따라 가입 절차가 달라질 수 있어요.',
       guideSteps: ['SiliconCloud 계정 만들기', 'API 키 생성', '무료 표시 모델을 선택'],
-      consoleUrl: 'https://cloud.siliconflow.com/account/ak',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.cohere,
@@ -197,7 +184,6 @@ class AiProviderCatalog {
         'API Keys에서 평가 또는 프로덕션 키 생성',
         '키를 복사해 붙여넣고 연결 확인',
       ],
-      consoleUrl: 'https://dashboard.cohere.com/api-keys',
       showInOwnedSetup: true,
     ),
     AiProviderCatalogEntry(
@@ -205,49 +191,42 @@ class AiProviderCatalog {
       accessType: AiAccessType.paid,
       summary: 'OpenAI API 키를 이미 보유한 경우 연결합니다.',
       guideSteps: ['OpenAI 플랫폼에서 API 키 생성', '사용량·결제 한도 확인', '키를 붙여넣기'],
-      consoleUrl: 'https://platform.openai.com/api-keys',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.anthropic,
       accessType: AiAccessType.paid,
       summary: 'Anthropic Claude API 키를 이미 보유한 경우 연결합니다.',
       guideSteps: ['Anthropic Console 로그인', 'API 키 생성', '키를 붙여넣기'],
-      consoleUrl: 'https://console.anthropic.com/settings/keys',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.deepSeek,
       accessType: AiAccessType.paid,
       summary: 'DeepSeek API 잔액이 있는 계정을 연결합니다.',
       guideSteps: ['DeepSeek 플랫폼 로그인', 'API 키 생성', '잔액을 확인하고 키 붙여넣기'],
-      consoleUrl: 'https://platform.deepseek.com/api_keys',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.xAI,
       accessType: AiAccessType.paid,
       summary: 'xAI API 키와 사용 가능한 Grok 모델을 연결합니다.',
       guideSteps: ['xAI Console 로그인', 'API 키 생성', '키를 붙여넣기'],
-      consoleUrl: 'https://console.x.ai/',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.perplexity,
       accessType: AiAccessType.paid,
       summary: 'Perplexity API 키를 이미 보유한 경우 연결합니다.',
       guideSteps: ['Perplexity 설정 열기', 'API 키 생성', '키를 붙여넣기'],
-      consoleUrl: 'https://www.perplexity.ai/settings/api',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.together,
       accessType: AiAccessType.paid,
       summary: 'Together AI 크레딧과 API 키를 연결합니다.',
       guideSteps: ['Together AI 로그인', 'API 키 생성', '키를 붙여넣기'],
-      consoleUrl: 'https://api.together.ai/settings/api-keys',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.fireworks,
       accessType: AiAccessType.paid,
       summary: 'Fireworks AI의 선불 크레딧 계정을 연결합니다.',
       guideSteps: ['Fireworks 로그인', 'API 키 생성', '키를 붙여넣기'],
-      consoleUrl: 'https://app.fireworks.ai/settings/users/api-keys',
     ),
     AiProviderCatalogEntry(
       provider: AiProvider.customOpenAI,
@@ -258,7 +237,6 @@ class AiProviderCatalog {
         '정확한 모델 ID 확인',
         'endpoint와 키를 함께 입력',
       ],
-      consoleUrl: '',
       showInFreeSetup: true,
       showInOwnedSetup: true,
     ),
@@ -279,7 +257,6 @@ class AiProviderCatalog {
         final current = entries[index];
         entries[index] = current.copyWith(
           summary: value['summary']?.toString(),
-          consoleUrl: value['consoleUrl']?.toString(),
           visible: value['visible'] as bool?,
           recommended: value['recommended'] as bool?,
           requiresPaymentMethod: value['requiresPaymentMethod'] as bool?,

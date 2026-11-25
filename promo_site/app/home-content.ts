@@ -45,7 +45,7 @@ export const preparationOptions: readonly PreparationOption[] = [
     title: "기본 단어장으로 시작하기",
     titleLines: ["기본 단어장으로", "시작하기"],
     description: "필수 영어단어 6000을 1,000개씩 여섯 단계로 나누어 학습합니다.",
-    descriptionLines: ["필수 영어단어 6000을", "1,000개씩 여섯 단계로", "나누어 학습합니다."],
+    descriptionLines: ["필수 영어단어 6000을", "여섯 단계로 나누어 학습합니다."],
     videoStartsAt: 0,
     caption: "필수 영어단어 6000으로 시작하는 과정",
   },
@@ -54,7 +54,7 @@ export const preparationOptions: readonly PreparationOption[] = [
     title: "내 단어장 가져오기",
     titleLines: ["내 단어장", "가져오기"],
     description: "Google Sheets·CSV·XLSX에 정리한 단어와 뜻을 그대로 불러옵니다.",
-    descriptionLines: ["Google Sheets·CSV·XLSX에", "정리한 단어와 뜻을", "그대로 불러옵니다."],
+    descriptionLines: ["Google Sheets·CSV·XLSX의", "단어와 뜻을 그대로 불러옵니다."],
     videoStartsAt: 8.6,
     caption: "Google Sheets에서 내 단어장을 가져오는 과정",
   },
@@ -63,7 +63,7 @@ export const preparationOptions: readonly PreparationOption[] = [
     title: "직접 만들기",
     titleLines: ["직접 만들기"],
     description: "필요한 단어와 뜻을 앱에서 바로 입력해 나만의 단어장을 만듭니다.",
-    descriptionLines: ["필요한 단어와 뜻을 앱에서 바로 입력해", "나만의 단어장을 만듭니다."],
+    descriptionLines: ["필요한 단어와 뜻을 입력해", "나만의 단어장을 만듭니다."],
     videoStartsAt: 18.8,
     caption: "앱에서 나만의 단어장을 직접 만드는 과정",
   },
@@ -167,10 +167,22 @@ export const studyModes: readonly StudyMode[] = [
   },
 ];
 
-export const faqItems = [
+type FaqItem = {
+  question: string;
+  answer: string;
+  answerLines?: readonly string[];
+};
+
+export const faqItems: readonly FaqItem[] = [
   {
     question: "어떤 파일 형식을 가져올 수 있나요?",
     answer: "Google Sheets와 기기에 저장된 CSV·XLSX 파일을 가져올 수 있습니다. 앱 안에서 단어장을 새로 만드는 것도 가능합니다.",
+    answerLines: [
+      "Google Sheets와 기기에 저장된",
+      "CSV·XLSX 파일을 가져올 수 있습니다.",
+      "앱 안에서 단어장을",
+      "새로 만드는 것도 가능합니다.",
+    ],
   },
   {
     question: "Google Sheets를 수정하면 어떻게 반영되나요?",
@@ -182,7 +194,7 @@ export const faqItems = [
   },
   {
     question: "지원 기기와 비용은 어떻게 되나요?",
-    answer: "현재 Android 출시를 준비하고 있습니다. 초기 출시 혜택 기간에 앱을 다운로드한 사용자에게는 주요 학습 기능을 평생 무료로 이용할 수 있는 혜택을 제공할 예정입니다. 이 혜택은 일정 기간 후 종료되며, 이후 새로 다운로드하는 사용자는 광고를 시청하거나 일부 기능을 유료로 이용해야 할 수 있습니다. 혜택 적용 기간과 기준은 출시 전에 안내하겠습니다. AI 기능에는 사용자가 연결한 API 제공업체의 정책과 비용이 별도로 적용됩니다.",
+    answer: "현재 Android 출시를 준비하고 있습니다. 초기 출시 혜택 기간에 다운로드한 사용자는 주요 학습 기능을 평생 무료로 이용할 수 있습니다. 혜택 기간 종료 후 새로 다운로드하는 사용자는 광고를 보거나 일부 기능을 유료로 이용할 수 있습니다. 적용 기간과 기준은 출시 전에 안내합니다. AI 기능은 연결한 API 제공업체의 정책과 비용을 따릅니다.",
   },
   {
     question: "iPhone에서도 사용할 수 있나요?",

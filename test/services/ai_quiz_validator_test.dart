@@ -285,7 +285,7 @@ void main() {
       questionFormat: 'fill_blank',
       grammarChapterId: chapterId,
       targetWord: 'study',
-      question: 'Students study English every day. Choose the correct verb.',
+      question: 'Students ______ English every day. Choose the correct verb.',
       options: const ['study', 'studies', 'studied', 'studying'],
       answer: 'study',
     );
@@ -311,6 +311,59 @@ void main() {
         AiQuizResponse(questions: [grammarQuestion(null)]),
       ).answerableQuestionCount,
       1,
+    );
+  });
+
+  test('문법 빈칸에 대괄호로 노출된 정답을 실제 빈칸으로 가린다', () {
+    final result = AiQuizValidator.sanitize(
+      AiQuizResponse(
+        questions: [
+          AiQuestion(
+            type: 'grammar',
+            questionFormat: 'fill_blank',
+            targetWord: 'remain',
+            question: 'The seeds remain dormant [on] the soil all winter long.',
+            options: const ['in', 'at', 'to', 'on'],
+            answer: 'on',
+          ),
+        ],
+      ),
+    );
+
+    expect(
+      result.questions.single.question,
+      'The seeds remain dormant ______ the soil all winter long.',
+    );
+  });
+
+  test('기존 빈칸 뒤에 덧붙은 정답 표기도 제거한다', () {
+    final visible = AiQuizValidator.sanitizeQuestionForDisplay(
+      type: 'grammar',
+      questionFormat: 'fill_blank',
+      question: 'The seeds remain dormant ______ [on] the soil.',
+      answer: 'on',
+    );
+
+    expect(visible, 'The seeds remain dormant ______ the soil.');
+    expect(RegExp(r'_{3,}').allMatches(visible), hasLength(1));
+  });
+
+  test('정답 표기도 빈칸도 없는 문법 빈칸 문제는 거부한다', () {
+    expect(
+      () => AiQuizValidator.sanitize(
+        AiQuizResponse(
+          questions: [
+            AiQuestion(
+              type: 'grammar',
+              questionFormat: 'fill_blank',
+              question: 'The seeds remain dormant on the soil all winter long.',
+              options: const ['in', 'at', 'to', 'on'],
+              answer: 'on',
+            ),
+          ],
+        ),
+      ),
+      throwsA(isA<CustomApiException>()),
     );
   });
 

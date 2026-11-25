@@ -5,6 +5,7 @@ import '../services/api_key_service.dart';
 
 class AiSettingsProvider extends ChangeNotifier {
   SharedPreferences? _prefs;
+  Future<void>? _loadFuture;
 
   AiProvider _selectedProvider = AiProvider.gemini;
   final Map<AiProvider, String> _selectedModels = {};
@@ -72,7 +73,11 @@ class AiSettingsProvider extends ChangeNotifier {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  Future<void> loadSettings() async {
+  Future<void> loadSettings() {
+    return _loadFuture ??= _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
     await _initPrefs();
     _selectedProvider = _loadSelectedProvider();
 
@@ -203,10 +208,7 @@ class AiSettingsProvider extends ChangeNotifier {
     await _prefs!.setStringList(
       'ai_provider_setup_sources',
       _freeSetupSources.entries
-          .map(
-            (entry) =>
-                '${entry.key.name}:${entry.value ? 'free' : 'owned'}',
-          )
+          .map((entry) => '${entry.key.name}:${entry.value ? 'free' : 'owned'}')
           .toList(),
     );
     for (final entry in _selectedModels.entries) {
@@ -288,6 +290,58 @@ class AiSettingsProvider extends ChangeNotifier {
     ];
     _fallbackProviders = orderedProviders.skip(1).toSet();
     saveSettings();
+  }
+
+  Future<void> removeProviderConfiguration(
+    AiProvider provider, {
+    required List<AiProvider> remainingProviders,
+  }) async {
+    await loadSettings();
+
+    final remaining = <AiProvider>[];
+    for (final candidate in remainingProviders) {
+      if (candidate != provider && !remaining.contains(candidate)) {
+        remaining.add(candidate);
+      }
+    }
+
+    _selectedModels.remove(provider);
+    _freeSetupSources.remove(provider);
+    _fallbackProviders.remove(provider);
+    if (provider == AiProvider.customOpenAI) {
+      _customOpenAiEndpoint = '';
+    }
+    if (_lastUsedOption?.provider == provider) {
+      _lastUsedOption = null;
+    }
+
+    if (remaining.isNotEmpty) {
+      _selectedProvider = remaining.first;
+      _fallbackProviders = remaining.skip(1).toSet();
+    } else if (_selectedProvider == provider) {
+      _selectedProvider = AiProvider.values.firstWhere(
+        (candidate) => candidate != provider,
+        orElse: () => AiProvider.gemini,
+      );
+      _fallbackProviders.clear();
+    }
+
+    _fallbackOrder = [
+      ...remaining.skip(1),
+      ...AiProvider.values.where(
+        (candidate) =>
+            candidate != _selectedProvider && !remaining.contains(candidate),
+      ),
+    ];
+
+    await _initPrefs();
+    await _prefs!.remove('ai_model_${provider.name}');
+    if (provider == AiProvider.gemini) {
+      await _prefs!.remove('gemini_model');
+    } else if (provider == AiProvider.openAI) {
+      await _prefs!.remove('gpt_model');
+    }
+    await saveSettings();
   }
 
   void recordUsedOption(AiRequestOption option) {

@@ -8,7 +8,8 @@ void main() {
   test('큰 주제는 모든 세부 챕터를 한 번씩 포함한다', () {
     for (final category in grammarCurriculum) {
       final topics = groupGrammarTopics(category);
-      final groupedChapters = topics.values.expand((chapters) => chapters).toList();
+      final groupedChapters =
+          topics.values.expand((chapters) => chapters).toList();
 
       expect(groupedChapters.length, category.chapters.length);
       expect(groupedChapters.toSet().length, category.chapters.length);
@@ -23,7 +24,10 @@ void main() {
       '형용사적 용법, 부사적 용법의 to부정사',
       '동명사의 역할',
     ]) {
-      expect(middle.chapters.where((chapter) => chapter.title == title), hasLength(1));
+      expect(
+        middle.chapters.where((chapter) => chapter.title == title),
+        hasLength(1),
+      );
     }
   });
 
@@ -45,6 +49,38 @@ void main() {
       expect(category.maxDifficulty, lessThanOrEqualTo(7));
       expect(category.minDifficulty, lessThan(category.maxDifficulty));
     }
+  });
+
+  test('토익 문법은 시험형 세부 범위 75개와 문맥 학습 주제를 제공한다', () {
+    final toeic = grammarCurriculum.last;
+    final topics = groupGrammarTopics(toeic);
+
+    expect(toeic.title, '토익(TOEIC) 영문법');
+    expect(toeic.chapters, hasLength(75));
+    expect(
+      toeic.chapters.map((chapter) => chapter.title).toSet(),
+      hasLength(toeic.chapters.length),
+    );
+    expect(
+      topics.keys,
+      containsAll([
+        '문장 구조·동사',
+        '준동사',
+        '품사',
+        '명사·관사·수량 표현',
+        '접속사와 전치사',
+        '관계사',
+        '대명사와 대용 표현',
+        '비교 표현',
+        '가정법',
+        '특수 구문',
+        '문맥과 흐름',
+      ]),
+    );
+    expect(
+      topics['문맥과 흐름']!.map((chapter) => chapter.title),
+      contains('Part 6 문장 삽입과 글의 흐름'),
+    );
   });
 
   test('문법 레벨 밖의 난도는 API 키 조회 전에 거부한다', () async {

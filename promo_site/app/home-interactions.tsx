@@ -31,8 +31,15 @@ const aiFeatures = [
     icon: "list_bullet",
     accent: "#00ad7c",
     softAccent: "#e2f8f1",
-    image: "/media/app-ai-result.jpg",
+    image: "/media/video/posters/ai-quiz-generation.jpg",
     imageAlt: "단어장으로 생성한 AI 맞춤 퀴즈 화면",
+    video: {
+      src: "/media/video/ai-quiz-generation.mp4",
+      startAt: 0.05,
+      endAt: 12.5,
+      sourceWidth: 480,
+      sourceHeight: 968,
+    } satisfies MotionVideo,
     caption: "단어장으로 맞춤 문제를 생성하는 과정",
   },
   {
@@ -41,8 +48,15 @@ const aiFeatures = [
     icon: "book",
     accent: "#e77b12",
     softAccent: "#fff0e3",
-    image: "/media/manual/ai-quiz-current.jpg",
+    image: "/media/video/posters/ai-grammar-generation.jpg",
     imageAlt: "문법 범위를 선택해 생성한 문제 화면",
+    video: {
+      src: "/media/video/ai-grammar-generation.mp4",
+      startAt: 0.05,
+      endAt: 10.35,
+      sourceWidth: 480,
+      sourceHeight: 968,
+    } satisfies MotionVideo,
     caption: "선택한 문법 범위로 문제를 만드는 과정",
   },
   {
@@ -51,8 +65,15 @@ const aiFeatures = [
     icon: "rectangle_stack",
     accent: "#7257dc",
     softAccent: "#eeeaff",
-    image: "/media/manual/ai-home.jpg",
+    image: "/media/video/posters/ai-saved-quizzes.jpg",
     imageAlt: "저장된 AI 퀴즈를 다시 확인하는 화면",
+    video: {
+      src: "/media/video/ai-saved-quizzes.mp4",
+      startAt: 0.05,
+      endAt: 8.1,
+      sourceWidth: 480,
+      sourceHeight: 968,
+    } satisfies MotionVideo,
     caption: "저장한 문제를 다시 열고 묶어 활용하는 과정",
   },
 ] as const;
@@ -383,11 +404,17 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
 
         <section className={styles.aiSection} id="ai" aria-labelledby="ai-title">
           <div className={styles.sectionInner}>
+            <div className={styles.aiHeading}>
+              <p className={styles.kicker}>선택 기능 · AI 학습</p>
+              <h2 id="ai-title"><CopyLines lines={["필요할 때만,", "내 API로 학습을 넓히세요."]} /></h2>
+              <p><CopyLines lines={["내 단어장의 뜻과 예문을 보강하고,", "공부 중인 어휘로 단어·문법·독해 문제를 만드세요.", "암기를 넘어 떠올리고 적용하는 학습을 돕습니다."]} /></p>
+            </div>
             <div className={styles.aiLayout}>
               <div className={styles.aiCopy}>
-                <p className={styles.kicker}>선택 기능 · AI 학습</p>
-                <h2 id="ai-title"><CopyLines lines={["필요할 때만,", "내 API로 학습을 넓히세요."]} /></h2>
-                <p><CopyLines lines={["내 단어장의 뜻과 예문을 보강하고,", "공부 중인 어휘로 단어·문법·독해 문제를 만드세요.", "암기를 넘어 떠올리고 적용하는 학습을 돕습니다."]} /></p>
+                <div className={styles.aiFeatureHeading} aria-live="polite">
+                  <AiFeatureIcon feature={selectedAiFeature} />
+                  <div><h3>{selectedAiFeature.title}</h3><p>{selectedAiFeature.subtitle}</p></div>
+                </div>
                 <div id="ai-feature-tabs" className={styles.aiFeatureTabs} role="tablist" aria-label="AI 학습 기능 선택" onKeyDown={(event) => tabKeyHandler(event, activeAiFeature, aiFeatures.length, setActiveAiFeature)}>
                   {aiFeatures.map((feature, index) => (
                     <button
@@ -402,7 +429,7 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
                       onClick={() => setActiveAiFeature(index)}
                     >
                       <AiFeatureIcon feature={feature} />
-                      <span className={styles.aiFeatureText}><strong>{feature.title}</strong><small>{feature.subtitle}</small></span>
+                      <span className={styles.aiFeatureText}><strong>{feature.title}</strong></span>
                     </button>
                   ))}
                 </div>
@@ -416,7 +443,12 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
                     beforeAlt="예문이 아직 보강되지 않은 플래시카드 학습 화면"
                     afterAlt="AI가 예문을 보강한 플래시카드 학습 화면"
                   />
-                ) : <MotionFrame poster={selectedAiFeature.image} alt={selectedAiFeature.imageAlt} />}
+                ) : null}
+                {aiFeatures.map((feature, index) => "video" in feature ? (
+                  <div key={feature.title} hidden={activeAiFeature !== index}>
+                    <MotionFrame poster={feature.image} alt={feature.imageAlt} video={feature.video} active={activeAiFeature === index} />
+                  </div>
+                ) : null)}
                 <p className={styles.aiVisualCaption} aria-live="polite">{selectedAiFeature.caption}</p>
               </div>
             </div>
@@ -425,7 +457,7 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
 
         <section className={styles.faqSection} id="faq" aria-labelledby="faq-title">
           <div className={styles.sectionInner}>
-            <div className={styles.faqLayout}><div className={styles.helpPanel}><p className={styles.kicker}>도움말</p><h2><CopyLines lines={["필요한 안내를", "바로 찾아보세요."]} /></h2><p><CopyLines lines={["AI 연결 방법은 전용 가이드에서 확인하고,", "발견한 내용은 의견 게시판에 남겨주세요."]} /></p><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 {supportEmail}</a> : null}</div><div className={styles.faq}><p className={styles.kicker}>자주 묻는 질문</p><h2 id="faq-title">시작 전에 확인하세요.</h2>{faqItems.map((item, index) => <details key={item.question} open={index === 0}><summary>{item.question}<b aria-hidden="true" /></summary><p>{item.answer}</p></details>)}</div></div>
+            <div className={styles.faqLayout}><div className={styles.helpPanel}><p className={styles.kicker}>도움말</p><h2><CopyLines lines={["필요한 안내를", "바로 찾아보세요."]} /></h2><p><CopyLines lines={["AI 연결 방법은 전용 가이드에서 확인하고,", "발견한 내용은 의견 게시판에 남겨주세요."]} /></p><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 {supportEmail}</a> : null}</div><div className={styles.faq}><p className={styles.kicker}>자주 묻는 질문</p><h2 id="faq-title">시작 전에 확인하세요.</h2>{faqItems.map((item, index) => <details key={item.question} open={index === 0}><summary>{item.question}<b aria-hidden="true" /></summary><p>{item.answerLines ? <CopyLines lines={item.answerLines} /> : item.answer}</p></details>)}</div></div>
           </div>
         </section>
 

@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/ai_provider_catalog.dart';
@@ -175,7 +174,6 @@ class _AiProviderSetupScreenState extends State<AiProviderSetupScreen> {
               identity: identity,
               freeSetup: _showFreeProviders,
               onTap: () => _selectProvider(entry),
-              onCopyUrl: () => _copyConsoleUrl(entry),
             ),
           ),
         ),
@@ -219,7 +217,7 @@ class _AiProviderSetupScreenState extends State<AiProviderSetupScreen> {
         ),
         const SizedBox(height: 18),
         Text(
-          'API 키 발급 방법',
+          'API 키 준비 방법',
           style: theme.textTheme.titleLarge?.copyWith(
             color: identity.ink,
             fontWeight: FontWeight.w900,
@@ -267,17 +265,15 @@ class _AiProviderSetupScreenState extends State<AiProviderSetupScreen> {
                     ],
                   ),
                 ),
-              if (entry.consoleUrl.isNotEmpty) ...[
-                const Divider(height: 24),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _copyConsoleUrl(entry),
-                    icon: const Icon(CupertinoIcons.doc_on_doc, size: 17),
-                    label: const Text('API 키 발급 주소 복사'),
-                  ),
+              const Divider(height: 24),
+              Text(
+                '선택한 제공업체의 공식 홈페이지에서 최신 발급 절차를 확인해 주세요. Memorize Me는 변경될 수 있는 외부 발급 주소를 제공하지 않습니다.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: identity.mutedInk,
+                  height: 1.5,
+                  fontWeight: FontWeight.w600,
                 ),
-              ],
+              ),
             ],
           ),
         ),
@@ -507,15 +503,6 @@ class _AiProviderSetupScreenState extends State<AiProviderSetupScreen> {
     });
   }
 
-  Future<void> _copyConsoleUrl(AiProviderCatalogEntry entry) async {
-    if (entry.consoleUrl.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: entry.consoleUrl));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('API 키 발급 주소를 복사했습니다. 브라우저 주소창에 붙여넣으세요.')),
-    );
-  }
-
   Future<void> _handlePrimaryAction() async {
     if (_step == 0) {
       setState(() => _step = 1);
@@ -671,7 +658,6 @@ class _ProviderChoiceCard extends StatelessWidget {
     required this.identity,
     required this.freeSetup,
     required this.onTap,
-    required this.onCopyUrl,
   });
 
   final AiProviderCatalogEntry entry;
@@ -679,7 +665,6 @@ class _ProviderChoiceCard extends StatelessWidget {
   final MemorizeIdentity identity;
   final bool freeSetup;
   final VoidCallback onTap;
-  final VoidCallback onCopyUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -768,17 +753,6 @@ class _ProviderChoiceCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (selected && entry.consoleUrl.isNotEmpty) ...[
-                const Divider(height: 22),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: onCopyUrl,
-                    icon: const Icon(CupertinoIcons.doc_on_doc, size: 16),
-                    label: const Text('발급 주소 복사'),
-                  ),
-                ),
-              ],
             ],
           ),
         ),

@@ -1142,7 +1142,8 @@ $languageGuide
     - **Target Assignments JSON:** $targetAssignmentsJson
 
     # Allowed Question Formats
-    - `fill_blank`: fill in a grammatically necessary blank.
+    - `fill_blank`: fill in a grammatically necessary blank. The `question` MUST contain exactly one literal `______` placeholder.
+      Never reveal the answer in the stem as `[answer]`, `(answer)`, `{answer}`, `【answer】`, a hint, or an annotation. The correct token may appear only in `options` and `answer`.
     - `correct_sentence`: choose the only grammatically correct sentence.
     - `incorrect_sentence`: choose the only grammatically incorrect sentence.
     - `error_correction`: choose the best correction of a marked error.

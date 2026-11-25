@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { CopyLines } from "../copy-lines";
+import { ApiGuideHeader } from "./api-guide-header";
 import { ApiSetupGuide } from "./api-setup-guide";
 
 export const metadata: Metadata = {
@@ -19,22 +19,13 @@ const quickChecks = [
 export default function AiApiGuidePage() {
   return (
     <main className="manual-page api-guide-page" id="api-top">
-      <header className="manual-topbar">
-        <Link className="brand" href="/" aria-label="Memorize Me 제품 소개로 이동">
-          <img className="brand-app-icon" src="/app-icon.png" alt="" aria-hidden="true" />
-          <span>Memorize Me</span>
-        </Link>
-        <nav aria-label="AI API 가이드 메뉴">
-          <Link href="/">홈으로 돌아가기</Link>
-          <a className="manual-nav-current" href="#api-steps">AI API 연결</a>
-        </nav>
-      </header>
+      <ApiGuideHeader />
 
       <section className="api-hero">
         <div className="api-hero-question-cloud" aria-hidden="true">
-          <figure className="api-question-card api-question-card-one"><img src="/media/manual/ai-result.jpg" alt="" /></figure>
-          <figure className="api-question-card api-question-card-two"><img src="/media/manual/ai-quiz-current.jpg" alt="" /></figure>
-          <figure className="api-question-card api-question-card-three"><img src="/media/manual/ai-quiz-entry.jpg" alt="" /></figure>
+          <figure className="api-question-card api-question-card-one"><img src="/media/api-guide/ai-quiz-overview.jpg" alt="" /></figure>
+          <figure className="api-question-card api-question-card-two"><img src="/media/api-guide/ai-reading.jpg" alt="" /></figure>
+          <figure className="api-question-card api-question-card-three"><img src="/media/api-guide/ai-vocabulary.jpg" alt="" /></figure>
         </div>
         <div className="api-hero-copy">
           <p className="eyebrow">내 API로 확장하는 학습</p>
