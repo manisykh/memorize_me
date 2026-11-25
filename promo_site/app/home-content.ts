@@ -47,7 +47,7 @@ export const preparationOptions: readonly PreparationOption[] = [
     description: "필수 영어단어 6000을 1,000개씩 여섯 단계로 나누어 학습합니다.",
     descriptionLines: ["필수 영어단어 6000을", "여섯 단계로 나누어 학습합니다."],
     videoStartsAt: 0,
-    caption: "필수 영어단어 6000으로 시작하는 과정",
+    caption: "필수 영어단어 6000으로 시작하기",
   },
   {
     icon: "import",
@@ -56,7 +56,7 @@ export const preparationOptions: readonly PreparationOption[] = [
     description: "Google Sheets·CSV·XLSX에 정리한 단어와 뜻을 그대로 불러옵니다.",
     descriptionLines: ["Google Sheets·CSV·XLSX의", "단어와 뜻을 그대로 불러옵니다."],
     videoStartsAt: 8.6,
-    caption: "Google Sheets에서 내 단어장을 가져오는 과정",
+    caption: "Google Sheets에서 내 단어장 가져오기",
   },
   {
     icon: "create",
@@ -65,7 +65,7 @@ export const preparationOptions: readonly PreparationOption[] = [
     description: "필요한 단어와 뜻을 앱에서 바로 입력해 나만의 단어장을 만듭니다.",
     descriptionLines: ["필요한 단어와 뜻을 입력해", "나만의 단어장을 만듭니다."],
     videoStartsAt: 18.8,
-    caption: "앱에서 나만의 단어장을 직접 만드는 과정",
+    caption: "앱에서 나만의 단어장 만들기",
   },
 ];
 
@@ -178,10 +178,8 @@ export const faqItems: readonly FaqItem[] = [
     question: "어떤 파일 형식을 가져올 수 있나요?",
     answer: "Google Sheets와 기기에 저장된 CSV·XLSX 파일을 가져올 수 있습니다. 앱 안에서 단어장을 새로 만드는 것도 가능합니다.",
     answerLines: [
-      "Google Sheets와 기기에 저장된",
-      "CSV·XLSX 파일을 가져올 수 있습니다.",
-      "앱 안에서 단어장을",
-      "새로 만드는 것도 가능합니다.",
+      "Google Sheets와 기기에 저장된 CSV·XLSX 파일을 가져올 수 있습니다.",
+      "앱 안에서 단어장을 새로 만드는 것도 가능합니다.",
     ],
   },
   {

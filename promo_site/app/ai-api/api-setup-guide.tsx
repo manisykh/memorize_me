@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
+import { ProductMediaFrame } from "../product-media-frame";
 
 const guideSteps = [
   {
@@ -143,12 +144,12 @@ export function ApiSetupGuide() {
 
         <div className="api-setup-carousel">
           <figure className="api-setup-visual" key={`visual-${activeStep}`}>
-            <div>
+            <ProductMediaFrame>
               <div className="api-setup-screenshot" style={screenshotStyle}>
                 <img src={selected.image} alt={selected.imageAlt} draggable="false" width="1080" height="2340" />
               </div>
-            </div>
-            <figcaption>{selected.marker} · {selected.eyebrow}</figcaption>
+            </ProductMediaFrame>
+            <figcaption className="product-media-caption">{selected.eyebrow}</figcaption>
           </figure>
           <div className="api-setup-controls">
             <button type="button" onClick={() => selectStep(activeStep - 1)} aria-label="이전 연결 단계">←</button>

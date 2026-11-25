@@ -1,0 +1,51 @@
+:root {
+  --product-media-width: min(400px, calc(100vw - 96px));
+  --product-media-padding: 24px;
+  --product-media-radius: 30px;
+  --product-media-inner-radius: 18px;
+}
+
+/* One presentation size for app screenshots, videos and comparison sliders. */
+.product-media-frame {
+  position: relative;
+  box-sizing: border-box;
+  width: min(100%, var(--product-media-width));
+  aspect-ratio: 4 / 5;
+  flex: 0 0 auto;
+  padding: var(--product-media-padding);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  overflow: hidden;
+  background: linear-gradient(145deg, #e9f3ff 0%, #f2f8ff 54%, #edf9f5 100%);
+  border-radius: var(--product-media-radius);
+  box-shadow: 0 20px 54px rgba(6,38,93,.11);
+}
+
+.product-media-caption {
+  box-sizing: border-box;
+  width: min(100%, var(--product-media-width));
+  min-height: 22px;
+  margin: 12px auto 0;
+  padding: 0;
+  color: #405572;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.55;
+  font-weight: 600;
+  word-break: keep-all;
+}
+
+@media (max-width: 620px) {
+  :root {
+    --product-media-width: min(330px, calc(100vw - 96px));
+    --product-media-padding: 16px;
+    --product-media-radius: 24px;
+    --product-media-inner-radius: 14px;
+  }
+}

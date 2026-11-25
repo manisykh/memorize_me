@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./manual.css";
 import "./feedback.css";
+import "./product-media.css";
 
 const title = "Memorize Me | 시트에서 시작하는 단어 학습";
 const description =

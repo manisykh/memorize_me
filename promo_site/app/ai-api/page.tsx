@@ -31,10 +31,6 @@ export default function AiApiGuidePage() {
           <p className="eyebrow">내 API로 확장하는 학습</p>
           <h1><CopyLines lines={["내 단어장에", <em key="api-hero-1">AI 학습을 더해요.</em>]} /></h1>
           <p><CopyLines lines={["보유한 API 키를 연결해", "예문과 맞춤 문제를 만드세요."]} /></p>
-          <div className="api-hero-actions">
-            <a className="button button-primary" href="#api-steps">연결 방법 보기</a>
-            <a className="api-text-link" href="#api-errors">오류부터 해결하기</a>
-          </div>
           <div className="api-security-note">
             <strong>API 키는 기기의 보안 저장소에 보관</strong>
             <span>이용 요금과 한도는 연결한 AI 제공업체 정책을 따릅니다.</span>
@@ -42,7 +38,7 @@ export default function AiApiGuidePage() {
         </div>
       </section>
 
-      <section className="api-route-section" aria-labelledby="route-title">
+      <section className="api-route-section" id="api-routes" aria-labelledby="route-title">
         <div className="api-section-heading">
           <p className="eyebrow">CHOOSE YOUR ROUTE</p>
           <h2 id="route-title"><CopyLines lines={["나는 어디서", "시작하면 될까요?"]} /></h2>

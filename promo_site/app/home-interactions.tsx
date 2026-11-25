@@ -4,14 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { faqItems, preparationOptions, preparationVisual, studyModes, type MotionVideo, type PreparationIconName, type StudyModeIconName } from "./home-content";
 import { CopyLines } from "./copy-lines";
+import { ProductMediaFrame } from "./product-media-frame";
 import styles from "./home-v2.module.css";
 
 type HomeLandingProps = { googlePlayUrl?: string; supportEmail?: string };
 
 const benefits = [
-  ["01", "다시 입력하지 않고 가져오기", "정리한 단어장을 학습에 바로 활용합니다."],
-  ["02", "카드와 퀴즈로 확인하기", "뜻을 알아보는 것에서 직접 답하는 것까지 이어집니다."],
-  ["03", "오늘 복습할 단어만 모아보기", "학습 결과에 맞춰 필요한 단어만 다시 확인합니다."],
+  ["01", ["다시 입력하지", "않고 가져오기"], "정리한 단어장을 학습에 바로 활용합니다."],
+  ["02", ["카드와 퀴즈로", "확인하기"], "뜻을 알아보는 것에서 직접 답하는 것까지 이어집니다."],
+  ["03", ["오늘 복습할", "단어만 모아보기"], "학습 결과에 맞춰 필요한 단어만 다시 확인합니다."],
 ] as const;
 
 const aiFeatures = [
@@ -23,7 +24,7 @@ const aiFeatures = [
     softAccent: "#e8f2ff",
     image: "/media/manual/ai-result.jpg",
     imageAlt: "AI가 예문과 뜻을 보강한 앱 결과 화면",
-    caption: "예문과 뜻을 한 번에 보강하는 과정",
+    caption: "예문과 뜻을 한 번에 보강하기",
   },
   {
     title: "퀴즈 생성",
@@ -40,7 +41,7 @@ const aiFeatures = [
       sourceWidth: 480,
       sourceHeight: 968,
     } satisfies MotionVideo,
-    caption: "단어장으로 맞춤 문제를 생성하는 과정",
+    caption: "내 단어장으로 맞춤 퀴즈 만들기",
   },
   {
     title: "문법 문제 생성",
@@ -57,7 +58,7 @@ const aiFeatures = [
       sourceWidth: 480,
       sourceHeight: 968,
     } satisfies MotionVideo,
-    caption: "선택한 문법 범위로 문제를 만드는 과정",
+    caption: "선택한 문법 범위로 문제 만들기",
   },
   {
     title: "저장된 AI 퀴즈",
@@ -74,7 +75,7 @@ const aiFeatures = [
       sourceWidth: 480,
       sourceHeight: 968,
     } satisfies MotionVideo,
-    caption: "저장한 문제를 다시 열고 묶어 활용하는 과정",
+    caption: "저장한 퀴즈 다시 풀고 합치기",
   },
 ] as const;
 
@@ -162,7 +163,7 @@ function MotionFrame({ poster, alt, video, active = true, onProgress }: { poster
   } as CSSProperties;
 
   return (
-    <div className={styles.motionFrame}>
+    <ProductMediaFrame className={styles.motionFrame}>
       {video ? (
         <div className={styles.videoViewport}>
           <div className={styles.videoCrop} style={cropStyle}>
@@ -182,7 +183,7 @@ function MotionFrame({ poster, alt, video, active = true, onProgress }: { poster
           </div>
         </div>
       ) : <img src={poster} alt={alt} width="720" height="1080" loading="lazy" decoding="async" />}
-    </div>
+    </ProductMediaFrame>
   );
 }
 
@@ -190,7 +191,7 @@ function BeforeAfterSlider({ beforeSrc, afterSrc, beforeAlt, afterAlt }: { befor
   const [position, setPosition] = useState(50);
 
   return (
-    <div className={`${styles.motionFrame} ${styles.aiCompareFrame}`}>
+    <ProductMediaFrame className={`${styles.motionFrame} ${styles.aiCompareFrame}`}>
       <div className={styles.aiCompareCanvas}>
         <img className={styles.aiCompareImage} src={beforeSrc} alt={beforeAlt} width="591" height="1200" loading="eager" decoding="async" />
         <div className={styles.aiCompareAfter} style={{ clipPath: `inset(0 0 0 ${position}%)` }}>
@@ -212,7 +213,7 @@ function BeforeAfterSlider({ beforeSrc, afterSrc, beforeAlt, afterAlt }: { befor
           aria-valuetext={`보강 전 ${position}%, 보강 후 ${100 - position}%`}
         />
       </div>
-    </div>
+    </ProductMediaFrame>
   );
 }
 
@@ -344,10 +345,10 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
       <header className={styles.header}>
         <div className={styles.headerInner}>
           <a className={styles.brand} href="#top" aria-label="Memorize Me 처음으로"><img src="/app-icon-192.png" width="42" height="42" alt="" /><span>Memorize Me</span></a>
-          <nav className={styles.desktopNav} aria-label="주요 메뉴"><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a><a className={styles.guideLink} href="/ai-api">AI API 연결 가이드</a><a className={`${styles.primaryCta} ${styles.compactCta}`} href="/feedback">의견 게시판 <span aria-hidden="true">→</span></a></nav>
+          <nav className={styles.desktopNav} aria-label="주요 메뉴"><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a><a className={styles.headerPageButton} href="/ai-api">AI API 연결 가이드</a><a className={`${styles.headerPageButton} ${styles.headerPageButtonPrimary}`} href="/feedback">의견 게시판</a></nav>
           <button type="button" className={styles.menuButton} aria-expanded={menuOpen} aria-controls="mobile-menu" onClick={() => setMenuOpen((open) => !open)}><span aria-hidden="true">{menuOpen ? "×" : "☰"}</span><span className={styles.srOnly}>{menuOpen ? "메뉴 닫기" : "메뉴 열기"}</span></button>
         </div>
-        {menuOpen ? <nav id="mobile-menu" className={styles.mobileMenu} aria-label="모바일 메뉴"><a href="#journey" onClick={closeMenu}>시작하기</a><a href="#learning" onClick={closeMenu}>학습 방식</a><a href="#ai" onClick={closeMenu}>AI 학습</a><a href="#faq" onClick={closeMenu}>FAQ</a><a href="/ai-api" onClick={closeMenu}>AI API 연결 가이드</a><a className={styles.primaryCta} href="/feedback" onClick={closeMenu}>의견 게시판 <span aria-hidden="true">→</span></a></nav> : null}
+        {menuOpen ? <nav id="mobile-menu" className={styles.mobileMenu} aria-label="모바일 메뉴"><a href="#journey" onClick={closeMenu}>시작하기</a><a href="#learning" onClick={closeMenu}>학습 방식</a><a href="#ai" onClick={closeMenu}>AI 학습</a><a href="#faq" onClick={closeMenu}>FAQ</a><a className={styles.headerPageButton} href="/ai-api" onClick={closeMenu}>AI API 연결 가이드</a><a className={`${styles.headerPageButton} ${styles.headerPageButtonPrimary}`} href="/feedback" onClick={closeMenu}>의견 게시판</a></nav> : null}
       </header>
 
       <div id="main-content">
@@ -369,8 +370,8 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
 
         <section className={styles.benefits} aria-labelledby="benefits-title">
           <div className={styles.sectionInner}>
-            <div className={styles.sectionHeading}><p className={styles.kicker}>왜 Memorize Me인가요?</p><h2 id="benefits-title"><CopyLines lines={["가져온 단어가", "학습과 복습으로", "이어집니다."]} /></h2></div>
-            <div className={styles.benefitGrid}>{benefits.map(([number, title, body]) => <article key={number}><span>{number}</span><h3>{title}</h3><p>{body}</p></article>)}</div>
+            <div className={styles.sectionHeading}><p className={styles.kicker}>왜 Memorize Me인가요?</p><h2 id="benefits-title"><CopyLines lines={["가져온 단어가", "학습과 복습으로 이어집니다."]} /></h2></div>
+            <div className={styles.benefitGrid}>{benefits.map(([number, titleLines, body]) => <article key={number}><span>{number}</span><h3><CopyLines lines={titleLines} /></h3><p>{body}</p></article>)}</div>
           </div>
         </section>
 
@@ -378,8 +379,8 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
           <div className={styles.sectionInner}>
             <div className={styles.sectionHeading}><p className={styles.kicker}>시작하기</p><h2 id="journey-title"><CopyLines lines={["단어장만 준비하면,", "바로 시작할 수 있어요."]} /></h2><p><CopyLines lines={["이미 정리한 자료를 가져오거나", "직접 만들 수 있습니다.", "준비된 자료가 없다면", "필수 영어단어 6000으로 시작하세요."]} /></p></div>
             <div className={styles.preparationLayout}>
-              <div className={styles.preparationOptions}>{preparationOptions.map((option, index) => <article key={option.title} data-active={activePreparation === index ? "true" : undefined} aria-current={activePreparation === index ? "step" : undefined}><PreparationIcon type={option.icon} /><div><h3><CopyLines lines={option.titleLines} /></h3><p><CopyLines lines={option.descriptionLines} /></p></div></article>)}</div>
-              <div className={styles.preparationVisual}><MotionFrame poster={preparationVisual.image} alt={preparationVisual.imageAlt} video={preparationVisual.video} onProgress={syncPreparationToVideo} /><p aria-live="polite">{preparationOptions[activePreparation].caption}</p></div>
+              <div className={styles.preparationOptions}>{preparationOptions.map((option, index) => <article key={option.title} data-active={activePreparation === index ? "true" : undefined} aria-current={activePreparation === index ? "step" : undefined}><PreparationIcon type={option.icon} /><div><h3>{option.title}</h3><p><CopyLines lines={option.descriptionLines} /></p></div></article>)}</div>
+              <div className={styles.preparationVisual}><MotionFrame poster={preparationVisual.image} alt={preparationVisual.imageAlt} video={preparationVisual.video} onProgress={syncPreparationToVideo} /><p className="product-media-caption" aria-live="polite">{preparationOptions[activePreparation].caption}</p></div>
             </div>
             <div className={styles.learningBridge}><span>단어장 준비 완료</span><strong><CopyLines lines={["이제 나에게 맞는", "학습 방식을 골라보세요."]} /></strong></div>
           </div>
@@ -445,11 +446,11 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
                   />
                 ) : null}
                 {aiFeatures.map((feature, index) => "video" in feature ? (
-                  <div key={feature.title} hidden={activeAiFeature !== index}>
+                  <div key={feature.title} className={styles.aiMediaPanel} hidden={activeAiFeature !== index}>
                     <MotionFrame poster={feature.image} alt={feature.imageAlt} video={feature.video} active={activeAiFeature === index} />
                   </div>
                 ) : null)}
-                <p className={styles.aiVisualCaption} aria-live="polite">{selectedAiFeature.caption}</p>
+                <p className="product-media-caption" aria-live="polite">{selectedAiFeature.caption}</p>
               </div>
             </div>
           </div>
