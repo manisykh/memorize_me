@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "../legal.css";
 import { CopyLines } from "../copy-lines";
+import { PolicyHeader } from "../policy-header";
 
 export const metadata: Metadata = {
   title: "계정 삭제 | Memorize Me",
@@ -12,10 +13,7 @@ export default function AccountDeletionPage() {
 
   return (
     <main className="legal-page">
-      <header className="legal-header">
-        <a href="/">Memorize Me</a>
-        <a href="/privacy">개인정보 처리방침</a>
-      </header>
+      <PolicyHeader current="account-deletion" />
       <article className="legal-content">
         <p className="legal-kicker">ACCOUNT DELETION</p>
         <h1>계정 삭제 요청</h1>

@@ -14,6 +14,7 @@
     "build:netlify": "node scripts/build-netlify.mjs",
     "start": "vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test:testing": "node --import ./tests/register-types.mjs --test tests/tester-service.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

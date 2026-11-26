@@ -1963,13 +1963,15 @@
 
 .api-end-section {
   min-height: 480px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 64px;
-  align-items: end;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  align-items: center;
+  justify-content: center;
   padding: 96px max(8vw, 56px);
   color: #fff;
-  background: var(--manual-terra);
+  background: #0b5fd8;
+  text-align: center;
 }
 
 .api-end-section p {
@@ -1986,7 +1988,7 @@
 .api-end-section > div:last-child {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: center;
   gap: 18px;
 }
 
@@ -2025,7 +2027,7 @@
   }
 
   .api-end-section {
-    align-items: start;
+    align-items: center;
   }
 }
 
@@ -2833,10 +2835,43 @@
 
 .api-guide-mobile-menu .api-guide-feedback-link { margin-top: 16px; }
 
-.api-guide-page .api-hero { padding-top: 128px; }
+.api-guide-page .api-hero {
+  padding-top: 128px;
+  grid-template-columns: minmax(0,1fr);
+  justify-items: center;
+  text-align: center;
+}
+
+.api-guide-page .api-hero::after {
+  background: radial-gradient(ellipse at center,rgba(6,43,102,.97) 0%,rgba(6,43,102,.88) 50%,rgba(6,43,102,.68) 100%);
+}
+
+.api-guide-page .api-hero-copy {
+  width: min(800px,100%);
+  max-width: 800px;
+  margin-inline: auto;
+  justify-self: center;
+}
+
+.api-guide-page .api-hero h1,
+.api-guide-page .api-hero-copy > p:not(.eyebrow) {
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.api-guide-page .api-security-note {
+  width: fit-content;
+  max-width: 100%;
+  margin: 40px auto 0;
+  padding: 18px 0 0;
+  border-left: 0;
+  border-top: 1px solid rgba(112,223,188,.45);
+  text-align: center;
+}
+
 .api-guide-page .api-hero-question-cloud {
-  right: 0;
-  width: 58%;
+  inset: 0;
+  width: 100%;
   opacity: .5;
   filter: saturate(.72) contrast(.94);
 }
@@ -2897,6 +2932,10 @@
   .api-guide-page .api-hero {
     min-height: 650px;
     padding: 104px 20px 74px;
+  }
+
+  .api-guide-page .api-hero h1 {
+    font-size: clamp(32px,9.5vw,46px);
   }
 
   .api-guide-page .api-hero-question-cloud {

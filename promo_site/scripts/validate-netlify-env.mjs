@@ -45,4 +45,12 @@ if (feedbackSessionSecret.length < 32) {
   process.exit(1);
 }
 
+if (process.env.TESTER_PRIVACY_CONFIRMED === "true") {
+  const days = Number(process.env.TESTER_RETENTION_DAYS);
+  if (!Number.isInteger(days) || days < 1 || days > 730 || /@example\.(com|org|net)$/i.test(supportEmail)) {
+    console.error("[release-check] Approved tester collection requires a real support email and a retention period of 1–730 days from submission.");
+    process.exit(1);
+  }
+}
+
 console.log("[release-check] Netlify public configuration is valid.");

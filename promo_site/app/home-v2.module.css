@@ -45,13 +45,13 @@
 .mobileMenu .headerPageButton { margin-top: 12px; }
 .mobileMenu .primaryCta { margin-top: 16px; }
 
-.primaryCta { min-height: 54px; padding: 0 23px; display: inline-flex; align-items: center; justify-content: center; gap: 14px; color: #fff !important; background: var(--blue); border-radius: 999px; font-size: 15px; font-weight: 900; box-shadow: 0 12px 28px rgba(11,95,216,.22); }
+.primaryCta { min-height: 54px; padding: 0 23px; display: inline-flex; align-items: center; justify-content: center; gap: 14px; color: #fff !important; background: var(--blue); border: 0; cursor: pointer; border-radius: 999px; font-size: 15px; font-weight: 900; box-shadow: 0 12px 28px rgba(11,95,216,.22); }
 .primaryCta:hover { background: var(--blue-dark); }
 .compactCta { min-height: 44px; padding-inline: 18px; font-size: 13px; }
 .textLink { min-height: 48px; display: inline-flex; align-items: center; gap: 9px; color: var(--navy); font-size: 15px; font-weight: 900; }
 .textLink:hover { color: var(--blue); }
 
-.kicker { margin: 0 0 16px; color: var(--blue); font-size: 14px; line-height: 1.4; font-weight: 900; letter-spacing: .01em; }
+.kicker { margin: 0 0 16px; color: var(--blue); font-size: var(--section-label-size); line-height: 1.4; font-weight: 900; letter-spacing: .01em; }
 .sectionInner, .learningInner { width: min(1120px,calc(100% - 48px)); margin: 0 auto; }
 .sectionHeading { max-width: 800px; }
 .sectionHeading h2, .learningHeading h2, .aiHeading h2, .helpPanel h2, .faq h2, .finalCta h2 { margin: 0; font-size: clamp(30px,4.2vw,48px); line-height: 1.2; letter-spacing: -.02em; word-break: keep-all; }
@@ -106,8 +106,8 @@
 .preparationVisual, .modeCarousel, .aiVisual { width: clamp(420px,42vw,540px); max-width: 100%; height: 680px; margin-inline: auto; }
 
 .journey { padding: 120px 0; scroll-margin-top: 80px; }
-.preparationLayout { margin-top: 50px; display: grid; grid-template-columns: minmax(320px,480px) var(--product-media-width); justify-content: center; gap: 56px; align-items: center; }
-.preparationOptions { display: grid; grid-template-rows: repeat(3,auto); gap: 10px; }
+.preparationLayout { margin-top: 50px; padding-inline: 29px; display: grid; grid-template-columns: minmax(340px,1fr) clamp(420px,42vw,540px); gap: 34px; align-items: center; }
+.preparationOptions { min-width: 0; padding-left: 8px; display: grid; grid-template-rows: repeat(3,auto); gap: 10px; }
 .preparationOptions article { min-height: 116px; padding: 18px 20px; display: grid; grid-template-columns: 44px minmax(0,1fr); gap: 14px; align-items: center; background: #fff; border: 1px solid #d6e1ed; border-radius: 17px; box-shadow: 0 7px 20px rgba(6,38,93,.045); transition: border-color .2s ease,background-color .2s ease,box-shadow .2s ease; }
 .preparationOptions article[data-active="true"] { background: #f5f9ff; border-color: #78aef0; box-shadow: 0 0 0 2px rgba(35,116,232,.1),0 14px 34px rgba(6,38,93,.08); }
 .preparationOptions h3 { margin: 0; font-size: 18px; line-height: 1.25; letter-spacing: -.015em; white-space: nowrap; }
@@ -167,13 +167,14 @@
 .aiSection { padding: 120px 0; background: var(--surface-mint); scroll-margin-top: 80px; }
 .aiHeading { max-width: 800px; }
 .aiHeading > p:not(.kicker) { max-width: 38em; margin: 22px 0 0; color: var(--muted); font-size: 17px; line-height: 1.7; }
-.aiLayout { margin-top: 50px; padding: 28px; display: grid; grid-template-columns: minmax(340px,1fr) clamp(400px,40vw,500px); gap: 42px; align-items: center; background: rgba(255,255,255,.42); border: 1px solid #c9e3da; border-radius: 30px; box-shadow: 0 24px 60px rgba(6,38,93,.07); }
+.aiLayout { min-width: 0; margin-top: 50px; padding: 28px; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,500px); gap: 42px; align-items: center; background: rgba(255,255,255,.42); border: 1px solid #c9e3da; border-radius: 30px; box-shadow: 0 24px 60px rgba(6,38,93,.07); }
+.aiCopy { min-width: 0; max-width: 100%; }
 .aiFeatureHeading { margin-top: 28px; display: flex; align-items: center; gap: 13px; }
 .aiFeatureHeading .aiFeatureIcon { width: 46px; height: 46px; flex: 0 0 auto; border-radius: 14px; }
 .aiFeatureHeading .aiFeatureIcon i { font-size: 23px; }
 .aiFeatureHeading h3 { margin: 0; color: var(--navy); font-size: 24px; line-height: 1.25; }
-.aiFeatureHeading p { margin: 4px 0 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
-.aiFeatureTabs { margin-top: 18px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+.aiFeatureHeading p { margin: 4px 0 0; color: var(--muted); font-size: 14px; line-height: 1.45; word-break: keep-all; }
+.aiFeatureTabs { position: relative; min-width: 0; max-width: 100%; margin-top: 18px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
 .aiFeatureTabs > button { width: 100%; min-height: 46px; padding: 6px 9px; display: grid; grid-template-columns: 30px minmax(0,1fr); gap: 8px; align-items: center; color: var(--navy); background: rgba(255,255,255,.78); border: 1px solid #d5e0ec; border-radius: 13px; text-align: left; box-shadow: 0 4px 12px rgba(6,38,93,.025); cursor: pointer; transition: border-color .18s ease,box-shadow .18s ease,background-color .18s ease; }
 .aiFeatureTabs > button:hover { border-color: color-mix(in srgb,var(--ai-accent) 38%,#d5e0ec); }
 .aiFeatureTabs > button[aria-selected="true"] { background: color-mix(in srgb,var(--ai-soft-accent) 42%,#fff); border-color: var(--ai-accent); box-shadow: 0 0 0 2px color-mix(in srgb,var(--ai-accent) 12%,transparent),0 10px 24px rgba(6,38,93,.055); }
@@ -182,22 +183,19 @@
 .cupertinoIcon { font-family: "Memorize Cupertino Icons"; font-weight: 400; font-style: normal; font-feature-settings: "liga"; -webkit-font-feature-settings: "liga"; }
 .aiFeatureText { min-width: 0; display: grid; gap: 3px; }
 .aiFeatureText strong { overflow: hidden; color: var(--navy); font-size: 13px; line-height: 1.3; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
-.aiLinks { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 12px 20px; }
-.aiLinks a { min-height: 48px; display: inline-flex; align-items: center; color: var(--blue); font-size: 15px; font-weight: 900; }
-.aiLinks a:first-child { padding: 0 18px; border: 1px solid #9ab7aa; border-radius: 999px; color: #225f50; }
-.aiVisual { position: relative; min-height: 0; padding-top: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; overflow: visible; animation: fadeIn .22s ease; }
+.aiVisual { position: relative; width: 100%; min-width: 0; max-width: 100%; height: auto; min-height: 0; padding: 14px 0 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; touch-action: pan-y; animation: fadeIn .22s ease; }
 .aiMediaPanel { width: min(var(--product-media-width),100%); flex: 0 0 auto; }
 .aiCompareFrame { isolation: isolate; }
 .aiCompareCanvas { position: relative; width: auto; max-width: 100%; height: 100%; aspect-ratio: 591 / 1200; overflow: hidden; background: #f8faff; border-radius: var(--product-media-inner-radius); box-shadow: 0 10px 30px rgba(6,38,93,.12); user-select: none; }
 .aiCompareImage { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; pointer-events: none; }
-.aiCompareAfter { position: absolute; z-index: 1; inset: 0; will-change: clip-path; }
+.aiCompareBefore, .aiCompareAfter { position: absolute; z-index: 1; inset: 0; will-change: clip-path; pointer-events: none; }
 .aiCompareLabel { position: absolute; z-index: 3; top: 12px; min-width: 64px; padding: 7px 11px; color: #fff; background: rgba(6,38,93,.78); border: 1px solid rgba(255,255,255,.52); border-radius: 999px; text-align: center; font-size: 12px; line-height: 1; font-weight: 900; box-shadow: 0 5px 16px rgba(6,38,93,.16); backdrop-filter: blur(7px); }
 .aiCompareBeforeLabel { left: 12px; }
 .aiCompareAfterLabel { right: 12px; color: #064c3d; background: rgba(232,250,244,.92); border-color: rgba(0,173,124,.3); }
 .aiCompareDivider { position: absolute; z-index: 2; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 1px rgba(6,38,93,.16),0 0 18px rgba(6,38,93,.3); transform: translateX(-1px); pointer-events: none; }
-.aiCompareHandle { position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--navy); background: #fff; border: 2px solid rgba(35,116,232,.32); border-radius: 50%; box-shadow: 0 6px 18px rgba(6,38,93,.2); transform: translate(-50%,-50%); transition: transform .18s ease,box-shadow .18s ease; }
-.aiCompareHandle b { font-size: 17px; line-height: 1; font-weight: 900; }
-.aiCompareRange { position: absolute; z-index: 4; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; touch-action: none; }
+.aiCompareHandle { position: absolute; top: 50%; left: 50%; width: 32px; height: 32px; display: grid; place-items: center; color: var(--navy); background: #fff; border: 2px solid rgba(35,116,232,.32); border-radius: 50%; box-shadow: 0 4px 12px rgba(6,38,93,.16); transform: translate(-50%,-50%); transition: transform .18s ease,box-shadow .18s ease; }
+.aiCompareHandle svg { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.aiCompareRange { position: absolute; z-index: 4; top: 50%; left: 0; width: 100%; height: 44px; margin: 0; opacity: 0; transform: translateY(-50%); cursor: ew-resize; touch-action: none; }
 .aiCompareCanvas:focus-within .aiCompareHandle { outline: 3px solid rgba(35,116,232,.32); outline-offset: 3px; box-shadow: 0 9px 28px rgba(6,38,93,.28); transform: translate(-50%,-50%) scale(1.06); }
 
 .faqSection { padding: 120px 0; scroll-margin-top: 80px; }
@@ -229,6 +227,7 @@
 .footer { padding: 72px 0 24px; background: var(--surface); }
 .footerInner { width: min(1120px,calc(100% - 48px)); margin: 0 auto; display: grid; grid-template-columns: 1.3fr repeat(4,1fr); gap: 42px; }
 .footerBrand p, .footerInner > div:last-child p { margin: 12px 0 0; color: #56677f; font-size: 13px; line-height: 1.6; }
+.footerInner > div:last-child p { min-height: 30px; margin: 0; display: flex; align-items: center; }
 .footer nav, .footerInner > div:last-child { display: grid; align-content: start; gap: 12px; }
 .footer nav strong, .footerInner > div:last-child strong { margin-bottom: 4px; color: var(--navy); font-size: 14px; }
 .footer nav a { min-height: 30px; display: flex; align-items: center; color: #56677f; font-size: 13px; }
@@ -253,16 +252,16 @@
   .menuButton { display: grid; place-items: center; }
   .hero { padding: 104px 0 78px; }
   .heroCopy { max-width: 720px; }
-  .preparationLayout { height: auto; grid-template-columns: 1fr; }
-  .preparationOptions { width: min(480px,100%); margin-inline: auto; grid-template-columns: 1fr; }
+  .preparationLayout { height: auto; padding-inline: 0; grid-template-columns: minmax(0,1fr); }
+  .preparationOptions { width: min(480px,100%); padding-left: 0; margin-inline: auto; grid-template-columns: 1fr; }
   .preparationOptions article { min-height: 110px; padding: 16px; align-content: center; }
   .preparationVisual { width: min(540px,100%); height: auto; }
-  .learningAxis { grid-template-columns: 1fr; padding: 26px; }
+  .learningAxis { grid-template-columns: minmax(0,1fr); padding: 26px; }
   .modeTabs { grid-template-columns: repeat(3,1fr); }
   .modeTabs button { justify-content: center; text-align: center; }
   .carouselControls { grid-template-columns: 1fr; }
   .carouselControls > button { display: none; }
-  .aiLayout, .faqLayout { grid-template-columns: 1fr; }
+  .aiLayout, .faqLayout { grid-template-columns: minmax(0,1fr); }
   .aiVisual { min-height: 0; padding-top: 0; }
   .modeCarousel, .aiVisual { width: min(540px,100%); height: auto; min-height: 0; }
   .footerInner { grid-template-columns: repeat(2,1fr); }
@@ -310,7 +309,7 @@
   .modeTabs button { min-height: 42px; padding: 5px 11px 5px 7px; flex: 0 0 auto; justify-content: flex-start; white-space: nowrap; }
   .modeCarousel { min-height: 0; height: auto; padding: 0 0 68px; }
   .modeCarousel, .aiVisual { width: 100%; min-height: 0; }
-  .aiVisual { height: auto; min-height: 0; padding: 0; }
+  .aiVisual { height: auto; min-height: 0; padding: 0 0 60px; }
   .aiHeading > p:not(.kicker) { margin-top: 16px; font-size: 16px; }
   .aiLayout { margin-top: 34px; padding: 18px; gap: 20px; }
   .aiFeatureHeading { margin-top: 0; }
@@ -321,7 +320,7 @@
   .aiCompareLabel { top: 9px; min-width: 57px; padding: 6px 9px; font-size: 11px; }
   .aiCompareBeforeLabel { left: 9px; }
   .aiCompareAfterLabel { right: 9px; }
-  .aiCompareHandle { width: 36px; height: 36px; }
+  .aiCompareHandle { width: 30px; height: 30px; }
   .faqLayout { gap: 66px; }
   .finalCta { padding-block: 72px; }
   .finalActions { display: grid; }

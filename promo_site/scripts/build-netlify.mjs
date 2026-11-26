@@ -5,8 +5,9 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const cloudflareRoute = path.join(root, "app", "api", "feedback", "route.ts");
-const parkedRoute = `${cloudflareRoute}.cloudflare-only`;
+// Production endpoints are Netlify Functions, not static export routes.
+const routes = ["feedback", "tester-applications"].map((name) => path.join(root, "app", "api", name, "route.ts"));
+const parked = [];
 
 function run(script, args = []) {
   return new Promise((resolve, reject) => {
@@ -22,9 +23,12 @@ function run(script, args = []) {
 
 await run(path.join(root, "scripts", "validate-netlify-env.mjs"));
 
-await rename(cloudflareRoute, parkedRoute);
 try {
+  for (const route of routes) {
+    await rename(route, `${route}.netlify-only`);
+    parked.push(route);
+  }
   await run(path.join(root, "node_modules", "next", "dist", "bin", "next"), ["build", "--webpack"]);
 } finally {
-  await rename(parkedRoute, cloudflareRoute);
+  for (const route of parked.reverse()) await rename(`${route}.netlify-only`, route);
 }

@@ -1,13 +1,15 @@
 import { faqItems } from "./home-content";
 import { HomeLanding } from "./home-interactions";
+import { getReleaseConfig, releasePresentation } from "../lib/site-release";
 
 export default function HomePage() {
-  const googlePlayUrl = process.env.NEXT_PUBLIC_GOOGLE_PLAY_URL?.trim();
-  const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim();
+  const releaseConfig = getReleaseConfig();
+  const state = releasePresentation(releaseConfig);
+  const productFaq = faqItems.map((item) => item.question === "지원 기기와 비용은 어떻게 되나요?" ? { ...item, answer: `${state.label}. ${item.answer.replace("현재 Android 출시를 준비하고 있습니다. ", "")}` } : item);
   const faqStructuredData = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    mainEntity: faqItems.map((item) => ({
+    mainEntity: productFaq.map((item) => ({
       "@type": "Question",
       name: item.question,
       acceptedAnswer: {
@@ -23,7 +25,7 @@ export default function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
       />
-      <HomeLanding googlePlayUrl={googlePlayUrl} supportEmail={supportEmail} />
+      <HomeLanding releaseConfig={releaseConfig} />
     </>
   );
 }

@@ -1,13 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { faqItems, preparationOptions, preparationVisual, studyModes, type MotionVideo, type PreparationIconName, type StudyModeIconName } from "./home-content";
 import { CopyLines } from "./copy-lines";
 import { ProductMediaFrame } from "./product-media-frame";
 import styles from "./home-v2.module.css";
+import testing from "./testing.module.css";
+import { EnrollmentModal, ReleaseAction, type EnrollmentMode } from "./testing-enrollment";
+import { releasePresentation, type ReleaseConfig } from "../lib/site-release";
 
-type HomeLandingProps = { googlePlayUrl?: string; supportEmail?: string };
+type HomeLandingProps = { releaseConfig: ReleaseConfig };
 
 const benefits = [
   ["01", ["다시 입력하지", "않고 가져오기"], "정리한 단어장을 학습에 바로 활용합니다."],
@@ -193,14 +197,18 @@ function BeforeAfterSlider({ beforeSrc, afterSrc, beforeAlt, afterAlt }: { befor
   return (
     <ProductMediaFrame className={`${styles.motionFrame} ${styles.aiCompareFrame}`}>
       <div className={styles.aiCompareCanvas}>
-        <img className={styles.aiCompareImage} src={beforeSrc} alt={beforeAlt} width="591" height="1200" loading="eager" decoding="async" />
+        <div className={styles.aiCompareBefore} style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}>
+          <img className={styles.aiCompareImage} src={beforeSrc} alt={beforeAlt} width="591" height="1200" loading="eager" decoding="async" />
+          <span className={`${styles.aiCompareLabel} ${styles.aiCompareBeforeLabel}`} aria-hidden="true">보강 전</span>
+        </div>
         <div className={styles.aiCompareAfter} style={{ clipPath: `inset(0 0 0 ${position}%)` }}>
           <img className={styles.aiCompareImage} src={afterSrc} alt={afterAlt} width="591" height="1200" loading="eager" decoding="async" />
+          <span className={`${styles.aiCompareLabel} ${styles.aiCompareAfterLabel}`} aria-hidden="true">보강 후</span>
         </div>
-        <span className={`${styles.aiCompareLabel} ${styles.aiCompareBeforeLabel}`} aria-hidden="true">보강 전</span>
-        <span className={`${styles.aiCompareLabel} ${styles.aiCompareAfterLabel}`} aria-hidden="true">보강 후</span>
         <span className={styles.aiCompareDivider} style={{ left: `${position}%` }} aria-hidden="true">
-          <span className={styles.aiCompareHandle}><b>‹</b><b>›</b></span>
+          <span className={styles.aiCompareHandle}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7-5 5 5 5M15 7l5 5-5 5" /></svg>
+          </span>
         </span>
         <input
           className={styles.aiCompareRange}
@@ -277,27 +285,51 @@ function tabKeyHandler(event: ReactKeyboardEvent<HTMLDivElement>, current: numbe
   else return;
   event.preventDefault();
   select(next);
-  requestAnimationFrame(() => document.getElementById(`${event.currentTarget.id}-tab-${next}`)?.focus());
+  const tabId = `${event.currentTarget.id}-tab-${next}`;
+  requestAnimationFrame(() => document.getElementById(tabId)?.focus({ preventScroll: true }));
 }
 
-function PrimaryCta({ googlePlayUrl, supportEmail, compact = false }: HomeLandingProps & { compact?: boolean }) {
-  if (googlePlayUrl) {
-    return <a className={`${styles.primaryCta} ${compact ? styles.compactCta : ""}`} href={googlePlayUrl} target="_blank" rel="noreferrer">Google Play에서 받기 <span aria-hidden="true">↗</span></a>;
-  }
-  if (supportEmail) {
-    const href = `mailto:${supportEmail}?subject=${encodeURIComponent("Memorize Me Android 출시 알림 신청")}`;
-    return <a className={`${styles.primaryCta} ${compact ? styles.compactCta : ""}`} href={href}>Android 출시 알림 받기 <span aria-hidden="true">→</span></a>;
-  }
-  return <a className={`${styles.primaryCta} ${compact ? styles.compactCta : ""}`} href="#journey">시작 방법 보기 <span aria-hidden="true">→</span></a>;
+function centerSelectedTab(container: HTMLDivElement | null) {
+  const selected = container?.querySelector<HTMLElement>("[aria-selected='true']");
+  if (!container || !selected || container.scrollWidth <= container.clientWidth) return;
+  const containerBounds = container.getBoundingClientRect();
+  const selectedBounds = selected.getBoundingClientRect();
+  container.scrollTo({
+    left: container.scrollLeft + selectedBounds.left - containerBounds.left - (container.clientWidth - selectedBounds.width) / 2,
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+  });
 }
 
-export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
+export function HomeLanding({ releaseConfig }: HomeLandingProps) {
+  const [liveRelease, setLiveRelease] = useState(releaseConfig);
+  const [enrollmentMode, setEnrollmentMode] = useState<EnrollmentMode | null>(null);
+  const release = releasePresentation(liveRelease);
+  const productFaqItems = faqItems.map((item) => item.question === "지원 기기와 비용은 어떻게 되나요?" ? { ...item, answer: `${release.label}. ${item.answer.replace("현재 Android 출시를 준비하고 있습니다. ", "")}` } : item);
+  const supportEmail = liveRelease.supportEmail;
+  const openEnrollment = (mode: EnrollmentMode) => setEnrollmentMode(mode);
+  useEffect(() => {
+    const forwardTestingLink = () => {
+      if (window.location.hash === "#closed-testing" || window.location.hash === "#testing-faq") {
+        window.location.replace(`/testing${window.location.hash === "#testing-faq" ? "#testing-faq" : ""}`);
+      }
+    };
+    forwardTestingLink();
+    window.addEventListener("hashchange", forwardTestingLink);
+    return () => window.removeEventListener("hashchange", forwardTestingLink);
+  }, []);
+  useEffect(() => {
+    const abort = new AbortController();
+    void fetch("/api/tester-applications?view=config", { cache: "no-store", signal: abort.signal }).then((response) => response.ok ? response.json() : null).then((data) => { if (data?.config) setLiveRelease(data.config); }).catch(() => undefined);
+    return () => abort.abort();
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeMode, setActiveMode] = useState(0);
   const [activePreparation, setActivePreparation] = useState(0);
   const [activeAiFeature, setActiveAiFeature] = useState(0);
   const modeTouchStartX = useRef<number | null>(null);
   const modeTabsRef = useRef<HTMLDivElement>(null);
+  const aiTabsRef = useRef<HTMLDivElement>(null);
+  const aiTouchStart = useRef<{ x: number; y: number } | null>(null);
   const activeStudyMode = studyModes[activeMode];
   const selectedAiFeature = aiFeatures[activeAiFeature];
 
@@ -319,14 +351,12 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
   }, [menuOpen]);
 
   useEffect(() => {
-    const container = modeTabsRef.current;
-    const selected = container?.querySelector<HTMLElement>("[aria-selected='true']");
-    if (!container || !selected || container.scrollWidth <= container.clientWidth) return;
-    container.scrollTo({
-      left: selected.offsetLeft - container.offsetLeft - (container.clientWidth - selected.offsetWidth) / 2,
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-    });
+    centerSelectedTab(modeTabsRef.current);
   }, [activeMode]);
+
+  useEffect(() => {
+    centerSelectedTab(aiTabsRef.current);
+  }, [activeAiFeature]);
 
   const syncPreparationToVideo = useCallback((currentTime: number) => {
     let nextIndex = 0;
@@ -336,6 +366,7 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
     setActivePreparation((current) => current === nextIndex ? current : nextIndex);
   }, []);
   const selectMode = (index: number) => setActiveMode((index + studyModes.length) % studyModes.length);
+  const selectAiFeature = (index: number) => setActiveAiFeature((index + aiFeatures.length) % aiFeatures.length);
   const closeMenu = () => setMenuOpen(false);
 
   return (
@@ -345,10 +376,10 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
       <header className={styles.header}>
         <div className={styles.headerInner}>
           <a className={styles.brand} href="#top" aria-label="Memorize Me 처음으로"><img src="/app-icon-192.png" width="42" height="42" alt="" /><span>Memorize Me</span></a>
-          <nav className={styles.desktopNav} aria-label="주요 메뉴"><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a><a className={styles.headerPageButton} href="/ai-api">AI API 연결 가이드</a><a className={`${styles.headerPageButton} ${styles.headerPageButtonPrimary}`} href="/feedback">의견 게시판</a></nav>
+          <nav className={styles.desktopNav} aria-label="주요 메뉴"><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a><Link className={styles.headerPageButton} href="/testing">{liveRelease.releaseStatus === "released" ? "출시 안내" : "테스트 안내"}</Link><a className={styles.headerPageButton} href="/ai-api">AI API 연결 가이드</a><a className={`${styles.headerPageButton} ${styles.headerPageButtonPrimary}`} href="/feedback">의견 게시판</a></nav>
           <button type="button" className={styles.menuButton} aria-expanded={menuOpen} aria-controls="mobile-menu" onClick={() => setMenuOpen((open) => !open)}><span aria-hidden="true">{menuOpen ? "×" : "☰"}</span><span className={styles.srOnly}>{menuOpen ? "메뉴 닫기" : "메뉴 열기"}</span></button>
         </div>
-        {menuOpen ? <nav id="mobile-menu" className={styles.mobileMenu} aria-label="모바일 메뉴"><a href="#journey" onClick={closeMenu}>시작하기</a><a href="#learning" onClick={closeMenu}>학습 방식</a><a href="#ai" onClick={closeMenu}>AI 학습</a><a href="#faq" onClick={closeMenu}>FAQ</a><a className={styles.headerPageButton} href="/ai-api" onClick={closeMenu}>AI API 연결 가이드</a><a className={`${styles.headerPageButton} ${styles.headerPageButtonPrimary}`} href="/feedback" onClick={closeMenu}>의견 게시판</a></nav> : null}
+        {menuOpen ? <nav id="mobile-menu" className={styles.mobileMenu} aria-label="모바일 메뉴"><a href="#journey" onClick={closeMenu}>시작하기</a><a href="#learning" onClick={closeMenu}>학습 방식</a><a href="#ai" onClick={closeMenu}>AI 학습</a><a href="#faq" onClick={closeMenu}>FAQ</a><Link className={styles.headerPageButton} href="/testing" onClick={closeMenu}>{liveRelease.releaseStatus === "released" ? "출시 안내" : "테스트 안내"}</Link><a className={styles.headerPageButton} href="/ai-api" onClick={closeMenu}>AI API 연결 가이드</a><a className={`${styles.headerPageButton} ${styles.headerPageButtonPrimary}`} href="/feedback" onClick={closeMenu}>의견 게시판</a></nav> : null}
       </header>
 
       <div id="main-content">
@@ -363,7 +394,12 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
                 <li><FormatIcon type="csv" /><span>CSV</span></li>
                 <li><FormatIcon type="xlsx" /><span>XLSX</span></li>
               </ul>
-              {!googlePlayUrl ? <p className={styles.releaseNote}><span aria-hidden="true" />Android · Google Play 출시 준비 중</p> : null}
+              <p className={styles.releaseNote}><span aria-hidden="true" />{release.label}</p>
+              <div className={testing.heroExtras}>
+                <p>{liveRelease.releaseStatus === "released" ? "Google Play에서 Memorize Me를 만나보세요." : "정식 출시 전 Memorize Me를 먼저 경험해 보세요."}</p>
+                <div className={testing.heroActions}><ReleaseAction config={liveRelease} onOpen={openEnrollment} /><Link href="/testing">{liveRelease.releaseStatus === "released" ? "출시 안내" : "테스트 안내"}</Link></div>
+                {liveRelease.acceptingTesters ? <p className={testing.note}>Android 기기 · Google 계정 필요 · 최소 {liveRelease.minimumParticipationDays}일 참여</p> : null}
+              </div>
             </div>
           </div>
         </section>
@@ -416,7 +452,7 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
                   <AiFeatureIcon feature={selectedAiFeature} />
                   <div><h3>{selectedAiFeature.title}</h3><p>{selectedAiFeature.subtitle}</p></div>
                 </div>
-                <div id="ai-feature-tabs" className={styles.aiFeatureTabs} role="tablist" aria-label="AI 학습 기능 선택" onKeyDown={(event) => tabKeyHandler(event, activeAiFeature, aiFeatures.length, setActiveAiFeature)}>
+                <div ref={aiTabsRef} id="ai-feature-tabs" className={styles.aiFeatureTabs} role="tablist" aria-label="AI 학습 기능 선택" onKeyDown={(event) => tabKeyHandler(event, activeAiFeature, aiFeatures.length, selectAiFeature)}>
                   {aiFeatures.map((feature, index) => (
                     <button
                       id={`ai-feature-tabs-tab-${index}`}
@@ -427,16 +463,38 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
                       aria-controls="ai-feature-panel"
                       tabIndex={activeAiFeature === index ? 0 : -1}
                       style={{ "--ai-accent": feature.accent, "--ai-soft-accent": feature.softAccent } as CSSProperties}
-                      onClick={() => setActiveAiFeature(index)}
+                      onClick={() => selectAiFeature(index)}
                     >
                       <AiFeatureIcon feature={feature} />
                       <span className={styles.aiFeatureText}><strong>{feature.title}</strong></span>
                     </button>
                   ))}
                 </div>
-                <div className={styles.aiLinks}><a href="/ai-api">AI API 연결 가이드</a></div>
               </div>
-              <div id="ai-feature-panel" className={styles.aiVisual} role="tabpanel" aria-labelledby={`ai-feature-tabs-tab-${activeAiFeature}`}>
+              <div
+                id="ai-feature-panel"
+                className={styles.aiVisual}
+                role="tabpanel"
+                aria-labelledby={`ai-feature-tabs-tab-${activeAiFeature}`}
+                onTouchStart={(event) => {
+                  aiTouchStart.current = null;
+                  if ((event.target as HTMLElement).closest("input, button, a")) return;
+                  const touch = event.changedTouches[0];
+                  if (touch) aiTouchStart.current = { x: touch.clientX, y: touch.clientY };
+                }}
+                onTouchEnd={(event) => {
+                  const start = aiTouchStart.current;
+                  const touch = event.changedTouches[0];
+                  aiTouchStart.current = null;
+                  if (!start || !touch) return;
+                  const dx = touch.clientX - start.x;
+                  const dy = touch.clientY - start.y;
+                  if (Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+                    selectAiFeature(activeAiFeature + (dx < 0 ? 1 : -1));
+                  }
+                }}
+                onTouchCancel={() => { aiTouchStart.current = null; }}
+              >
                 {activeAiFeature === 0 ? (
                   <BeforeAfterSlider
                     beforeSrc="/media/ai/flashcard-before-example.jpg"
@@ -451,22 +509,29 @@ export function HomeLanding({ googlePlayUrl, supportEmail }: HomeLandingProps) {
                   </div>
                 ) : null)}
                 <p className="product-media-caption" aria-live="polite">{selectedAiFeature.caption}</p>
+                <div className={styles.carouselControls} aria-label="AI 학습 화면 전환">
+                  <button type="button" onClick={() => selectAiFeature(activeAiFeature - 1)} aria-label="이전 AI 학습 기능">←</button>
+                  <div>{aiFeatures.map((feature, index) => <button key={feature.title} type="button" aria-label={`${feature.title} 보기`} aria-current={activeAiFeature === index ? "true" : undefined} onClick={() => selectAiFeature(index)}><span /></button>)}</div>
+                  <button type="button" onClick={() => selectAiFeature(activeAiFeature + 1)} aria-label="다음 AI 학습 기능">→</button>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
+
         <section className={styles.faqSection} id="faq" aria-labelledby="faq-title">
           <div className={styles.sectionInner}>
-            <div className={styles.faqLayout}><div className={styles.helpPanel}><p className={styles.kicker}>도움말</p><h2><CopyLines lines={["필요한 안내를", "바로 찾아보세요."]} /></h2><p><CopyLines lines={["AI 연결 방법은 전용 가이드에서 확인하고,", "발견한 내용은 의견 게시판에 남겨주세요."]} /></p><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 {supportEmail}</a> : null}</div><div className={styles.faq}><p className={styles.kicker}>자주 묻는 질문</p><h2 id="faq-title">시작 전에 확인하세요.</h2>{faqItems.map((item, index) => <details key={item.question} open={index === 0}><summary>{item.question}<b aria-hidden="true" /></summary><p>{item.answerLines ? <CopyLines lines={item.answerLines} /> : item.answer}</p></details>)}</div></div>
+            <div className={styles.faqLayout}><div className={styles.helpPanel}><p className={styles.kicker}>도움말</p><h2><CopyLines lines={["필요한 안내를", "바로 찾아보세요."]} /></h2><p><CopyLines lines={["AI 연결 방법은 전용 가이드에서 확인하고,", "발견한 내용은 의견 게시판에 남겨주세요."]} /></p><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 {supportEmail}</a> : null}</div><div className={styles.faq}><p className={styles.kicker}>자주 묻는 질문</p><h2 id="faq-title">시작 전에 확인하세요.</h2>{productFaqItems.map((item, index) => <details key={item.question} open={index === 0}><summary>{item.question}<b aria-hidden="true" /></summary><p>{item.answerLines ? <CopyLines lines={item.answerLines} /> : item.answer}</p></details>)}</div></div>
           </div>
         </section>
 
-        <section className={styles.finalCta} aria-labelledby="final-title"><div><p className={styles.kicker}>내 단어장으로 시작하기</p><h2 id="final-title"><CopyLines lines={["이미 정리한 단어장으로,", "오늘의 학습을 준비하세요."]} /></h2><p>{googlePlayUrl ? "Google Play에서 앱을 설치하고 학습을 시작하세요." : "출시 알림을 신청하고 Memorize Me의 소식을 받아보세요."}</p><div className={styles.finalActions}><PrimaryCta googlePlayUrl={googlePlayUrl} supportEmail={supportEmail} /></div></div></section>
+        <section className={styles.finalCta} aria-labelledby="final-title"><div><p className={styles.kicker}>내 단어장으로 시작하기</p><h2 id="final-title"><CopyLines lines={["이미 정리한 단어장으로,", "오늘의 학습을 준비하세요."]} /></h2><p>{liveRelease.releaseStatus === "released" ? "Google Play에서 앱을 설치하고 학습을 시작하세요." : "정식 출시 전에 먼저 경험하거나, 출시 알림을 받아보세요."}</p><div className={styles.finalActions}><ReleaseAction config={liveRelease} onOpen={openEnrollment} />{liveRelease.acceptingTesters ? <ReleaseAction config={liveRelease} onOpen={openEnrollment} secondary /> : null}</div></div></section>
       </div>
 
-      <footer className={styles.footer}><div className={styles.footerInner}><div className={styles.footerBrand}><a className={styles.brand} href="#top"><img src="/app-icon-192.png" width="42" height="42" alt="" /><span>Memorize Me</span></a><p>내 단어장으로 시작하는 학습</p></div><nav aria-label="서비스"><strong>서비스</strong><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><a href="#faq">FAQ</a></nav><nav aria-label="지원"><strong>지원</strong><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 이메일</a> : null}</nav><nav aria-label="정책"><strong>정책</strong><a href="/privacy">개인정보 처리방침</a><a href="/account-deletion">계정 삭제 안내</a></nav><div><strong>앱</strong><p>{googlePlayUrl ? "Google Play에서 제공" : "Google Play 출시 준비 중"}</p></div></div><div className={styles.footerBottom}>© 2026 Memorize Me</div></footer>
+      <footer className={styles.footer}><div className={styles.footerInner}><div className={styles.footerBrand}><a className={styles.brand} href="#top"><img src="/app-icon-192.png" width="42" height="42" alt="" /><span>Memorize Me</span></a><p>내 단어장으로 시작하는 학습</p></div><nav aria-label="서비스"><strong>서비스</strong><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><Link href="/testing">테스트 안내</Link><a href="#faq">FAQ</a></nav><nav aria-label="지원"><strong>지원</strong><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 이메일</a> : null}</nav><nav aria-label="정책"><strong>정책</strong><a href="/privacy">개인정보 처리방침</a><a href="/account-deletion">계정 삭제 안내</a></nav><div><strong>앱</strong><p>{release.label}</p></div></div><div className={styles.footerBottom}>© 2026 Memorize Me</div></footer>
 
+      {enrollmentMode ? <EnrollmentModal mode={enrollmentMode} config={liveRelease} onClose={() => setEnrollmentMode(null)} /> : null}
     </main>
   );
 }

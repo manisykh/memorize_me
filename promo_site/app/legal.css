@@ -1,23 +1,12 @@
 .legal-page {
+  --ink: #102b54;
+  --green-dark: #06265d;
+  --muted: #52627d;
+  --terra: #0b5fd8;
   min-height: 100vh;
+  padding-top: 64px;
   color: var(--ink);
-  background: var(--paper);
-}
-
-.legal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 24px max(6vw, 28px);
-  border-bottom: 1px solid rgba(8, 116, 102, 0.12);
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.legal-header a {
-  color: var(--green-dark);
-  font-weight: 800;
-  text-decoration: none;
+  background: linear-gradient(180deg, #edf5ff 0, #f7faff 360px, #fff 680px);
 }
 
 .legal-content {
@@ -29,7 +18,7 @@
 .legal-kicker {
   margin: 0 0 12px;
   color: var(--terra);
-  font-size: 13px;
+  font-size: var(--section-label-size);
   font-weight: 900;
   letter-spacing: 0.12em;
 }
@@ -38,8 +27,9 @@
   margin: 0;
   color: var(--green-dark);
   font-size: clamp(34px, 6vw, 58px);
-  line-height: 1.08;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  word-break: keep-all;
 }
 
 .legal-updated {
@@ -51,8 +41,8 @@
 .legal-summary,
 .legal-section {
   padding: clamp(22px, 4vw, 34px);
-  border: 1px solid rgba(8, 116, 102, 0.14);
-  border-radius: 24px;
+  border: 1px solid #dce5f0;
+  border-radius: 20px;
   background: #fff;
 }
 
@@ -65,7 +55,11 @@
   font-size: 18px;
   font-weight: 750;
   line-height: 1.7;
+  background: #edf5ff;
+  border-color: #cbdff7;
 }
+
+.legal-summary .copy-line { white-space: normal; text-wrap: pretty; }
 
 .legal-section h2 {
   margin: 0 0 12px;
@@ -77,7 +71,10 @@
 .legal-section p,
 .legal-section li {
   color: var(--muted);
+  font-size: 16px;
   line-height: 1.75;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .legal-section ul,
@@ -99,7 +96,7 @@
   padding: 0 22px;
   border-radius: 999px;
   color: #fff;
-  background: var(--green-dark);
+  background: #0b5fd8;
   font-weight: 850;
   text-decoration: none;
 }
@@ -109,15 +106,19 @@
   padding: 14px 16px;
   border-radius: 14px;
   color: var(--muted);
-  background: rgba(8, 116, 102, 0.06);
+  background: #f0f5fc;
   font-size: 14px;
   line-height: 1.6;
 }
 
+.legal-action:hover { background: #084ba9; }
+.legal-page :focus-visible { outline: 3px solid #0b5fd8; outline-offset: 3px; }
+
+@media (max-width: 920px) {
+  .legal-page { padding-top: 56px; }
+}
+
 @media (max-width: 640px) {
-  .legal-header {
-    padding-block: 18px;
-  }
 
   .legal-content {
     width: min(100% - 28px, 860px);

@@ -1,4 +1,5 @@
 :root {
+  --section-label-size: clamp(16px, 1.25vw, 18px);
   --ink: #1e2722;
   --green: #286a58;
   --green-dark: #174d40;
@@ -70,7 +71,7 @@
 .home-page .hero::before { inset: 110px 4% 50px 52%; width: auto; border-radius: 46px; background: linear-gradient(145deg, #eaf3ff, #f3fffb); }
 .home-page .hero-copy { max-width: 610px; }
 .home-page .hero .eyebrow,
-.home-page .eyebrow { margin-bottom: 15px; color: var(--home-blue); font-size: 12px; letter-spacing: .12em; }
+.home-page .eyebrow { margin-bottom: 15px; color: var(--home-blue); font-size: var(--section-label-size); letter-spacing: .08em; }
 .home-page .hero h1 { font-size: clamp(54px, 5vw, 74px); line-height: 1.08; letter-spacing: -.055em; word-break: keep-all; }
 .home-page .hero h1 em { color: var(--home-mint); }
 .home-page .hero-description { max-width: 590px; margin-top: 28px; color: var(--home-muted); font-size: 18px; line-height: 1.75; }
@@ -527,7 +528,7 @@ img {
 .eyebrow {
   margin: 0 0 20px;
   color: var(--terra);
-  font-size: 12px;
+  font-size: var(--section-label-size);
   line-height: 1.2;
   font-weight: 800;
   letter-spacing: 0.18em;
