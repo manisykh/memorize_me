@@ -15,6 +15,8 @@
 }
 
 .feedback-header {
+  --blue: #0b5fd8;
+  --blue-dark: #084ba9;
   width: min(1240px, calc(100% - 40px));
   height: 76px;
   margin: 0 auto;
@@ -156,7 +158,6 @@
 
 @media (max-width: 820px) {
   .feedback-header { width: calc(100% - 28px); }
-  .feedback-header nav a:first-child { display: none; }
   .feedback-hero { width: calc(100% - 28px); padding: 42px 30px; grid-template-columns: 1fr; gap: 28px; border-radius: 28px; }
   .feedback-hero h1 { font-size: 42px; }
   .feedback-board { width: calc(100% - 28px); }
@@ -178,6 +179,7 @@
   .feedback-brand { font-size: 17px; }
   .feedback-brand img { width: 38px; height: 38px; }
   .feedback-header nav { font-size: 13px; }
+  .feedback-header nav a { min-height: 40px; padding-inline: 12px; font-size: 12px; }
   .feedback-hero { margin-top: 12px; padding: 34px 22px; }
   .feedback-hero h1 { font-size: clamp(30px, 9vw, 35px); line-height: 1.2; }
   .feedback-hero>div>p:last-child { font-size: 15px; }
@@ -188,7 +190,7 @@
   .feedback-summary span { font-size: 10px; }
   .feedback-filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
   .feedback-filters button { flex: none; }
-  .feedback-toolbar-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .feedback-toolbar-actions { display: flex; justify-content: flex-end; }
   .feedback-toolbar-actions button { width: 100%; padding-inline: 8px; }
   .feedback-admin-form { align-items: stretch; flex-direction: column; }
   .feedback-write-form { padding: 22px 18px; border-radius: 22px; }

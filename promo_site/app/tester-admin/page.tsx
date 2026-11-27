@@ -1,4 +1,11 @@
 import type { Metadata } from "next";
-import { TesterAdmin } from "./tester-admin";
-export const metadata: Metadata = { title: "테스트 신청 관리 | Memorize Me", robots: { index: false, follow: false } };
-export default function Page() { return <TesterAdmin />; }
+import { LegacyAdminRedirect } from "./legacy-admin-redirect";
+
+export const metadata: Metadata = {
+  title: "관리자 페이지로 이동 | Memorize Me",
+  robots: { index: false, follow: false },
+};
+
+export default function Page() {
+  return <LegacyAdminRedirect />;
+}

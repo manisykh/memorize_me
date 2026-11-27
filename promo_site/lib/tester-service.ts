@@ -54,6 +54,7 @@ export function createTesterHandler(dependencies: Dependencies) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.searchParams.get("view") === "config") return result({ config });
     try {
+      if (request.method === "GET" && url.searchParams.get("view") === "session") return result({ authenticated: await dependencies.isAdmin(request) });
       if (request.method === "GET") {
         if (!(await dependencies.isAdmin(request))) return result({ error: "관리자 로그인이 필요합니다." }, 401);
         const store = dependencies.store();

@@ -13,6 +13,10 @@ import { releasePresentation, type ReleaseConfig } from "../lib/site-release";
 
 type HomeLandingProps = { releaseConfig: ReleaseConfig };
 
+function MailIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="m4 7 8 6 8-6" strokeLinejoin="round" /></svg>;
+}
+
 const benefits = [
   ["01", ["다시 입력하지", "않고 가져오기"], "정리한 단어장을 학습에 바로 활용합니다."],
   ["02", ["카드와 퀴즈로", "확인하기"], "뜻을 알아보는 것에서 직접 답하는 것까지 이어집니다."],
@@ -227,12 +231,12 @@ function BeforeAfterSlider({ beforeSrc, afterSrc, beforeAlt, afterAlt }: { befor
 
 function FormatIcon({ type }: { type: "sheets" | "csv" | "xlsx" }) {
   if (type === "sheets") {
-    return <span className={`${styles.formatIconBox} ${styles.sheetsIcon}`}><svg viewBox="0 0 32 38" aria-hidden="true"><path fill="#0f9d58" d="M4 0h16l8 8v27a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3Z"/><path fill="#87d6aa" d="M20 0v8h8Z"/><path fill="#fff" d="M7 14h15v15H7Zm3 3v3h3v-3Zm5 0v3h4v-3Zm-5 5v4h3v-4Zm5 0v4h4v-4Z"/></svg></span>;
+    return <span className={`${styles.formatIconBox} ${styles.sheetsIcon}`}><svg viewBox="0 0 29 38" aria-hidden="true"><path fill="#0f9d58" d="M4 0h16l8 8v27a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3Z"/><path fill="#87d6aa" d="M20 0v8h8Z"/><path fill="#fff" d="M7 14h15v15H7Zm3 3v3h3v-3Zm5 0v3h4v-3Zm-5 5v4h3v-4Zm5 0v4h4v-4Z"/></svg></span>;
   }
   if (type === "csv") {
-    return <span className={`${styles.formatIconBox} ${styles.csvIcon}`}><svg viewBox="0 0 32 38" aria-hidden="true"><path fill="#607086" d="M4 0h16l8 8v27a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3Z"/><path fill="#b8c2cf" d="M20 0v8h8Z"/><path fill="#fff" d="M5 17h19v12H5Z"/><text x="14.5" y="25.8" textAnchor="middle" fontSize="7.2" fontWeight="900" fill="#607086">CSV</text></svg></span>;
+    return <span className={`${styles.formatIconBox} ${styles.csvIcon}`}><svg viewBox="0 0 29 38" aria-hidden="true"><path fill="#607086" d="M4 0h16l8 8v27a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3Z"/><path fill="#b8c2cf" d="M20 0v8h8Z"/><path fill="#fff" d="M5 17h19v12H5Z"/><text x="14.5" y="25.8" textAnchor="middle" fontSize="7.2" fontWeight="900" fill="#607086">CSV</text></svg></span>;
   }
-  return <span className={`${styles.formatIconBox} ${styles.xlsxIcon}`}><svg viewBox="0 0 32 38" aria-hidden="true"><path fill="#107c41" d="M4 0h16l8 8v27a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3Z"/><path fill="#54aa78" d="M20 0v8h8Z"/><path fill="#fff" d="m8 14 4.2 7L8 28h4l2.4-4.3L17 28h4l-4.4-7 4.2-7h-4l-2.2 4-2.3-4Z"/></svg></span>;
+  return <span className={`${styles.formatIconBox} ${styles.xlsxIcon}`}><svg viewBox="0 0 29 38" aria-hidden="true"><path fill="#107c41" d="M4 0h16l8 8v27a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3Z"/><path fill="#54aa78" d="M20 0v8h8Z"/><path fill="#fff" d="m8 14 4.2 7L8 28h4l2.4-4.3L17 28h4l-4.4-7 4.2-7h-4l-2.2 4-2.3-4Z"/></svg></span>;
 }
 
 function PreparationIcon({ type }: { type: PreparationIconName }) {
@@ -522,14 +526,14 @@ export function HomeLanding({ releaseConfig }: HomeLandingProps) {
 
         <section className={styles.faqSection} id="faq" aria-labelledby="faq-title">
           <div className={styles.sectionInner}>
-            <div className={styles.faqLayout}><div className={styles.helpPanel}><p className={styles.kicker}>도움말</p><h2><CopyLines lines={["필요한 안내를", "바로 찾아보세요."]} /></h2><p><CopyLines lines={["AI 연결 방법은 전용 가이드에서 확인하고,", "발견한 내용은 의견 게시판에 남겨주세요."]} /></p><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 {supportEmail}</a> : null}</div><div className={styles.faq}><p className={styles.kicker}>자주 묻는 질문</p><h2 id="faq-title">시작 전에 확인하세요.</h2>{productFaqItems.map((item, index) => <details key={item.question} open={index === 0}><summary>{item.question}<b aria-hidden="true" /></summary><p>{item.answerLines ? <CopyLines lines={item.answerLines} /> : item.answer}</p></details>)}</div></div>
+            <div className={styles.faqLayout}><div className={styles.helpPanel}><p className={styles.kicker}>도움말</p><h2><CopyLines lines={["필요한 안내를", "바로 찾아보세요."]} /></h2><p><CopyLines lines={["AI 연결 방법은 전용 가이드에서 확인하고,", "발견한 내용은 의견 게시판에 남겨주세요."]} /></p><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a className={styles.emailLink} href={`mailto:${supportEmail}`} aria-label={`이메일 문의: ${supportEmail}`}><MailIcon /><span>{supportEmail}</span></a> : null}</div><div className={styles.faq}><p className={styles.kicker}>자주 묻는 질문</p><h2 id="faq-title">시작 전에 확인하세요.</h2>{productFaqItems.map((item, index) => <details key={item.question} open={index === 0}><summary>{item.question}<b aria-hidden="true" /></summary><p>{item.answerLines ? <CopyLines lines={item.answerLines} /> : item.answer}</p></details>)}</div></div>
           </div>
         </section>
 
         <section className={styles.finalCta} aria-labelledby="final-title"><div><p className={styles.kicker}>내 단어장으로 시작하기</p><h2 id="final-title"><CopyLines lines={["이미 정리한 단어장으로,", "오늘의 학습을 준비하세요."]} /></h2><p>{liveRelease.releaseStatus === "released" ? "Google Play에서 앱을 설치하고 학습을 시작하세요." : "정식 출시 전에 먼저 경험하거나, 출시 알림을 받아보세요."}</p><div className={styles.finalActions}><ReleaseAction config={liveRelease} onOpen={openEnrollment} />{liveRelease.acceptingTesters ? <ReleaseAction config={liveRelease} onOpen={openEnrollment} secondary /> : null}</div></div></section>
       </div>
 
-      <footer className={styles.footer}><div className={styles.footerInner}><div className={styles.footerBrand}><a className={styles.brand} href="#top"><img src="/app-icon-192.png" width="42" height="42" alt="" /><span>Memorize Me</span></a><p>내 단어장으로 시작하는 학습</p></div><nav aria-label="서비스"><strong>서비스</strong><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><Link href="/testing">테스트 안내</Link><a href="#faq">FAQ</a></nav><nav aria-label="지원"><strong>지원</strong><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a href={`mailto:${supportEmail}`}>문의 이메일</a> : null}</nav><nav aria-label="정책"><strong>정책</strong><a href="/privacy">개인정보 처리방침</a><a href="/account-deletion">계정 삭제 안내</a></nav><div><strong>앱</strong><p>{release.label}</p></div></div><div className={styles.footerBottom}>© 2026 Memorize Me</div></footer>
+      <footer className={styles.footer}><div className={styles.footerInner}><div className={styles.footerBrand}><a className={styles.brand} href="#top"><img src="/app-icon-192.png" width="42" height="42" alt="" /><span>Memorize Me</span></a><p>내 단어장으로 시작하는 학습</p></div><nav aria-label="서비스"><strong>서비스</strong><a href="#journey">시작하기</a><a href="#learning">학습 방식</a><a href="#ai">AI 학습</a><Link href="/testing">테스트 안내</Link><a href="#faq">FAQ</a></nav><nav aria-label="지원"><strong>지원</strong><a href="/ai-api">AI API 연결 가이드</a><a href="/feedback">의견 게시판</a>{supportEmail ? <a className={styles.emailLink} href={`mailto:${supportEmail}`} aria-label={`이메일 문의: ${supportEmail}`}><MailIcon /><span>{supportEmail}</span></a> : null}</nav><nav aria-label="정책"><strong>정책</strong><a href="/privacy">개인정보 처리방침</a><a href="/account-deletion">계정 삭제 안내</a></nav><div><strong>앱</strong><p>{release.label}</p></div></div><div className={styles.footerBottom}>© 2026 Memorize Me</div></footer>
 
       {enrollmentMode ? <EnrollmentModal mode={enrollmentMode} config={liveRelease} onClose={() => setEnrollmentMode(null)} /> : null}
     </main>

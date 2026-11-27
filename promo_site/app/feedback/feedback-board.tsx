@@ -38,27 +38,26 @@ function formatDate(timestamp: number) {
   return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(timestamp);
 }
 
-async function api(method: string, body?: Record<string, unknown>, query = "") {
+async function api(method: string, body?: Record<string, unknown>, query = "", signal?: AbortSignal) {
   const response = await fetch(`/api/feedback${query}`, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
+    signal,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "요청을 처리하지 못했습니다.");
   return data;
 }
 
-export function FeedbackBoard() {
+export function FeedbackBoard({ management = false, onSessionExpired }: { management?: boolean; onSessionExpired?: () => void }) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [filter, setFilter] = useState("all");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showWrite, setShowWrite] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
   const [form, setForm] = useState(emptyForm);
-  const [adminPassword, setAdminPassword] = useState("");
   const [replyText, setReplyText] = useState<Record<string, string>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, typeof emptyComment>>({});
   const [editId, setEditId] = useState<string | null>(null);
@@ -67,21 +66,33 @@ export function FeedbackBoard() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
+  const receivePosts = useCallback((data: { posts?: Post[]; isAdmin?: boolean }) => {
+    setPosts(data.posts || []);
+    setIsAdmin(management && Boolean(data.isAdmin));
+    setMessage("");
+    if (management && !data.isAdmin) onSessionExpired?.();
+  }, [management, onSessionExpired]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api("GET", undefined, filter === "all" ? "" : `?category=${filter}`);
-      setPosts(data.posts || []);
-      setIsAdmin(Boolean(data.isAdmin));
-      setMessage("");
+      receivePosts(data);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "게시물을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, receivePosts]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const abort = new AbortController();
+    api("GET", undefined, filter === "all" ? "" : `?category=${filter}`, abort.signal)
+      .then((data) => { if (!abort.signal.aborted) receivePosts(data); })
+      .catch((error) => { if (!abort.signal.aborted) setMessage(error instanceof Error ? error.message : "게시물을 불러오지 못했습니다."); })
+      .finally(() => { if (!abort.signal.aborted) setLoading(false); });
+    return () => abort.abort();
+  }, [filter, receivePosts]);
 
   const counts = useMemo(() => ({
     total: posts.length,
@@ -101,23 +112,6 @@ export function FeedbackBoard() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "등록하지 못했습니다.");
     } finally { setBusy(false); }
-  }
-
-  async function loginAdmin(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    try {
-      await api("POST", { action: "admin-login", password: adminPassword });
-      setAdminPassword("");
-      setShowAdmin(false);
-      await load();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "로그인하지 못했습니다."); }
-    finally { setBusy(false); }
-  }
-
-  async function logoutAdmin() {
-    await api("POST", { action: "admin-logout" });
-    await load();
   }
 
   async function react(postId: string) {
@@ -206,7 +200,7 @@ export function FeedbackBoard() {
   }
 
   return (
-    <section className="feedback-board" aria-label="테스터 의견 게시판">
+    <section className="feedback-board" aria-label={management ? "의견 게시판 관리" : "의견 게시판"}>
       <div className="feedback-summary">
         <div><strong>{counts.total}</strong><span>등록된 의견</span></div>
         <div><strong>{counts.answered}</strong><span>운영자 답변</span></div>
@@ -216,23 +210,15 @@ export function FeedbackBoard() {
       <div className="feedback-toolbar">
         <div className="feedback-filters" role="tablist" aria-label="의견 분류">
           {categories.map(([value, label]) => (
-            <button key={value} type="button" className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}</button>
+            <button key={value} type="button" className={filter === value ? "active" : ""} onClick={() => { if (filter !== value) { setLoading(true); setFilter(value); } }}>{label}</button>
           ))}
         </div>
         <div className="feedback-toolbar-actions">
-          {isAdmin ? <button className="feedback-admin-on" type="button" onClick={logoutAdmin}>관리자 로그아웃</button> : <button type="button" onClick={() => setShowAdmin((value) => !value)}>관리자 로그인</button>}
-          <button className="feedback-write-button" type="button" onClick={() => setShowWrite((value) => !value)}>+ 의견 남기기</button>
+          {management ? <button type="button" onClick={() => void load()} disabled={loading || busy}>새로고침</button> : <button className="feedback-write-button" type="button" onClick={() => setShowWrite((value) => !value)}>+ 의견 남기기</button>}
         </div>
       </div>
 
       {message && <p className="feedback-message" role="status">{message}</p>}
-
-      {showAdmin && !isAdmin && (
-        <form className="feedback-admin-form" onSubmit={loginAdmin}>
-          <label><span>관리자 비밀번호</span><input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} required autoComplete="current-password" /></label>
-          <button type="submit" disabled={busy}>관리자로 로그인</button>
-        </form>
-      )}
 
       {showWrite && (
         <form className="feedback-write-form" onSubmit={submitPost}>

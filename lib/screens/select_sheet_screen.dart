@@ -17,11 +17,13 @@ const String selectSheetImportResultStartStudy = 'startStudy';
 class SelectSheetScreen extends StatefulWidget {
   final String spreadsheetId;
   final String spreadsheetName;
+  final List<sheets.Sheet>? initialSheets;
 
   const SelectSheetScreen({
     super.key,
     required this.spreadsheetId,
     required this.spreadsheetName,
+    this.initialSheets,
   });
 
   @override
@@ -36,9 +38,10 @@ class _SelectSheetScreenState extends State<SelectSheetScreen> {
   @override
   void initState() {
     super.initState();
-    _sheetsFuture = context.read<SheetsService>().getSheetInfo(
-      widget.spreadsheetId,
-    );
+    _sheetsFuture =
+        widget.initialSheets != null
+            ? Future.value(widget.initialSheets!)
+            : context.read<SheetsService>().getSheetInfo(widget.spreadsheetId);
   }
 
   Future<void> _importSelectedSheets() async {

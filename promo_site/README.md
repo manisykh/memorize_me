@@ -30,6 +30,20 @@ screen. After deployment, verify both routes on the production domain and use
 the same URLs in the Google Play Console's privacy policy and account deletion
 fields.
 
+## Administrator portal
+
+The unified management page is `/admin`. The previous `/tester-admin` address
+redirects to it. Sign in with the existing `FEEDBACK_ADMIN_PASSWORD`; both
+management panels use the same signed administrator session.
+
+- **테스트 계정 관리**: review website applications and notification subscriptions,
+  consent records, and receipt dates; mark accounts as registered or invited;
+  delete application records. Google Play registration, invitation emails, and
+  actual participation checks remain manual. This is not an app user account or
+  lifetime benefit entitlement system.
+- **의견 게시판 관리**: filter and open posts, update handling status, write
+  administrator replies, and delete posts or comments.
+
 ## Netlify deployment
 
 The repository root contains `netlify.toml`. When this repository is imported,

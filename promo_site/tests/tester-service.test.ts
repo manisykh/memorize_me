@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { confirmedTesterBenefitText, getReleaseConfig, releasePresentation } from "../lib/site-release.ts";
-import { createTesterHandler, purgeExpiredTesterData, type PrivateStore } from "../lib/tester-service.ts";
+import { createTesterHandler, purgeExpiredTesterData, type PrivateStore, type TesterRecord } from "../lib/tester-service.ts";
 import { isTesterAdmin } from "../lib/tester-endpoint.ts";
 
 const env = { RELEASE_STATUS: "recruiting", TESTER_PRIVACY_CONFIRMED: "true", TESTER_RETENTION_DAYS: "90", NEXT_PUBLIC_SUPPORT_EMAIL: "support@memorize.test", FEEDBACK_SESSION_SECRET: "fixture-secret-only-do-not-use-in-production" };
@@ -20,7 +20,7 @@ function fixture(overrides = {}) {
   };
   const handle = createTesterHandler({ env: { ...env, ...overrides }, store: () => store, isAdmin: async (request) => request.headers.get("authorization") === "fixture-admin", now: () => 1_800_000_000_000 });
   const body = { email: "person@custom.test", mode: "tester", usePurpose: "", participationConfirmed: true, privacyConsent: true, releaseNotificationConsent: false, privacyNoticeVersion: getReleaseConfig({ ...env, ...overrides }).privacyNoticeVersion, website: "" };
-  function request(payload = body, method = "POST", headers = {}) { return new Request("https://site.test/api/tester-applications", { method, headers: { origin: "https://site.test", "content-type": "application/json", ...headers }, body: JSON.stringify(payload) }); }
+  function request(payload: Record<string, unknown> = body, method = "POST", headers = {}) { return new Request("https://site.test/api/tester-applications", { method, headers: { origin: "https://site.test", "content-type": "application/json", ...headers }, body: JSON.stringify(payload) }); }
   return { handle, request, body, data, store };
 }
 test("release states, extra recruitment, confirmed perks and real download URL", () => {
@@ -43,7 +43,7 @@ test("release states, extra recruitment, confirmed perks and real download URL",
 });
 test("Google account accepts custom email domains, stores consent and server timestamp", async () => {
   const f = fixture(); assert.equal((await f.handle(f.request())).status, 200);
-  const record = [...f.data.entries()].find(([key]) => key.startsWith("application/"))![1].data as any;
+  const record = [...f.data.entries()].find(([key]) => key.startsWith("application/"))![1].data as TesterRecord;
   assert.equal(record.email, "person@custom.test"); assert.equal(record.releaseNotificationConsent, false);
   assert.equal(record.submittedAt, 1_800_000_000_000); assert.equal(record.expiresAt - record.submittedAt, 90 * 86400000);
   assert.equal(record.status, "received");
@@ -69,16 +69,23 @@ test("public requests cannot read emails or change administrator state", async (
   assert.equal((await f.handle(new Request("https://site.test/api/tester-applications"))).status, 401);
   const config = await (await f.handle(new Request("https://site.test/api/tester-applications?view=config"))).text();
   assert.doesNotMatch(config, /person@|fixture-secret/);
-  assert.equal((await f.handle(f.request({ id: "tester-" + "a".repeat(64), status: "invited" } as any, "PATCH"))).status, 401);
+  assert.equal((await f.handle(f.request({ id: "tester-" + "a".repeat(64), status: "invited" }, "PATCH"))).status, 401);
   assert.equal((await f.handle(f.request(f.body, "POST", { origin: "https://foreign.test" }))).status, 403);
+});
+test("shared admin session check never reads application storage or returns applicant data", async () => {
+  const handle = createTesterHandler({ env, store: () => { throw new Error("Storage must not be accessed for a session check"); }, isAdmin: async (request) => request.headers.get("authorization") === "fixture-admin" });
+  const publicResult = await handle(new Request("https://site.test/api/tester-applications?view=session"));
+  assert.equal(publicResult.status, 200); assert.deepEqual(await publicResult.json(), { authenticated: false });
+  const adminResult = await handle(new Request("https://site.test/api/tester-applications?view=session", { headers: { authorization: "fixture-admin" } }));
+  assert.equal(adminResult.status, 200); assert.deepEqual(await adminResult.json(), { authenticated: true });
 });
 test("private operator list, status update, deletion and expiration", async () => {
   const f = fixture(); await f.handle(f.request());
   const list = await (await f.handle(new Request("https://site.test/api/tester-applications", { headers: { authorization: "fixture-admin" } }))).json();
   const id = list.records[0].id;
-  assert.equal((await f.handle(f.request({ id, status: "invited" } as any, "PATCH", { authorization: "fixture-admin" }))).status, 200);
-  assert.equal((f.data.get(`application/${id}`)!.data as any).status, "invited");
-  assert.equal((await f.handle(f.request({ id } as any, "DELETE", { authorization: "fixture-admin" }))).status, 200);
+  assert.equal((await f.handle(f.request({ id, status: "invited" }, "PATCH", { authorization: "fixture-admin" }))).status, 200);
+  assert.equal((f.data.get(`application/${id}`)!.data as TesterRecord).status, "invited");
+  assert.equal((await f.handle(f.request({ id }, "DELETE", { authorization: "fixture-admin" }))).status, 200);
   assert.equal(f.data.has(`application/${id}`), false);
 });
 test("rate limit and storage errors cannot produce false success", async () => {

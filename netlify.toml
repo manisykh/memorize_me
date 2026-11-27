@@ -10,6 +10,18 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+[[redirects]]
+  from = "/tester-admin"
+  to = "/admin/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/tester-admin/"
+  to = "/admin/"
+  status = 301
+  force = true
+
 [[headers]]
   for = "/*"
   [headers.values]

@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { FeedbackBoard } from "./feedback-board";
 import { CopyLines } from "../copy-lines";
+import styles from "../home-v2.module.css";
 
 export const metadata: Metadata = {
   title: "테스터 의견 게시판 | Memorize Me",
@@ -17,7 +18,7 @@ export default function FeedbackPage() {
           <span>Memorize Me</span>
         </a>
         <nav aria-label="게시판 메뉴">
-          <a href="/">홈으로 돌아가기</a>
+          <a className={styles.headerPageButton} href="/">홈으로 돌아가기</a>
         </nav>
       </header>
 
