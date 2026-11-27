@@ -32,6 +32,21 @@ fields.
 
 ## Administrator portal
 
+Tester applications require the Google account email, participation and privacy
+confirmations, and necessary processing metadata. Use purpose and release-notification
+consent are optional and unselected by default; neither is required to apply.
+Only explicitly opted-in accounts receive release notices. Standalone release
+notifications remain a separate signup type. The operator approved retention for
+**90 days from submission** on 2026-11-28, including the optional fields.
+
+Keep the existing public support email. To activate a deployment that was paused,
+set `TESTER_PRIVACY_CONFIRMED=true`, `TESTER_RETENTION_DAYS=90`, and update
+`TESTER_PRIVACY_NOTICE_VERSION` in both **Builds and Functions** scopes, then
+redeploy the updated source. An explicit `TESTER_PRIVACY_CONFIRMED=false` continues
+to pause collection. Verify the deployed config API, private storage, and hourly
+retention function after deployment. This retention applies to website application
+records, not lifetime app benefit entitlements.
+
 The unified management page is `/admin`. The previous `/tester-admin` address
 redirects to it. Sign in with the existing `FEEDBACK_ADMIN_PASSWORD`; both
 management panels use the same signed administrator session.

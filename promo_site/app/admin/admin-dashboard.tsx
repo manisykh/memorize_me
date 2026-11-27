@@ -115,11 +115,11 @@ export function AdminDashboard() {
             <p>홈페이지에 접수된 테스트 신청·출시 알림 계정을 관리합니다. 앱 회원 계정과 Google Play 테스터 목록을 자동으로 연동하지는 않습니다.</p>
             <p>접수 확인 → Play Console 계정 등록 → 참여 링크 수동 발송 순서로 진행합니다. 실제 참여 여부·기간은 Play Console에서 확인하세요.</p>
             <div className={styles.toolbar}><strong>접수 {records === null ? "—" : records.length}건</strong><button type="button" disabled={busy} onClick={() => void load()}>새로고침</button></div>
-            <p>‘등록 완료’와 ‘안내 발송’은 직접 수행한 뒤 변경합니다. 출시 알림은 동의한 신청에만 보내고, 목적이 끝난 정보는 삭제하세요.</p>
+            <p>‘등록 완료’와 ‘안내 발송’은 직접 수행한 뒤 변경합니다. 정식 출시 알림은 수신에 동의한 계정에만 보내세요. 테스트 신청 자체는 출시 알림 동의가 아닙니다.</p>
             {records === null ? !error && <p role="status">신청 목록을 불러오고 있습니다…</p> : records.length === 0 ? <p>접수된 신청이 없습니다.</p> : <div className={styles.records}>{records.map((record) =>
               <article key={record.id}><h3>{record.email}</h3><p>{record.mode === "tester" ? "테스트 신청" : "출시 알림"} · {new Date(record.submittedAt).toLocaleString("ko-KR")}</p>
-                <p>사용 목적: {record.usePurpose || "미선택"} · 참여 확인: {record.participationConfirmed ? "동의" : "해당 없음"}</p>
-                <p>출시 알림: {record.releaseNotificationConsent ? "동의" : "미동의"} · 개인정보 동의: {record.privacyNoticeVersion}</p>
+                <p>참여 확인: {record.participationConfirmed ? "동의" : "해당 없음"} · 개인정보 동의: {record.privacyNoticeVersion}</p>
+                <p>사용 목적: {({ student: "학생 학습", child: "자녀 학습", teaching: "교육 및 강의", self: "개인 어학 공부", other: "기타" } as Record<string, string>)[record.usePurpose || ""] || "선택하지 않음"} · 출시 알림: {record.releaseNotificationConsent === true ? "수신 동의" : "동의 없음"}</p>
                 <p>자동 삭제 기준: {new Date(record.expiresAt).toLocaleString("ko-KR")}</p>
                 <div className={styles.toolbar}><label>운영 상태 <select disabled={busy} value={record.status} onChange={(event) => update(record, event.target.value as TesterRecord["status"])}><option value="received">접수</option><option value="registered">등록 완료</option><option value="invited">안내 발송</option></select></label><button type="button" disabled={busy} onClick={() => update(record)}>신청 정보 삭제</button></div>
               </article>)}</div>}

@@ -71,9 +71,9 @@ export function EnrollmentModal({ mode, config, onClose }: { mode: EnrollmentMod
   const emailRef = useRef<HTMLInputElement>(null);
   const [email, setEmail] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [notification, setNotification] = useState(false);
   const [participation, setParticipation] = useState(false);
   const [privacy, setPrivacy] = useState(false);
-  const [notification, setNotification] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -109,7 +109,7 @@ export function EnrollmentModal({ mode, config, onClose }: { mode: EnrollmentMod
     setBusy(true);
     setFormError("");
     try {
-      const response = await fetch("/api/tester-applications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, usePurpose: purpose, participationConfirmed: participation, privacyConsent: privacy, releaseNotificationConsent: !isTester || notification, privacyNoticeVersion: config.privacyNoticeVersion, mode, website: websiteRef.current?.value || "" }) });
+      const response = await fetch("/api/tester-applications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, usePurpose: isTester ? purpose : "", participationConfirmed: participation, privacyConsent: privacy, releaseNotificationConsent: !isTester || notification, privacyNoticeVersion: config.privacyNoticeVersion, mode, website: websiteRef.current?.value || "" }) });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.ok) throw new Error(typeof result?.error === "string" ? result.error : "신청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.");
       setDone(true);
@@ -127,8 +127,8 @@ export function EnrollmentModal({ mode, config, onClose }: { mode: EnrollmentMod
       {!accepting ? <div role="status" className={testing.statusNotice}><span className={testing.infoIcon} aria-hidden="true">i</span><p><strong>현재 테스터 모집이 종료되었어요.</strong><span>출시 알림으로 다음 소식을 받아보세요.</span></p></div> : null}
       {!config.privacyConfirmed ? <div role="status" className={testing.statusNotice}><span className={testing.infoIcon} aria-hidden="true">i</span><p><strong>신청 접수를 준비하고 있어요.</strong><span>개인정보 수집·보관 안내가 확정되면 신청할 수 있어요.</span></p></div> : null}
       <label className={testing.field} htmlFor="enroll-email"><span className={testing.fieldLabel}>{isTester ? "Google 계정 이메일" : "이메일"}<span className={testing.requiredLabel}>필수</span></span><input ref={emailRef} id="enroll-email" aria-required="true" type="email" autoComplete="email" inputMode="email" placeholder="이메일 주소를 입력해 주세요" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} aria-invalid={Boolean(errors.email)} aria-describedby="email-help email-error" /><small id="email-help">{isTester ? "Google Play에서 쓰는 계정 · Gmail 이외 주소도 가능해요." : "출시 소식을 받을 이메일을 입력해 주세요."}</small><small id="email-error" className={testing.fieldError}>{errors.email}</small></label>
-      {isTester ? <label className={testing.field}><span className={testing.fieldLabel}>주요 사용 목적<span className={testing.optionalLabel}>선택</span></span><select value={purpose} onChange={(event) => setPurpose(event.target.value)}><option value="">선택하지 않음</option><option value="student">학생 학습</option><option value="child">자녀 학습</option><option value="teaching">교육 및 강의</option><option value="self">개인 어학 공부</option><option value="other">기타</option></select></label> : null}
       <div className={testing.honeypot} aria-hidden="true"><label>Website<input ref={websiteRef} name="website" tabIndex={-1} autoComplete="off" /></label></div>
+      {isTester ? <label className={testing.field}><span className={testing.fieldLabel}>주요 사용 목적<span className={testing.optionalLabel}>선택</span></span><select value={purpose} onChange={(event) => setPurpose(event.target.value)}><option value="">선택하지 않음</option><option value="student">학생 학습</option><option value="child">자녀 학습</option><option value="teaching">교육 및 강의</option><option value="self">개인 어학 공부</option><option value="other">기타</option></select><small>선택하지 않아도 신청할 수 있어요. 선택한 항목은 학습 수요 파악에 사용합니다.</small></label> : null}
       {isTester ? <div className={testing.participationSection}><label className={testing.check}><input id="enroll-participation" aria-required="true" type="checkbox" checked={participation} onChange={(event) => setParticipation(event.target.checked)} aria-invalid={Boolean(errors.participation)} aria-describedby="participation-error" /><span><span className={testing.checkTitle}>최소 {config.minimumParticipationDays}일 동안 참여할 수 있어요.<span className={testing.requiredLabel}>필수</span></span><small>Android 기기에서 테스트 참여 상태를 유지하고 앱을 사용합니다.</small></span></label><small id="participation-error" className={testing.fieldError}>{errors.participation}</small><p className={testing.note}>어린이는 Family Link 등 계정 설정에 따라 보호자 동의가 필요할 수 있습니다.</p></div> : null}
       <details className={testing.privacyNotice}><summary><span>개인정보 수집·이용 안내</span><span className={testing.detailsHint}>자세히 보기<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></span></summary><dl><dt>수집 목적</dt><dd>{notice.purpose}</dd><dt>수집 항목</dt><dd>{notice.items}</dd><dt>보관 기간</dt><dd>{notice.retention}</dd><dt>동의 거부·문의</dt><dd>동의를 거부할 수 있으나 신청 접수가 제한됩니다. 삭제·철회는 {config.supportEmail ? <a href={`mailto:${config.supportEmail}`}>{config.supportEmail}</a> : "문의 채널이 확정된 후"} 요청할 수 있습니다.</dd></dl><a href="/privacy#tester-data" target="_blank" rel="noreferrer">개인정보 처리방침 확인 (새 창)</a></details>
       <div className={testing.consentSection}>

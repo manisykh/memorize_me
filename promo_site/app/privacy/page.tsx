@@ -65,11 +65,11 @@ export default function PrivacyPage() {
         <section id="tester-data" className="legal-section">
           <h2>5. 홈페이지 테스트 신청 및 출시 알림</h2>
           {!config.privacyConfirmed ? <p>개인정보 수집·보관 기준과 문의 채널을 준비하고 있습니다. 기준이 확정되기 전에는 홈페이지에서 테스트 신청과 출시 알림 정보를 접수하지 않습니다.</p> : <>
-            <p><strong>목적:</strong> {notice.purpose}. 별도로 동의한 경우 정식 출시 알림을 발송합니다.</p>
-            <p><strong>항목:</strong> {notice.items}. 출시 알림만 신청하면 이메일과 수신·개인정보 동의 기록을 수집합니다. 서버에서 접수 시각, 안내문 버전과 운영 상태를 기록합니다.</p>
+            <p><strong>목적:</strong> {notice.purpose}. 정식 출시 알림은 수신에 동의한 이메일에만 발송합니다.</p>
+            <p><strong>항목:</strong> {notice.items}. 별도 출시 알림 신청은 이메일·수신 및 개인정보 동의 기록과 같은 운영 기록만 수집합니다. 이름, 전화번호, 생년월일은 수집하지 않습니다.</p>
             <p><strong>보관·삭제:</strong> {notice.retention}</p>
             <p><strong>처리 방식:</strong> Netlify의 접근이 제한된 서버 저장소에 보관하며, 운영자가 신청 확인·테스터 등록·안내를 위해 사용합니다. 신청한 Google 계정은 Google Play 테스터 등록에 사용됩니다. 스팸 방지 식별값은 원문 IP 대신 해시로 저장하고, 유효 시간 10분이 지난 후 1시간 이내 삭제합니다.</p>
-            <p>필수 동의를 거부하면 접수할 수 없습니다. 주요 사용 목적과 출시 알림 수신은 선택이며, 동의하지 않아도 테스트 신청이 가능합니다. 정보 열람·삭제 및 수신 철회는 <a href={`mailto:${config.supportEmail}`}>{config.supportEmail}</a>로 요청해 주세요. 어린이의 참여는 보호자를 통해 문의해 주세요.</p>
+            <p>필수 동의를 거부하면 접수할 수 없습니다. 사용 목적과 출시 알림 수신 동의는 선택 사항이며, 선택하지 않아도 테스트를 신청할 수 있습니다. 정보 열람·삭제 및 수신 철회는 <a href={`mailto:${config.supportEmail}`}>{config.supportEmail}</a>로 요청해 주세요. 어린이의 참여는 보호자를 통해 문의해 주세요.</p>
           </>}
         </section>
       </article>

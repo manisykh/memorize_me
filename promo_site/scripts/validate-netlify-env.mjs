@@ -45,8 +45,8 @@ if (feedbackSessionSecret.length < 32) {
   process.exit(1);
 }
 
-if (process.env.TESTER_PRIVACY_CONFIRMED === "true") {
-  const days = Number(process.env.TESTER_RETENTION_DAYS);
+if (process.env.TESTER_PRIVACY_CONFIRMED !== "false") {
+  const days = Number(process.env.TESTER_RETENTION_DAYS?.trim() || 90);
   if (!Number.isInteger(days) || days < 1 || days > 730 || /@example\.(com|org|net)$/i.test(supportEmail)) {
     console.error("[release-check] Approved tester collection requires a real support email and a retention period of 1–730 days from submission.");
     process.exit(1);

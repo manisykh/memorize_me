@@ -4,11 +4,11 @@ export type TesterRecord = {
   id: string;
   email: string;
   mode: "tester" | "notification";
-  usePurpose: string;
+  usePurpose?: string;
+  releaseNotificationConsent?: boolean;
   participationConfirmed: boolean;
   privacyConsent: true;
   privacyNoticeVersion: string;
-  releaseNotificationConsent: boolean;
   submittedAt: number;
   expiresAt: number;
   status: "received" | "registered" | "invited";
@@ -25,8 +25,8 @@ type Dependencies = {
   isAdmin: (request: Request) => Promise<boolean>;
   now?: () => number;
 };
-const purposes = new Set(["", "student", "child", "teaching", "self", "other"]);
 const encoder = new TextEncoder();
+const purposes = new Set(["", "student", "child", "teaching", "self", "other"]);
 
 export async function privateDigest(value: string, secret: string) {
   const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -99,7 +99,8 @@ export function createTesterHandler(dependencies: Dependencies) {
       if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return result({ error: "올바른 이메일 주소를 입력해 주세요." }, 400);
       if (body.privacyConsent !== true || (body.mode === "tester" && body.participationConfirmed !== true)) return result({ error: "테스트 참여 조건과 개인정보 수집 안내를 확인해 주세요." }, 400);
       if (body.privacyNoticeVersion !== config.privacyNoticeVersion) return result({ error: "안내가 변경되었습니다. 페이지를 새로고침한 뒤 다시 신청해 주세요." }, 409);
-      if (body.website || !purposes.has(String(body.usePurpose ?? "")) || typeof body.releaseNotificationConsent !== "boolean" || (body.mode === "notification" && body.releaseNotificationConsent !== true)) return result({ error: "입력 내용을 확인해 주세요." }, 400);
+      if (body.website || (body.mode === "notification" && body.releaseNotificationConsent !== true)) return result({ error: "입력 내용을 확인해 주세요." }, 400);
+      if ((body.usePurpose !== undefined && (typeof body.usePurpose !== "string" || !purposes.has(body.usePurpose))) || (body.releaseNotificationConsent !== undefined && typeof body.releaseNotificationConsent !== "boolean")) return result({ error: "선택 항목을 확인해 주세요." }, 400);
       const secret = env.FEEDBACK_SESSION_SECRET?.trim() || "";
       if (secret.length < 32) return result({ error: "신청 서버를 준비 중입니다. 잠시 후 다시 시도해 주세요." }, 503);
       const store = dependencies.store();
@@ -116,9 +117,11 @@ export function createTesterHandler(dependencies: Dependencies) {
       if (!allowed) return result({ error: "요청이 몰리고 있습니다. 잠시 후 다시 시도해 주세요." }, 429);
       const id = `${body.mode}-${await privateDigest(`email|${email}`, secret)}`;
       const record: TesterRecord = {
-        id, email, mode: body.mode, usePurpose: body.mode === "tester" ? String(body.usePurpose ?? "") : "",
+        id, email, mode: body.mode,
+        usePurpose: body.mode === "tester" ? String(body.usePurpose ?? "") : "",
+        releaseNotificationConsent: body.releaseNotificationConsent === true,
         participationConfirmed: body.mode === "tester", privacyConsent: true, privacyNoticeVersion: config.privacyNoticeVersion,
-        releaseNotificationConsent: body.releaseNotificationConsent, submittedAt: now,
+        submittedAt: now,
         expiresAt: now + config.retentionDays! * 86_400_000, status: "received",
       };
       // Atomic create prevents duplicates even if two requests race. Identical

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { confirmedTesterBenefitText, getReleaseConfig, releasePresentation } from "../lib/site-release.ts";
+import { confirmedTesterBenefitText, getReleaseConfig, privacyNotice, releasePresentation, testerPrivacyDefaults } from "../lib/site-release.ts";
 import { createTesterHandler, purgeExpiredTesterData, type PrivateStore, type TesterRecord } from "../lib/tester-service.ts";
 import { isTesterAdmin } from "../lib/tester-endpoint.ts";
 
@@ -19,7 +19,7 @@ function fixture(overrides = {}) {
     async remove(key) { data.delete(key); },
   };
   const handle = createTesterHandler({ env: { ...env, ...overrides }, store: () => store, isAdmin: async (request) => request.headers.get("authorization") === "fixture-admin", now: () => 1_800_000_000_000 });
-  const body = { email: "person@custom.test", mode: "tester", usePurpose: "", participationConfirmed: true, privacyConsent: true, releaseNotificationConsent: false, privacyNoticeVersion: getReleaseConfig({ ...env, ...overrides }).privacyNoticeVersion, website: "" };
+  const body = { email: "person@custom.test", mode: "tester", participationConfirmed: true, privacyConsent: true, privacyNoticeVersion: getReleaseConfig({ ...env, ...overrides }).privacyNoticeVersion, website: "" };
   function request(payload: Record<string, unknown> = body, method = "POST", headers = {}) { return new Request("https://site.test/api/tester-applications", { method, headers: { origin: "https://site.test", "content-type": "application/json", ...headers }, body: JSON.stringify(payload) }); }
   return { handle, request, body, data, store };
 }
@@ -38,13 +38,28 @@ test("release states, extra recruitment, confirmed perks and real download URL",
   assert.match(confirmedTesterBenefitText, /광고 없이/);
   assert.match(confirmedTesterBenefitText, /자체 API로 제공하는 AI 기능은 이 혜택에 포함되지 않습니다/);
   assert.equal(getReleaseConfig({ TESTER_BENEFIT_CONFIRMED: "false" }).testerBenefitConfirmed, false);
-  assert.equal(getReleaseConfig({ TESTER_PRIVACY_CONFIRMED: "true" }).privacyConfirmed, false);
+  assert.equal(getReleaseConfig({}).privacyConfirmed, true);
   assert.match(releasePresentation(getReleaseConfig({ ACCEPTING_TESTERS: "false" })).label, /모집 마감/);
 });
-test("Google account accepts custom email domains, stores consent and server timestamp", async () => {
+test("approved minimal policy defaults retain the existing contact, pause switch and invalid configuration guard", () => {
+  const config = getReleaseConfig({});
+  assert.equal(config.supportEmail, testerPrivacyDefaults.supportEmail);
+  assert.equal(config.retentionDays, 90);
+  assert.match(config.privacyNoticeVersion, /2026-11-28\.optional\.v2/);
+  assert.equal(getReleaseConfig({ TESTER_PRIVACY_CONFIRMED: "false" }).privacyConfirmed, false);
+  assert.equal(getReleaseConfig({ TESTER_PRIVACY_CONFIRMED: "invalid" }).privacyConfirmed, false);
+  assert.equal(getReleaseConfig({ TESTER_RETENTION_DAYS: "0" }).privacyConfirmed, false);
+  assert.equal(getReleaseConfig({ NEXT_PUBLIC_SUPPORT_EMAIL: "support@example.com" }).privacyConfirmed, false);
+  assert.equal(getReleaseConfig({ NEXT_PUBLIC_SUPPORT_EMAIL: "" }).privacyConfirmed, false);
+  assert.match(privacyNotice(config, "tester").items, /선택: 주요 사용 목적, 출시 알림/);
+  assert.match(privacyNotice(config, "tester").retention, /신청일로부터 90일/);
+});
+test("Google account accepts custom email domains and optional fields default to unselected", async () => {
   const f = fixture(); assert.equal((await f.handle(f.request())).status, 200);
   const record = [...f.data.entries()].find(([key]) => key.startsWith("application/"))![1].data as TesterRecord;
-  assert.equal(record.email, "person@custom.test"); assert.equal(record.releaseNotificationConsent, false);
+  assert.equal(record.email, "person@custom.test");
+  assert.deepEqual(Object.keys(record).sort(), ["id", "email", "mode", "usePurpose", "releaseNotificationConsent", "participationConfirmed", "privacyConsent", "privacyNoticeVersion", "submittedAt", "expiresAt", "status"].sort());
+  assert.equal(record.usePurpose, ""); assert.equal(record.releaseNotificationConsent, false);
   assert.equal(record.submittedAt, 1_800_000_000_000); assert.equal(record.expiresAt - record.submittedAt, 90 * 86400000);
   assert.equal(record.status, "received");
 });
@@ -52,9 +67,32 @@ test("duplicate concurrent requests have identical success and never overwrite c
   const f = fixture(); const responses = await Promise.all([f.handle(f.request()), f.handle(f.request({ ...f.body, email: " PERSON@custom.test ", releaseNotificationConsent: true }))]);
   assert.deepEqual(await responses[0].json(), { ok: true }); assert.deepEqual(await responses[1].json(), { ok: true });
   assert.equal([...f.data.keys()].filter((key) => key.startsWith("application/")).length, 1);
+  const record = [...f.data.entries()].find(([key]) => key.startsWith("application/"))![1].data as TesterRecord;
+  assert.equal(record.releaseNotificationConsent, false);
+});
+test("chosen optional purpose and notification consent are stored without unrelated client fields", async () => {
+  const f = fixture();
+  assert.equal((await f.handle(f.request({ ...f.body, usePurpose: "self", name: "unused", phone: "unused", releaseNotificationConsent: true }))).status, 200);
+  const record = [...f.data.entries()].find(([key]) => key.startsWith("application/"))![1].data as TesterRecord;
+  assert.equal(record.mode, "tester");
+  assert.equal(record.usePurpose, "self"); assert.equal(record.releaseNotificationConsent, true);
+  for (const key of ["name", "phone"]) assert.equal(Object.hasOwn(record, key), false);
+});
+test("standalone notification signup retains explicit consent and a separate purpose from tester applications", async () => {
+  const f = fixture();
+  const payload = { ...f.body, mode: "notification", participationConfirmed: false };
+  assert.equal((await f.handle(f.request(payload))).status, 400);
+  assert.equal(f.data.size, 0);
+  assert.equal((await f.handle(f.request({ ...payload, releaseNotificationConsent: true }))).status, 200);
+  assert.equal((await f.handle(f.request())).status, 200);
+  const records = [...f.data.entries()].filter(([key]) => key.startsWith("application/")).map(([, entry]) => entry.data as TesterRecord);
+  assert.equal(records.length, 2);
+  assert.equal(records.find((record) => record.mode === "notification")!.participationConfirmed, false);
+  assert.equal(records.find((record) => record.mode === "notification")!.releaseNotificationConsent, true);
+  assert.ok(records.every((record) => record.privacyConsent && record.expiresAt - record.submittedAt === 90 * 86400000));
 });
 test("email, consent, current notice and honeypot are validated before storage", async () => {
-  for (const change of [{ email: "broken" }, { privacyConsent: false }, { participationConfirmed: false }, { website: "spam" }, { usePurpose: "unknown" }, { mode: "notification", releaseNotificationConsent: false }]) {
+  for (const change of [{ email: "broken" }, { privacyConsent: false }, { participationConfirmed: false }, { website: "spam" }, { mode: "unknown" }, { usePurpose: "unknown" }, { usePurpose: ["self"] }, { releaseNotificationConsent: "true" }, { mode: "notification", releaseNotificationConsent: false }]) {
     const f = fixture(); assert.equal((await f.handle(f.request({ ...f.body, ...change }))).status, 400); assert.equal(f.data.size, 0);
   }
   const f = fixture(); assert.equal((await f.handle(f.request({ ...f.body, privacyNoticeVersion: "old" }))).status, 409);
